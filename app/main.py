@@ -2,6 +2,7 @@
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.client_portal import router as client_portal_router
 from app.config import get_settings
 from app.dashboard import router as dashboard_router
 from app.db.models import Base
@@ -40,3 +41,4 @@ def on_startup() -> None:
 
 app.include_router(webhook_router)
 app.include_router(dashboard_router)
+app.include_router(client_portal_router)

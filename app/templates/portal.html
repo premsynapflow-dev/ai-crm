@@ -1,0 +1,49 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Client Portal</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        a { color: #1d4ed8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; vertical-align: top; }
+        th { background: #f3f4f6; }
+        tr:nth-child(even) { background: #f9fafb; }
+    </style>
+</head>
+<body>
+    <h1>Client Portal</h1>
+    <p>Logged in as: {{ user.email }}</p>
+    <p><a href="/portal/logout">Logout</a></p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>id</th>
+                <th>message</th>
+                <th>category</th>
+                <th>sentiment</th>
+                <th>urgency_score</th>
+                <th>status</th>
+                <th>created_at</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for complaint in complaints %}
+            <tr>
+                <td>{{ complaint.id }}</td>
+                <td>{{ complaint.message }}</td>
+                <td>{{ complaint.category }}</td>
+                <td>{{ complaint.sentiment }}</td>
+                <td>{{ complaint.urgency_score }}</td>
+                <td>{{ complaint.status }}</td>
+                <td>{{ complaint.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

@@ -1,4 +1,5 @@
 ﻿import uuid
+from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -32,3 +33,13 @@ class Complaint(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="complaints")
+
+
+class ClientUser(Base):
+    __tablename__ = "client_users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

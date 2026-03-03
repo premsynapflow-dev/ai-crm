@@ -8,3 +8,4 @@ httpx
 jinja2
 itsdangerous
 python-multipart
+passlib[bcrypt]
