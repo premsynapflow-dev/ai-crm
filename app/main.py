@@ -1,6 +1,8 @@
 ﻿from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.middleware.sessions import SessionMiddleware
 
+from app.config import get_settings
 from app.dashboard import router as dashboard_router
 from app.db.models import Base
 from app.db.session import engine
@@ -9,8 +11,15 @@ from app.utils.logging import configure_logging, get_logger
 
 configure_logging()
 logger = get_logger(__name__)
+settings = get_settings()
 
 app = FastAPI(title="AI Complaint Intelligence API", version="1.0.0")
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+)
+
 
 @app.get("/health")
 def health():
@@ -30,6 +39,4 @@ def on_startup() -> None:
 
 
 app.include_router(webhook_router)
-
 app.include_router(dashboard_router)
-

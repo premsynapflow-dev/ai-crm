@@ -1,0 +1,32 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        form { max-width: 360px; }
+        label { display: block; margin: 12px 0 6px; }
+        input { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; }
+        button { margin-top: 14px; padding: 8px 12px; border: 1px solid #111827; background: #111827; color: #fff; border-radius: 4px; cursor: pointer; }
+        .error { color: #b91c1c; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Admin Login</h1>
+    <form method="post" action="/login">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" required />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required />
+
+        <button type="submit">Login</button>
+    </form>
+
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+</body>
+</html>
