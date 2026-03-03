@@ -6,3 +6,4 @@ python-dotenv
 openai
 httpx
 jinja2
+itsdangerous
