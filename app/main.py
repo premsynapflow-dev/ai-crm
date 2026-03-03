@@ -11,6 +11,10 @@ logger = get_logger(__name__)
 
 app = FastAPI(title="AI Complaint Intelligence API", version="1.0.0")
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 
 @app.on_event("startup")
 def on_startup() -> None:
