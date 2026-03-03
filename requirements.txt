@@ -7,3 +7,4 @@ openai
 httpx
 jinja2
 itsdangerous
+python-multipart
