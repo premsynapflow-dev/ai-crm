@@ -1,6 +1,7 @@
 ﻿from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.dashboard import router as dashboard_router
 from app.db.models import Base
 from app.db.session import engine
 from app.intake.webhook import router as webhook_router
@@ -29,3 +30,6 @@ def on_startup() -> None:
 
 
 app.include_router(webhook_router)
+
+app.include_router(dashboard_router)
+
