@@ -1,5 +1,7 @@
 ﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -29,6 +31,13 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
 )
+
+app.mount("/public", StaticFiles(directory="public"), name="public")
+
+
+@app.get("/widget.js")
+def widget_js() -> RedirectResponse:
+    return RedirectResponse(url="/public/widget.js")
 
 
 @app.get("/health")
