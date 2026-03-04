@@ -3,9 +3,10 @@ uvicorn
 sqlalchemy
 psycopg2-binary
 python-dotenv
-openai
-httpx
 jinja2
 itsdangerous
 python-multipart
+httpx
+openai
 passlib[bcrypt]
+bcrypt==4.0.1
