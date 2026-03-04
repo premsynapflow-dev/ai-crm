@@ -26,6 +26,7 @@ class Complaint(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
     message = Column(Text, nullable=False)
+    source = Column(String(50), nullable=False, default="api")
     category = Column(String(100), nullable=False)
     sentiment = Column(Float, nullable=False, default=0.0)
     urgency_score = Column(Float, nullable=False, default=0.0)

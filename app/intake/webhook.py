@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 
 class ComplaintRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000)
+    source: str = Field(default="api", min_length=1, max_length=50)
 
 
 @router.post("/complaint")
@@ -42,6 +43,7 @@ def process_complaint(
         complaint = Complaint(
             client_id=client.id,
             message=payload.message,
+            source=payload.source or "api",
             category="unclassified",
             sentiment=0.0,
             urgency_score=0.0,
