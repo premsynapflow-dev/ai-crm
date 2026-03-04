@@ -24,6 +24,9 @@
             <tr>
                 <th>id</th>
                 <th>message</th>
+                <th>Source</th>
+                <th>Email</th>
+                <th>Phone</th>
                 <th>category</th>
                 <th>sentiment</th>
                 <th>urgency_score</th>
@@ -36,6 +39,9 @@
             <tr>
                 <td>{{ complaint.id }}</td>
                 <td>{{ complaint.message }}</td>
+                <td>{{ complaint.source }}</td>
+                <td>{{ complaint.customer_email or "-" }}</td>
+                <td>{{ complaint.customer_phone or "-" }}</td>
                 <td>{{ complaint.category }}</td>
                 <td>{{ complaint.sentiment }}</td>
                 <td>{{ complaint.urgency_score }}</td>
