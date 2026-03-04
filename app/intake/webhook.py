@@ -1,4 +1,5 @@
 ﻿import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -18,6 +19,8 @@ logger = get_logger(__name__)
 class ComplaintRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000)
     source: str = Field(default="api", min_length=1, max_length=50)
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
 
 
 @router.post("/complaint")
@@ -44,6 +47,8 @@ def process_complaint(
             client_id=client.id,
             message=payload.message,
             source=payload.source or "api",
+            customer_email=payload.customer_email,
+            customer_phone=payload.customer_phone,
             category="unclassified",
             sentiment=0.0,
             urgency_score=0.0,
@@ -114,4 +119,3 @@ def process_complaint(
         ) from exc
 
     return {"status": "processed", "action": action}
-
