@@ -2,7 +2,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -23,83 +23,121 @@ class ComplaintRequest(BaseModel):
     customer_phone: Optional[str] = None
 
 
-@router.post("/complaint")
-def process_complaint(
-    payload: ComplaintRequest,
-    x_api_key: str = Header(default="", alias="x-api-key"),
-    db: Session = Depends(get_db),
-) -> dict:
+class EmailWebhookRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(..., alias="from")
+    subject: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1)
+
+
+class WhatsAppWebhookRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_: str = Field(..., alias="From")
+    body: str = Field(..., alias="Body", min_length=1)
+
+
+def _run_ai_pipeline(message: str) -> tuple[str, float, float]:
+    category = "unclassified"
+    sentiment_score = 0.0
+    urgency = 0.0
+
+    openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not openai_api_key:
+        logger.warning("OPENAI_API_KEY missing, using fallback complaint values.")
+        return category, sentiment_score, urgency
+
+    try:
+        from app.intelligence.classifier import classify_complaint
+        from app.intelligence.sentiment import analyze_sentiment
+        from app.intelligence.urgency import compute_urgency_score
+
+        category = classify_complaint(message)
+        sentiment_score = analyze_sentiment(message)
+        urgency = compute_urgency_score(message, category, sentiment_score)
+    except Exception as ai_exc:
+        logger.warning("OpenAI unavailable, using fallback complaint values: %s", ai_exc)
+
+    return category, sentiment_score, urgency
+
+
+def _process_complaint_for_client(
+    db: Session,
+    client: Client,
+    message: str,
+    source: str,
+    customer_email: Optional[str],
+    customer_phone: Optional[str],
+) -> str:
+    complaint = Complaint(
+        client_id=client.id,
+        message=message,
+        source=source or "api",
+        customer_email=customer_email,
+        customer_phone=customer_phone,
+        category="unclassified",
+        sentiment=0.0,
+        urgency_score=0.0,
+        status="PENDING",
+    )
+    db.add(complaint)
+    db.flush()
+
+    category, sentiment_score, urgency = _run_ai_pipeline(message)
+    action = decide_action(category=category, sentiment=sentiment_score, urgency=urgency)
+
+    complaint.category = category
+    complaint.sentiment = sentiment_score
+    complaint.urgency_score = urgency
+    complaint.status = action
+
+    dispatch_action(
+        action=action,
+        client_name=client.name,
+        complaint_id=str(complaint.id),
+        message=message,
+        category=category,
+        sentiment=sentiment_score,
+        urgency=urgency,
+    )
+
+    return action
+
+
+def _authenticate_client(db: Session, x_api_key: str) -> Client:
     if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing x-api-key header",
         )
 
-    try:
-        client = db.query(Client).filter(Client.api_key == x_api_key).first()
-        if client is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid API key",
-            )
+    client = db.query(Client).filter(Client.api_key == x_api_key).first()
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
 
-        complaint = Complaint(
-            client_id=client.id,
+    return client
+
+
+@router.post("/complaint")
+def process_complaint(
+    payload: ComplaintRequest,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        client = _authenticate_client(db, x_api_key)
+        action = _process_complaint_for_client(
+            db=db,
+            client=client,
             message=payload.message,
-            source=payload.source or "api",
+            source=payload.source,
             customer_email=payload.customer_email,
             customer_phone=payload.customer_phone,
-            category="unclassified",
-            sentiment=0.0,
-            urgency_score=0.0,
-            status="PENDING",
         )
-        db.add(complaint)
-        db.flush()
-
-        category = "unclassified"
-        sentiment_label = "neutral"
-        sentiment_score = 0.0
-        urgency = 0.0
-
-        openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        if openai_api_key:
-            try:
-                from app.intelligence.classifier import classify_complaint
-                from app.intelligence.sentiment import analyze_sentiment
-                from app.intelligence.urgency import compute_urgency_score
-
-                category = classify_complaint(payload.message)
-                sentiment_score = analyze_sentiment(payload.message)
-                if sentiment_score > 0.2:
-                    sentiment_label = "positive"
-                elif sentiment_score < -0.2:
-                    sentiment_label = "negative"
-                else:
-                    sentiment_label = "neutral"
-                urgency = compute_urgency_score(payload.message, category, sentiment_score)
-            except Exception as ai_exc:
-                logger.warning("OpenAI unavailable, using fallback complaint values: %s", ai_exc)
-        else:
-            logger.warning("OPENAI_API_KEY missing, using fallback complaint values.")
-
-        action = decide_action(category=category, sentiment=sentiment_score, urgency=urgency)
-
-        complaint.category = category
-        complaint.sentiment = sentiment_score
-        complaint.urgency_score = urgency
-        complaint.status = action
-
-        dispatch_action(
-            action=action,
-            client_name=client.name,
-            complaint_id=str(complaint.id),
-            message=payload.message,
-            category=category,
-            sentiment=sentiment_score,
-            urgency=urgency,
-        )
-
         db.commit()
     except HTTPException:
         raise
@@ -113,6 +151,81 @@ def process_complaint(
     except Exception as exc:
         db.rollback()
         logger.exception("Complaint processing failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Complaint processing failed",
+        ) from exc
+
+    return {"status": "processed", "action": action}
+
+
+@router.post("/email")
+def process_email_webhook(
+    payload: EmailWebhookRequest,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        client = _authenticate_client(db, x_api_key)
+        message = f"{payload.subject} {payload.text}".strip()
+        action = _process_complaint_for_client(
+            db=db,
+            client=client,
+            message=message,
+            source="email",
+            customer_email=payload.from_,
+            customer_phone=None,
+        )
+        db.commit()
+    except HTTPException:
+        raise
+    except OperationalError:
+        db.rollback()
+        logger.error("Database unavailable while processing email webhook.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database temporarily unavailable",
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Email webhook processing failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Complaint processing failed",
+        ) from exc
+
+    return {"status": "processed", "action": action}
+
+
+@router.post("/whatsapp")
+def process_whatsapp_webhook(
+    payload: WhatsAppWebhookRequest,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        client = _authenticate_client(db, x_api_key)
+        action = _process_complaint_for_client(
+            db=db,
+            client=client,
+            message=payload.body,
+            source="whatsapp",
+            customer_email=None,
+            customer_phone=payload.from_,
+        )
+        db.commit()
+    except HTTPException:
+        raise
+    except OperationalError:
+        db.rollback()
+        logger.error("Database unavailable while processing whatsapp webhook.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database temporarily unavailable",
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.exception("WhatsApp webhook processing failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Complaint processing failed",
