@@ -1,7 +1,7 @@
 ﻿import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -29,6 +29,10 @@ class Complaint(Base):
     source = Column(String(50), nullable=False, default="api")
     customer_email = Column(String(255), nullable=True)
     customer_phone = Column(String(50), nullable=True)
+    intent = Column(String(100), nullable=True)
+    recommended_action = Column(String(100), nullable=True)
+    confidence = Column(Float, nullable=True)
+    priority = Column(Integer, nullable=True)
     category = Column(String(100), nullable=False)
     sentiment = Column(Float, nullable=False, default=0.0)
     urgency_score = Column(Float, nullable=False, default=0.0)

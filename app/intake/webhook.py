@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Client, Complaint
 from app.db.session import get_db
+from app.services.routing_engine import classify_intent
 from app.utils.logging import get_logger
 from app.workflow.dispatcher import dispatch_action
 from app.workflow.rule_engine import decide_action
@@ -70,12 +71,25 @@ def _process_complaint_for_client(
     customer_email: Optional[str],
     customer_phone: Optional[str],
 ) -> str:
+    try:
+        intent, recommended_action, confidence, priority = classify_intent(message)
+    except Exception as route_exc:
+        logger.warning("Routing engine failed, using fallback routing values: %s", route_exc)
+        intent = "complaint"
+        recommended_action = "support_ticket"
+        confidence = 0.0
+        priority = 1
+
     complaint = Complaint(
         client_id=client.id,
         message=message,
         source=source or "api",
         customer_email=customer_email,
         customer_phone=customer_phone,
+        intent=intent,
+        recommended_action=recommended_action,
+        confidence=confidence,
+        priority=priority,
         category="unclassified",
         sentiment=0.0,
         urgency_score=0.0,

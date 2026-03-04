@@ -31,6 +31,10 @@
                 <th>sentiment</th>
                 <th>urgency_score</th>
                 <th>status</th>
+                <th>intent</th>
+                <th>priority</th>
+                <th>recommended_action</th>
+                <th>confidence</th>
                 <th>created_at</th>
             </tr>
         </thead>
@@ -46,6 +50,10 @@
                 <td>{{ complaint.sentiment }}</td>
                 <td>{{ complaint.urgency_score }}</td>
                 <td>{{ complaint.status }}</td>
+                <td>{{ complaint.intent or "-" }}</td>
+                <td>{{ complaint.priority if complaint.priority is not none else "-" }}</td>
+                <td>{{ complaint.recommended_action or "-" }}</td>
+                <td>{{ complaint.confidence if complaint.confidence is not none else "-" }}</td>
                 <td>{{ complaint.created_at }}</td>
             </tr>
             {% endfor %}
