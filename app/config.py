@@ -27,8 +27,6 @@ def get_settings() -> Settings:
     missing = []
     if not database_url:
         missing.append("DATABASE_URL")
-    if not openai_api_key:
-        missing.append("OPENAI_API_KEY")
     if not slack_webhook_url:
         missing.append("SLACK_WEBHOOK_URL")
     if not secret_key:

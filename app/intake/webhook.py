@@ -1,13 +1,12 @@
-﻿from fastapi import APIRouter, Depends, Header, HTTPException, status
+﻿import os
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.db.models import Client, Complaint
 from app.db.session import get_db
-from app.intelligence.classifier import classify_complaint
-from app.intelligence.sentiment import analyze_sentiment
-from app.intelligence.urgency import compute_urgency_score
 from app.utils.logging import get_logger
 from app.workflow.dispatcher import dispatch_action
 from app.workflow.rule_engine import decide_action
@@ -51,13 +50,36 @@ def process_complaint(
         db.add(complaint)
         db.flush()
 
-        category = classify_complaint(payload.message)
-        sentiment = analyze_sentiment(payload.message)
-        urgency = compute_urgency_score(payload.message, category, sentiment)
-        action = decide_action(category=category, sentiment=sentiment, urgency=urgency)
+        category = "unclassified"
+        sentiment_label = "neutral"
+        sentiment_score = 0.0
+        urgency = 0.0
+
+        openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if openai_api_key:
+            try:
+                from app.intelligence.classifier import classify_complaint
+                from app.intelligence.sentiment import analyze_sentiment
+                from app.intelligence.urgency import compute_urgency_score
+
+                category = classify_complaint(payload.message)
+                sentiment_score = analyze_sentiment(payload.message)
+                if sentiment_score > 0.2:
+                    sentiment_label = "positive"
+                elif sentiment_score < -0.2:
+                    sentiment_label = "negative"
+                else:
+                    sentiment_label = "neutral"
+                urgency = compute_urgency_score(payload.message, category, sentiment_score)
+            except Exception as ai_exc:
+                logger.warning("OpenAI unavailable, using fallback complaint values: %s", ai_exc)
+        else:
+            logger.warning("OPENAI_API_KEY missing, using fallback complaint values.")
+
+        action = decide_action(category=category, sentiment=sentiment_score, urgency=urgency)
 
         complaint.category = category
-        complaint.sentiment = sentiment
+        complaint.sentiment = sentiment_score
         complaint.urgency_score = urgency
         complaint.status = action
 
@@ -67,7 +89,7 @@ def process_complaint(
             complaint_id=str(complaint.id),
             message=payload.message,
             category=category,
-            sentiment=sentiment,
+            sentiment=sentiment_score,
             urgency=urgency,
         )
 
@@ -90,3 +112,4 @@ def process_complaint(
         ) from exc
 
     return {"status": "processed", "action": action}
+
