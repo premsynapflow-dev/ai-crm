@@ -1,16 +1,11 @@
-﻿def compute_urgency_score(message: str, category: str, sentiment: float) -> float:
-    text = message.lower()
+"""
+Urgency scoring is now handled inside classify_message() in classifier.py.
+This module keeps the public function for backward compatibility.
+"""
+from app.intelligence.classifier import classify_message
 
-    urgency = 0.2
-    if category == "refund":
-        urgency += 0.3
-    if category == "abuse":
-        urgency += 0.4
 
-    urgency += max(0.0, (-sentiment) * 0.5)
-
-    hot_keywords = ("immediately", "urgent", "lawyer", "legal", "cancel", "fraud")
-    if any(word in text for word in hot_keywords):
-        urgency += 0.2
-
-    return max(0.0, min(1.0, urgency))
+def compute_urgency_score(message: str, category: str, sentiment: float) -> float:
+    """Return urgency score in [0, 1]. Delegates to the unified Gemini classifier."""
+    result = classify_message(message)
+    return result["urgency_score"]

@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -14,6 +14,7 @@ class Settings:
     secret_key: str
     admin_username: str
     admin_password: str
+    gemini_api_key: str
 
 
 def get_settings() -> Settings:
@@ -23,6 +24,7 @@ def get_settings() -> Settings:
     secret_key = os.getenv("SECRET_KEY", "").strip()
     admin_username = os.getenv("ADMIN_USERNAME", "").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
 
     missing = []
     if not database_url:
@@ -46,4 +48,5 @@ def get_settings() -> Settings:
         secret_key=secret_key,
         admin_username=admin_username,
         admin_password=admin_password,
+        gemini_api_key=gemini_api_key,
     )

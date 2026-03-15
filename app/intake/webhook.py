@@ -1,4 +1,3 @@
-﻿import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -8,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Client, Complaint
 from app.db.session import get_db
-from app.services.routing_engine import classify_intent
+from app.intelligence.classifier import classify_message
 from app.utils.logging import get_logger
 from app.workflow.dispatcher import dispatch_action
 from app.workflow.rule_engine import decide_action
@@ -39,30 +38,6 @@ class WhatsAppWebhookRequest(BaseModel):
     body: str = Field(..., alias="Body", min_length=1)
 
 
-def _run_ai_pipeline(message: str) -> tuple[str, float, float]:
-    category = "unclassified"
-    sentiment_score = 0.0
-    urgency = 0.0
-
-    openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not openai_api_key:
-        logger.warning("OPENAI_API_KEY missing, using fallback complaint values.")
-        return category, sentiment_score, urgency
-
-    try:
-        from app.intelligence.classifier import classify_complaint
-        from app.intelligence.sentiment import analyze_sentiment
-        from app.intelligence.urgency import compute_urgency_score
-
-        category = classify_complaint(message)
-        sentiment_score = analyze_sentiment(message)
-        urgency = compute_urgency_score(message, category, sentiment_score)
-    except Exception as ai_exc:
-        logger.warning("OpenAI unavailable, using fallback complaint values: %s", ai_exc)
-
-    return category, sentiment_score, urgency
-
-
 def _process_complaint_for_client(
     db: Session,
     client: Client,
@@ -71,14 +46,23 @@ def _process_complaint_for_client(
     customer_email: Optional[str],
     customer_phone: Optional[str],
 ) -> str:
-    try:
-        intent, recommended_action, confidence, priority = classify_intent(message)
-    except Exception as route_exc:
-        logger.warning("Routing engine failed, using fallback routing values: %s", route_exc)
-        intent = "complaint"
-        recommended_action = "support_ticket"
-        confidence = 0.0
-        priority = 1
+    # Single unified AI classification call (Gemini - free tier)
+    classification = classify_message(message)
+
+    intent = classification["intent"]
+    recommended_action = classification["recommended_action"]
+    confidence = classification["confidence"]
+    priority = classification["priority"]
+    category = classification["category"]
+    sentiment_score = classification["sentiment"]
+    urgency = classification["urgency_score"]
+
+    # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
+    action = decide_action(
+        category=category,
+        sentiment=sentiment_score,
+        urgency=urgency,
+    )
 
     complaint = Complaint(
         client_id=client.id,
@@ -90,21 +74,13 @@ def _process_complaint_for_client(
         recommended_action=recommended_action,
         confidence=confidence,
         priority=priority,
-        category="unclassified",
-        sentiment=0.0,
-        urgency_score=0.0,
-        status="PENDING",
+        category=category,
+        sentiment=sentiment_score,
+        urgency_score=urgency,
+        status=action,
     )
     db.add(complaint)
     db.flush()
-
-    category, sentiment_score, urgency = _run_ai_pipeline(message)
-    action = decide_action(category=category, sentiment=sentiment_score, urgency=urgency)
-
-    complaint.category = category
-    complaint.sentiment = sentiment_score
-    complaint.urgency_score = urgency
-    complaint.status = action
 
     dispatch_action(
         action=action,
@@ -114,6 +90,8 @@ def _process_complaint_for_client(
         category=category,
         sentiment=sentiment_score,
         urgency=urgency,
+        intent=intent,
+        recommended_action=recommended_action,
     )
 
     return action

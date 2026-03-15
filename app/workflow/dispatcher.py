@@ -1,4 +1,4 @@
-﻿from app.integrations.slack import send_slack_alert
+from app.integrations.slack import send_slack_alert
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -12,21 +12,43 @@ def dispatch_action(
     category: str,
     sentiment: float,
     urgency: float,
+    intent: str = "complaint",
+    recommended_action: str = "support_ticket",
 ) -> None:
-    if action != "ESCALATE_HIGH":
+    """
+    Dispatch post-classification actions.
+
+    - Sales leads  -> always send a Slack alert (revenue opportunity).
+    - ESCALATE_HIGH -> send a high-priority complaint Slack alert.
+    - Everything else -> no-op for now (future: email, CRM, etc.).
+    """
+    if recommended_action == "notify_sales":
+        slack_message = (
+            f"*New Sales Lead Detected*\n"
+            f"Client: {client_name}\n"
+            f"Complaint ID: {complaint_id}\n"
+            f"Intent: {intent}\n"
+            f"Message: {message[:500]}"
+        )
+        try:
+            send_slack_alert(slack_message)
+            logger.info("Sales lead Slack alert sent for complaint %s", complaint_id)
+        except Exception as exc:
+            logger.exception("Slack dispatch failed for sales lead: %s", exc)
         return
 
-    slack_message = (
-        f"*High Priority Complaint Escalation*\n"
-        f"Client: {client_name}\n"
-        f"Complaint ID: {complaint_id}\n"
-        f"Category: {category}\n"
-        f"Sentiment: {sentiment:.3f}\n"
-        f"Urgency: {urgency:.3f}\n"
-        f"Message: {message[:800]}"
-    )
-
-    try:
-        send_slack_alert(slack_message)
-    except Exception as exc:
-        logger.exception("Slack dispatch failed: %s", exc)
+    if action == "ESCALATE_HIGH":
+        slack_message = (
+            f"*High Priority Complaint Escalation*\n"
+            f"Client: {client_name}\n"
+            f"Complaint ID: {complaint_id}\n"
+            f"Category: {category}\n"
+            f"Sentiment: {sentiment:.3f}\n"
+            f"Urgency: {urgency:.3f}\n"
+            f"Message: {message[:500]}"
+        )
+        try:
+            send_slack_alert(slack_message)
+            logger.info("Escalation Slack alert sent for complaint %s", complaint_id)
+        except Exception as exc:
+            logger.exception("Slack dispatch failed for escalation: %s", exc)
