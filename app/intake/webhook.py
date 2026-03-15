@@ -100,6 +100,8 @@ def _process_complaint_for_client(
         intent=intent,
         recommended_action=recommended_action,
         client_slack_webhook=client.slack_webhook_url,
+        customer_email=customer_email,
+        customer_phone=customer_phone,
     )
 
     return action
