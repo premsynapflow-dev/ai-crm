@@ -58,7 +58,14 @@ def _process_complaint_for_client(
     urgency = classification["urgency_score"]
 
     # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
-    action = decide_action(
+    _ACTION_MAP = {
+        "escalate": "ESCALATE_HIGH",
+        "notify_sales": "NOTIFY_SALES",
+        "support_ticket": "AUTO_REPLY",
+        "auto_reply": "AUTO_REPLY",
+        "product_feedback": "PRODUCT_FEEDBACK",
+    }
+    action = _ACTION_MAP.get(recommended_action) or decide_action(
         category=category,
         sentiment=sentiment_score,
         urgency=urgency,
