@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
@@ -17,7 +17,11 @@
 <body>
     <h1>Client Portal</h1>
     <p>Logged in as: {{ user.email }}</p>
-    <p><a href="/portal/logout">Logout</a></p>
+    <p>
+        <a href="/portal">Dashboard</a>
+        <a href="/portal/settings">Settings</a>
+        <a href="/portal/logout">Logout</a>
+    </p>
 
     <table>
         <thead>

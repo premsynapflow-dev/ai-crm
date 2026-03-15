@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
@@ -15,6 +15,7 @@ class Client(Base):
     name = Column(String(255), nullable=False)
     api_key = Column(String(255), nullable=False, unique=True, index=True)
     plan = Column(String(50), nullable=False, default="basic")
+    slack_webhook_url = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     complaints = relationship("Complaint", back_populates="client", cascade="all, delete-orphan")

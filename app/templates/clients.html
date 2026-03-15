@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
@@ -26,6 +26,7 @@
                 <th>name</th>
                 <th>plan</th>
                 <th>api_key</th>
+                <th>Slack</th>
                 <th>created_at</th>
             </tr>
         </thead>
@@ -36,6 +37,13 @@
                 <td>{{ client.name }}</td>
                 <td>{{ client.plan }}</td>
                 <td>{{ client.api_key }}</td>
+                <td>
+                  {% if client.slack_webhook_url %}
+                    <span style="color:#059669; font-weight:600;">&#10003; Connected</span>
+                  {% else %}
+                    <span style="color:#9ca3af;">&#8212; Not set</span>
+                  {% endif %}
+                </td>
                 <td>{{ client.created_at }}</td>
             </tr>
             {% endfor %}

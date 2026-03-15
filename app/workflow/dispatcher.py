@@ -14,13 +14,17 @@ def dispatch_action(
     urgency: float,
     intent: str = "complaint",
     recommended_action: str = "support_ticket",
+    client_slack_webhook: str | None = None,
 ) -> None:
     """
     Dispatch post-classification actions.
 
-    - Sales leads  -> always send a Slack alert (revenue opportunity).
-    - ESCALATE_HIGH -> send a high-priority complaint Slack alert.
-    - Everything else -> no-op for now (future: email, CRM, etc.).
+    - Sales leads    -> Slack alert to client's workspace
+    - ESCALATE_HIGH  -> Slack alert to client's workspace
+    - Everything else -> no-op (future: email, CRM)
+
+    Uses the client's own Slack webhook URL.
+    Falls back to the global .env URL if the client has not configured one.
     """
     if recommended_action == "notify_sales":
         slack_message = (
@@ -31,7 +35,7 @@ def dispatch_action(
             f"Message: {message[:500]}"
         )
         try:
-            send_slack_alert(slack_message)
+            send_slack_alert(slack_message, webhook_url=client_slack_webhook)
             logger.info("Sales lead Slack alert sent for complaint %s", complaint_id)
         except Exception as exc:
             logger.exception("Slack dispatch failed for sales lead: %s", exc)
@@ -48,7 +52,7 @@ def dispatch_action(
             f"Message: {message[:500]}"
         )
         try:
-            send_slack_alert(slack_message)
+            send_slack_alert(slack_message, webhook_url=client_slack_webhook)
             logger.info("Escalation Slack alert sent for complaint %s", complaint_id)
         except Exception as exc:
             logger.exception("Slack dispatch failed for escalation: %s", exc)

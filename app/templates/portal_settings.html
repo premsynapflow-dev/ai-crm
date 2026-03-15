@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — Neuronyx</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #111; min-height: 100vh; }
+    nav {
+      background: #111827; color: #fff; padding: 14px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    nav a { color: #9ca3af; text-decoration: none; font-size: 14px; margin-left: 20px; }
+    nav a:hover { color: #fff; }
+    .brand { font-weight: 600; font-size: 16px; letter-spacing: -0.3px; }
+    main { max-width: 640px; margin: 48px auto; padding: 0 20px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; }
+    .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+    .card {
+      background: #fff; border: 1px solid #e5e7eb;
+      border-radius: 10px; padding: 28px;
+    }
+    .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .card p { font-size: 13px; color: #6b7280; margin-bottom: 20px; line-height: 1.5; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+    input[type="url"], input[type="text"] {
+      width: 100%; padding: 10px 12px; border: 1px solid #d1d5db;
+      border-radius: 7px; font-size: 14px; outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+    .hint { font-size: 12px; color: #9ca3af; margin-top: 6px; }
+    .actions { display: flex; gap: 10px; margin-top: 24px; }
+    button[type="submit"] {
+      background: #111827; color: #fff; border: none;
+      padding: 10px 20px; border-radius: 7px; font-size: 14px;
+      font-weight: 500; cursor: pointer;
+    }
+    button[type="submit"]:hover { background: #1f2937; }
+    .test-btn {
+      background: #fff; color: #374151; border: 1px solid #d1d5db;
+      padding: 10px 20px; border-radius: 7px; font-size: 14px;
+      font-weight: 500; cursor: pointer;
+    }
+    .test-btn:hover { background: #f9fafb; }
+    .alert {
+      padding: 12px 16px; border-radius: 7px; font-size: 13px;
+      margin-bottom: 24px; font-weight: 500;
+    }
+    .alert.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .alert.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .current-url {
+      background: #f9fafb; border: 1px solid #e5e7eb;
+      border-radius: 6px; padding: 10px 12px;
+      font-size: 12px; color: #6b7280; margin-bottom: 20px;
+      word-break: break-all;
+    }
+    .current-url strong { color: #374151; }
+    .steps { margin: 0; padding-left: 20px; }
+    .steps li { font-size: 13px; color: #6b7280; margin-bottom: 6px; line-height: 1.5; }
+    .steps a { color: #6366f1; }
+    #test-result { font-size: 13px; margin-top: 12px; display: none; }
+    .divider { border: none; border-top: 1px solid #f3f4f6; margin: 28px 0; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">Neuronyx</span>
+  <div>
+    <a href="/portal">Dashboard</a>
+    <a href="/portal/settings">Settings</a>
+    <a href="/portal/logout">Logout</a>
+  </div>
+</nav>
+
+<main>
+  <h1>Settings</h1>
+  <p class="subtitle">Configure how Neuronyx connects to your workspace.</p>
+
+  {% if saved %}
+  <div class="alert success">Slack webhook saved successfully. Alerts will now go to your workspace.</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert error">{{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Slack alerts</h2>
+    <p>
+      Paste your Slack incoming webhook URL below. Neuronyx will send you a real-time
+      alert every time a sales lead or high-priority complaint is detected.
+    </p>
+
+    {% if client.slack_webhook_url %}
+    <div class="current-url">
+      <strong>Current webhook:</strong> {{ client.slack_webhook_url[:60] }}...
+    </div>
+    {% endif %}
+
+    <hr class="divider" />
+
+    <p style="font-size:13px; color:#374151; font-weight:500; margin-bottom:10px;">
+      How to get your Slack webhook URL:
+    </p>
+    <ol class="steps">
+      <li>Go to <a href="https://api.slack.com/apps" target="_blank">api.slack.com/apps</a> and click <strong>Create New App</strong></li>
+      <li>Choose <strong>From scratch</strong>, name it "Neuronyx", pick your workspace</li>
+      <li>Click <strong>Incoming Webhooks</strong> → toggle it on</li>
+      <li>Click <strong>Add New Webhook to Workspace</strong> → pick a channel → Allow</li>
+      <li>Copy the webhook URL that starts with <code>https://hooks.slack.com/services/...</code></li>
+    </ol>
+
+    <hr class="divider" />
+
+    <form method="POST" action="/portal/settings" id="settings-form">
+      <label for="slack_webhook_url">Slack webhook URL</label>
+      <input
+        type="url"
+        id="slack_webhook_url"
+        name="slack_webhook_url"
+        placeholder="https://hooks.slack.com/services/..."
+        value="{{ client.slack_webhook_url or '' }}"
+        autocomplete="off"
+      />
+      <p class="hint">Leave blank to remove the integration.</p>
+
+      <div class="actions">
+        <button type="submit">Save</button>
+        <button type="button" class="test-btn" onclick="sendTestAlert()">Send test alert</button>
+      </div>
+      <div id="test-result"></div>
+    </form>
+  </div>
+</main>
+
+<script>
+async function sendTestAlert() {
+  const url = document.getElementById("slack_webhook_url").value.trim();
+  const resultEl = document.getElementById("test-result");
+  resultEl.style.display = "block";
+
+  if (!url) {
+    resultEl.style.color = "#991b1b";
+    resultEl.textContent = "Enter a webhook URL first.";
+    return;
+  }
+  if (!url.startsWith("https://hooks.slack.com/")) {
+    resultEl.style.color = "#991b1b";
+    resultEl.textContent = "URL must start with https://hooks.slack.com/";
+    return;
+  }
+
+  resultEl.style.color = "#6b7280";
+  resultEl.textContent = "Sending test alert...";
+
+  try {
+    const resp = await fetch("/portal/settings/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slack_webhook_url: url }),
+    });
+    if (resp.ok) {
+      resultEl.style.color = "#065f46";
+      resultEl.textContent = "Test alert sent! Check your Slack channel.";
+    } else {
+      resultEl.style.color = "#991b1b";
+      resultEl.textContent = "Failed to send — check the URL and try again.";
+    }
+  } catch {
+    resultEl.style.color = "#991b1b";
+    resultEl.textContent = "Network error — please try again.";
+  }
+}
+</script>
+
+</body>
+</html>
