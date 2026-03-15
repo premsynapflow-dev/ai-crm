@@ -54,19 +54,27 @@ def classify_message(message: str) -> dict:
         return dict(_FALLBACK)
 
     prompt = (
-        'Classify this customer message and return ONLY valid JSON, no markdown.\n\n'
-        f'Message: "{message}"\n\n'
-        "Return exactly this structure:\n"
-        "{\n"
-        '  "intent": "one of: complaint/refund_request/sales_lead/support/order_status/feature_request",\n'
-        '  "category": "one of: refund/billing/technical/abuse/general/sales",\n'
-        '  "sentiment": <float -1.0 to 1.0>,\n'
-        '  "urgency_score": <float 0.0 to 1.0>,\n'
-        '  "priority": <integer 1-5>,\n'
-        '  "recommended_action": "one of: escalate/notify_sales/support_ticket/auto_reply/product_feedback",\n'
-        '  "confidence": <float 0.0 to 1.0>\n'
-        "}"
-    )
+    'Classify this customer message and return ONLY valid JSON, no markdown.\n\n'
+    f'Message: "{message}"\n\n'
+    "Rules for recommended_action:\n"
+    "- Use 'escalate' when: refund request, fraud claim, urgent complaint, "
+    "legal threat, abuse, or sentiment is very negative (below -0.7)\n"
+    "- Use 'notify_sales' when: pricing inquiry, enterprise/bulk question, "
+    "upgrade interest, or sales opportunity\n"
+    "- Use 'support_ticket' when: general help, order status, technical issue\n"
+    "- Use 'auto_reply' when: simple FAQ, easily resolved automatically\n"
+    "- Use 'product_feedback' when: feature request or product suggestion\n\n"
+    "Return exactly this structure:\n"
+    "{\n"
+    '  "intent": "one of: complaint/refund_request/sales_lead/support/order_status/feature_request",\n'
+    '  "category": "one of: refund/billing/technical/abuse/general/sales",\n'
+    '  "sentiment": <float -1.0 to 1.0>,\n'
+    '  "urgency_score": <float 0.0 to 1.0>,\n'
+    '  "priority": <integer 1-5>,\n'
+    '  "recommended_action": "one of: escalate/notify_sales/support_ticket/auto_reply/product_feedback",\n'
+    '  "confidence": <float 0.0 to 1.0>\n'
+    "}"
+)
 
     try:
         response = httpx.post(
