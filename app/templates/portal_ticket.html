@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ticket {{ ticket_id }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        a { color: #1d4ed8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; background: #fff; margin-bottom: 16px; }
+        .meta { color: #6b7280; font-size: 14px; margin-top: 8px; }
+        ul { padding-left: 18px; }
+    </style>
+</head>
+<body>
+    <h1>Ticket: {{ ticket_id }}</h1>
+    <p>
+        <a href="/portal">Dashboard</a>
+        <a href="/portal/leads">Leads</a>
+        <a href="/portal/complaints">Complaints</a>
+        <a href="/portal/analytics">Analytics</a>
+        <a href="/portal/settings">Settings</a>
+        <a href="/portal/logout">Logout</a>
+    </p>
+
+    <div class="layout">
+        <div>
+            <h2>Message Thread</h2>
+            {% for message in messages %}
+            <div class="card">
+                <div>{{ message.summary }}</div>
+                <div class="meta">Source: {{ message.source }}</div>
+                <div class="meta">Priority: {{ message.priority }}</div>
+                <div class="meta">Created: {{ message.created_at }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div>
+            <h2>Customer History</h2>
+            <div class="card">
+                {% if history %}
+                <ul>
+                    {% for item in history %}
+                    <li>
+                        <div>{{ item.summary }}</div>
+                        <div class="meta">{{ item.created_at }}</div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div>No customer history available.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

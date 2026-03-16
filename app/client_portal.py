@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models import Client, ClientUser, Complaint
 from app.db.session import get_db
 from app.integrations.slack import send_slack_alert
-from app.services.analytics import get_complaint_stats
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -79,10 +79,32 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
         .order_by(Complaint.created_at.desc())
         .all()
     )
+    total_complaints = db.query(func.count(Complaint.id)).filter(
+        Complaint.client_id == user.client_id
+    ).scalar()
+    total_leads = db.query(func.count(Complaint.id)).filter(
+        Complaint.client_id == user.client_id,
+        Complaint.intent == "sales_lead",
+    ).scalar()
+    open_tickets = db.query(func.count(func.distinct(Complaint.ticket_id))).filter(
+        Complaint.client_id == user.client_id,
+        Complaint.resolution_status == "open",
+    ).scalar()
+    resolved_tickets = db.query(func.count(func.distinct(Complaint.ticket_id))).filter(
+        Complaint.client_id == user.client_id,
+        Complaint.resolution_status == "resolved",
+    ).scalar()
     return templates.TemplateResponse(
         request=request,
         name="portal.html",
-        context={"complaints": complaints, "user": user},
+        context={
+            "complaints": complaints,
+            "user": user,
+            "total_complaints": total_complaints,
+            "total_leads": total_leads,
+            "open_tickets": open_tickets,
+            "resolved_tickets": resolved_tickets,
+        },
     )
 
 
@@ -92,10 +114,15 @@ def portal_leads(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse(url="/portal/login", status_code=303)
 
-    leads = db.query(Complaint).filter(
-        Complaint.client_id == user.client_id,
-        Complaint.intent == "sales_lead"
-    ).all()
+    leads = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == user.client_id,
+            Complaint.intent == "sales_lead"
+        )
+        .order_by(Complaint.created_at.desc())
+        .all()
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -113,15 +140,62 @@ def portal_analytics(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse(url="/portal/login", status_code=303)
 
-    stats = get_complaint_stats(db, user.client_id)
+    from app.services.analytics import (
+        complaint_category_breakdown,
+        sentiment_distribution,
+        urgency_distribution,
+        top_complaint_sources,
+    )
+
+    categories = complaint_category_breakdown(db, user.client_id)
+    sentiment = sentiment_distribution(db, user.client_id)
+    urgency = urgency_distribution(db, user.client_id)
+    sources = top_complaint_sources(db, user.client_id)
 
     return templates.TemplateResponse(
         request=request,
         name="portal_analytics.html",
         context={
-            "stats": stats,
-            "user": user
-        }
+            "categories": categories,
+            "sentiment": sentiment,
+            "urgency": urgency,
+            "sources": sources,
+            "user": user,
+        },
+    )
+
+
+@router.get("/portal/ticket/{ticket_id}", response_class=HTMLResponse)
+def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    from app.services.customer_history import get_customer_history
+
+    messages = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == user.client_id,
+            Complaint.ticket_id == ticket_id,
+        )
+        .order_by(Complaint.created_at)
+        .all()
+    )
+
+    customer_email = messages[0].customer_email if messages else None
+    history = get_customer_history(db, customer_email)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_ticket.html",
+        context={
+            "messages": messages,
+            "ticket_id": ticket_id,
+            "history": history,
+            "user": user,
+        },
     )
 
 

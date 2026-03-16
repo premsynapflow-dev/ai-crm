@@ -8,6 +8,9 @@
         body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
         a { color: #1d4ed8; text-decoration: none; }
         a:hover { text-decoration: underline; }
+        .metrics { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin: 20px 0; }
+        .metric { border: 1px solid #d1d5db; background: #f9fafb; padding: 14px; border-radius: 8px; }
+        .metric strong { display: block; font-size: 22px; margin-bottom: 4px; }
         table { width: 100%; border-collapse: collapse; margin-top: 16px; }
         th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; vertical-align: top; }
         th { background: #f3f4f6; }
@@ -19,12 +22,32 @@
     <h1>Client Portal</h1>
     <p>Logged in as: {{ user.email }}</p>
     <p>
-        <a href="/portal/complaints">Complaints</a>
+        <a href="/portal">Dashboard</a>
         <a href="/portal/leads">Leads</a>
+        <a href="/portal/complaints">Complaints</a>
         <a href="/portal/analytics">Analytics</a>
         <a href="/portal/settings">Settings</a>
         <a href="/portal/logout">Logout</a>
     </p>
+
+    <div class="metrics">
+        <div class="metric">
+            <strong>{{ total_complaints }}</strong>
+            <span>Total Complaints</span>
+        </div>
+        <div class="metric">
+            <strong>{{ total_leads }}</strong>
+            <span>Total Leads</span>
+        </div>
+        <div class="metric">
+            <strong>{{ open_tickets }}</strong>
+            <span>Open Tickets</span>
+        </div>
+        <div class="metric">
+            <strong>{{ resolved_tickets }}</strong>
+            <span>Resolved Tickets</span>
+        </div>
+    </div>
 
     <table>
         <thead>
@@ -57,7 +80,7 @@
                 <td>{{ complaint.source }}</td>
                 <td>{{ complaint.customer_email or "-" }}</td>
                 <td>{{ complaint.customer_phone or "-" }}</td>
-                <td>{{ complaint.ticket_id }}</td>
+                <td><a href="/portal/ticket/{{ complaint.ticket_id }}">{{ complaint.ticket_id }}</a></td>
                 <td>{{ complaint.thread_id }}</td>
                 <td>{{ complaint.category }}</td>
                 <td>{{ complaint.sentiment }}</td>
