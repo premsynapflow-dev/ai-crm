@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Client, Complaint
 from app.db.session import get_db
-from app.intelligence.classifier import classify_message
+from app.intelligence.classifier import classify_message, summarize_if_needed
 from app.utils.logging import get_logger
 from app.workflow.dispatcher import dispatch_action
 from app.workflow.rule_engine import decide_action
@@ -48,6 +48,7 @@ def _process_complaint_for_client(
 ) -> str:
     # Single unified AI classification call (Gemini - free tier)
     classification = classify_message(message)
+    summary = summarize_if_needed(message, classification)
 
     intent = classification["intent"]
     recommended_action = classification["recommended_action"]
@@ -56,7 +57,6 @@ def _process_complaint_for_client(
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
-    summary = classification["summary"]
 
     # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
     _ACTION_MAP = {
@@ -74,7 +74,6 @@ def _process_complaint_for_client(
 
     complaint = Complaint(
         client_id=client.id,
-        message=message,
         summary=summary,
         source=source or "api",
         customer_email=customer_email,
@@ -95,7 +94,7 @@ def _process_complaint_for_client(
         action=action,
         client_name=client.name,
         complaint_id=str(complaint.id),
-        message=message,
+        summary=summary,
         category=category,
         sentiment=sentiment_score,
         urgency=urgency,

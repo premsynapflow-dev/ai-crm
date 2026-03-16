@@ -8,7 +8,7 @@ def dispatch_action(
     action: str,
     client_name: str,
     complaint_id: str,
-    message: str,
+    summary: str,
     category: str,
     sentiment: float,
     urgency: float,
@@ -33,7 +33,7 @@ def dispatch_action(
             f"Intent: {intent}\n"
             f"Customer Email: {customer_email or 'Not provided'}\n"
             f"Customer Phone: {customer_phone or 'Not provided'}\n"
-            f"Message: {message[:500]}"
+            f"Summary: {summary[:500]}"
         )
         try:
             send_slack_alert(slack_message, webhook_url=client_slack_webhook)
@@ -52,7 +52,7 @@ def dispatch_action(
             f"Urgency: {urgency:.3f}\n"
             f"Customer Email: {customer_email or 'Not provided'}\n"
             f"Customer Phone: {customer_phone or 'Not provided'}\n"
-            f"Message: {message[:500]}"
+            f"Summary: {summary[:500]}"
         )
         try:
             send_slack_alert(slack_message, webhook_url=client_slack_webhook)

@@ -41,6 +41,20 @@ _ALLOWED_ACTIONS = {
 }
 
 
+def summarize_if_needed(message: str, classification: dict) -> str:
+    words = message.split()
+
+    if len(words) <= 40:
+        return message.strip()
+
+    summary = classification.get("summary")
+
+    if summary:
+        return str(summary).strip()[:400]
+
+    return " ".join(words[:40])
+
+
 def classify_message(message: str) -> dict:
     """
     Classify a customer message using Gemini 2.0 Flash (free tier).
@@ -65,7 +79,7 @@ def classify_message(message: str) -> dict:
     "- Use 'support_ticket' when: general help, order status, technical issue\n"
     "- Use 'auto_reply' when: simple FAQ, easily resolved automatically\n"
     "- Use 'product_feedback' when: feature request or product suggestion\n\n"
-    "Also include a short 1 sentence summary of the message.\n\n"
+    "Also include a short concise summary of the message.\n\n"
     "Return exactly this structure:\n"
     "{\n"
     '  "intent": "one of: complaint/refund_request/sales_lead/support/order_status/feature_request",\n'
@@ -75,7 +89,7 @@ def classify_message(message: str) -> dict:
     '  "priority": <integer 1-5>,\n'
     '  "recommended_action": "one of: escalate/notify_sales/support_ticket/auto_reply/product_feedback",\n'
     '  "confidence": <float 0.0 to 1.0>,\n'
-    '  "summary": "short 1 sentence summary of the message"\n'
+    '  "summary": "short concise summary of the message"\n'
     "}"
 )
 

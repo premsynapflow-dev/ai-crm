@@ -28,7 +28,6 @@
         <thead>
             <tr>
                 <th>id</th>
-                <th>message</th>
                 <th>Summary</th>
                 <th>Source</th>
                 <th>Email</th>
@@ -48,7 +47,6 @@
             {% for complaint in complaints %}
             <tr>
                 <td>{{ complaint.id }}</td>
-                <td>{{ complaint.message }}</td>
                 <td>{{ complaint.summary or "-" }}</td>
                 <td>{{ complaint.source }}</td>
                 <td>{{ complaint.customer_email or "-" }}</td>

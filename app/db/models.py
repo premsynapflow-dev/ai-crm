@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -26,8 +26,7 @@ class Complaint(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
-    message = Column(Text, nullable=False)
-    summary = Column(String(500), nullable=True)
+    summary = Column(String(500), nullable=False)
     source = Column(String(50), nullable=False, default="api")
     customer_email = Column(String(255), nullable=True)
     customer_phone = Column(String(50), nullable=True)
