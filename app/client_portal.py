@@ -108,6 +108,56 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
     )
 
 
+@router.get("/portal/inbox", response_class=HTMLResponse)
+def portal_inbox(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    grouped_tickets = (
+        db.query(
+            Complaint.ticket_id,
+            func.max(Complaint.created_at).label("latest"),
+            func.count(Complaint.id).label("messages")
+        )
+        .filter(Complaint.client_id == user.client_id)
+        .group_by(Complaint.ticket_id)
+        .order_by(func.max(Complaint.created_at).desc())
+        .all()
+    )
+
+    tickets = []
+    for ticket in grouped_tickets:
+        latest_message = (
+            db.query(Complaint)
+            .filter(
+                Complaint.client_id == user.client_id,
+                Complaint.ticket_id == ticket.ticket_id,
+            )
+            .order_by(Complaint.created_at.desc())
+            .first()
+        )
+        tickets.append(
+            {
+                "ticket_id": ticket.ticket_id,
+                "latest": ticket.latest,
+                "messages": ticket.messages,
+                "last_message": latest_message.summary if latest_message else "-",
+                "open_ticket": (latest_message.resolution_status == "open") if latest_message else False,
+            }
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_inbox.html",
+        context={
+            "tickets": tickets,
+            "user": user,
+        },
+    )
+
+
 @router.get("/portal/leads", response_class=HTMLResponse)
 def portal_leads(request: Request, db: Session = Depends(get_db)):
     user = _get_current_client_user(request, db)
@@ -223,7 +273,8 @@ def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db
     if not user:
         return RedirectResponse(url="/portal/login", status_code=303)
 
-    from app.services.customer_history import get_customer_history
+    from app.services.customer_timeline import get_customer_timeline
+    from app.services.reply_generator import generate_reply
 
     messages = (
         db.query(Complaint)
@@ -236,7 +287,14 @@ def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db
     )
 
     customer_email = messages[0].customer_email if messages else None
-    history = get_customer_history(db, customer_email)
+    timeline = get_customer_timeline(db, customer_email)
+    suggested_reply = ""
+    if messages:
+        suggested_reply = generate_reply(
+            messages[-1].summary,
+            messages[-1].intent,
+            messages[-1].category,
+        )
 
     return templates.TemplateResponse(
         request=request,
@@ -244,7 +302,9 @@ def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db
         context={
             "messages": messages,
             "ticket_id": ticket_id,
-            "history": history,
+            "history": timeline,
+            "timeline": timeline,
+            "suggested_reply": suggested_reply,
             "user": user,
         },
     )

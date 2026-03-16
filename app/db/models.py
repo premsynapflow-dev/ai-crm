@@ -37,6 +37,7 @@ class Complaint(Base):
     category = Column(String(100), nullable=False)
     sentiment = Column(Float, nullable=False, default=0.0)
     urgency_score = Column(Float, nullable=False, default=0.0)
+    assigned_team = Column(String(50), nullable=True)
     ticket_id = Column(String(50), nullable=False, index=True)
     thread_id = Column(String(50), nullable=False, index=True)
     follow_up_status = Column(String(20), default="pending")

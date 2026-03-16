@@ -1,0 +1,2 @@
+ALTER TABLE complaints
+ADD COLUMN IF NOT EXISTS assigned_team VARCHAR(50);

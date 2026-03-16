@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
 from app.integrations.email import send_email
 from app.services.action_executor import execute_action
+from app.services.assignment import assign_team
 from app.services.auto_reply import generate_auto_reply
 from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
@@ -64,6 +65,7 @@ def _process_complaint_for_client(
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
+    assigned_team = assign_team(category, intent)
 
     # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
     _ACTION_MAP = {
@@ -94,6 +96,7 @@ def _process_complaint_for_client(
         category=category,
         sentiment=sentiment_score,
         urgency_score=urgency,
+        assigned_team=assigned_team,
         ticket_id=ticket_id,
         thread_id=thread_id,
         status=action,

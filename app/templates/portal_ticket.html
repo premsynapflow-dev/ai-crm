@@ -12,12 +12,14 @@
         .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; background: #fff; margin-bottom: 16px; }
         .meta { color: #6b7280; font-size: 14px; margin-top: 8px; }
         ul { padding-left: 18px; }
+        textarea { width: 100%; min-height: 180px; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
     </style>
 </head>
 <body>
     <h1>Ticket: {{ ticket_id }}</h1>
     <p>
         <a href="/portal">Dashboard</a>
+        <a href="/portal/inbox">Inbox</a>
         <a href="/portal/leads">Leads</a>
         <a href="/portal/complaints">Complaints</a>
         <a href="/portal/analytics">Analytics</a>
@@ -40,11 +42,11 @@
         </div>
 
         <div>
-            <h2>Customer History</h2>
+            <h2>Customer Timeline</h2>
             <div class="card">
-                {% if history %}
+                {% if timeline %}
                 <ul>
-                    {% for item in history %}
+                    {% for item in timeline %}
                     <li>
                         <div>{{ item.summary }}</div>
                         <div class="meta">{{ item.created_at }}</div>
@@ -52,7 +54,16 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <div>No customer history available.</div>
+                <div>No customer timeline available.</div>
+                {% endif %}
+            </div>
+
+            <h2>AI Suggested Reply</h2>
+            <div class="card">
+                {% if suggested_reply %}
+                <textarea readonly>{{ suggested_reply }}</textarea>
+                {% else %}
+                <div>No suggested reply available.</div>
                 {% endif %}
             </div>
         </div>
