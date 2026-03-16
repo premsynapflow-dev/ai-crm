@@ -15,6 +15,11 @@ class Settings:
     admin_username: str
     admin_password: str
     gemini_api_key: str
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: str
+    smtp_from: str
 
 
 def get_settings() -> Settings:
@@ -25,6 +30,14 @@ def get_settings() -> Settings:
     admin_username = os.getenv("ADMIN_USERNAME", "").strip()
     admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    try:
+        smtp_port = int(os.getenv("SMTP_PORT", "587").strip() or "587")
+    except ValueError:
+        smtp_port = 587
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
+    smtp_from = os.getenv("SMTP_FROM", "").strip()
 
     missing = []
     if not database_url:
@@ -49,4 +62,9 @@ def get_settings() -> Settings:
         admin_username=admin_username,
         admin_password=admin_password,
         gemini_api_key=gemini_api_key,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_user=smtp_user,
+        smtp_password=smtp_password,
+        smtp_from=smtp_from,
     )

@@ -67,6 +67,7 @@ def portal_logout(request: Request):
 
 
 @router.get("/portal", response_class=HTMLResponse)
+@router.get("/portal/complaints", response_class=HTMLResponse)
 def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     user = _get_current_client_user(request, db)
     if not user:
@@ -82,6 +83,27 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
         request=request,
         name="portal.html",
         context={"complaints": complaints, "user": user},
+    )
+
+
+@router.get("/portal/leads", response_class=HTMLResponse)
+def portal_leads(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    leads = db.query(Complaint).filter(
+        Complaint.client_id == user.client_id,
+        Complaint.intent == "sales_lead"
+    ).all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_leads.html",
+        context={
+            "leads": leads,
+            "user": user,
+        }
     )
 
 
@@ -185,3 +207,49 @@ def portal_settings_test(
         return JSONResponse(content={"ok": True})
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.post("/portal/lead/{id}/toggle")
+def toggle_lead(id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    lead = db.query(Complaint).filter(
+        Complaint.id == id,
+        Complaint.client_id == user.client_id,
+    ).first()
+    if not lead:
+        return JSONResponse(status_code=404, content={"error": "Lead not found"})
+
+    if lead.follow_up_status == "pending":
+        lead.follow_up_status = "completed"
+    else:
+        lead.follow_up_status = "pending"
+
+    db.commit()
+
+    return {"status": "ok"}
+
+
+@router.post("/portal/complaint/{id}/resolve")
+def resolve_complaint(id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    complaint = db.query(Complaint).filter(
+        Complaint.id == id,
+        Complaint.client_id == user.client_id,
+    ).first()
+    if not complaint:
+        return JSONResponse(status_code=404, content={"error": "Complaint not found"})
+
+    if complaint.resolution_status == "open":
+        complaint.resolution_status = "resolved"
+    else:
+        complaint.resolution_status = "open"
+
+    db.commit()
+
+    return {"status": "ok"}

@@ -12,13 +12,15 @@
         th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; vertical-align: top; }
         th { background: #f3f4f6; }
         tr:nth-child(even) { background: #f9fafb; }
+        button { padding: 6px 10px; cursor: pointer; }
     </style>
 </head>
 <body>
     <h1>Client Portal</h1>
     <p>Logged in as: {{ user.email }}</p>
     <p>
-        <a href="/portal">Dashboard</a>
+        <a href="/portal/complaints">Complaints</a>
+        <a href="/portal/leads">Leads</a>
         <a href="/portal/analytics">Analytics</a>
         <a href="/portal/settings">Settings</a>
         <a href="/portal/logout">Logout</a>
@@ -32,15 +34,19 @@
                 <th>Source</th>
                 <th>Email</th>
                 <th>Phone</th>
+                <th>Ticket</th>
+                <th>Thread</th>
                 <th>category</th>
                 <th>sentiment</th>
                 <th>urgency_score</th>
                 <th>status</th>
+                <th>resolution_status</th>
                 <th>intent</th>
                 <th>priority</th>
                 <th>recommended_action</th>
                 <th>confidence</th>
                 <th>created_at</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
@@ -51,18 +57,40 @@
                 <td>{{ complaint.source }}</td>
                 <td>{{ complaint.customer_email or "-" }}</td>
                 <td>{{ complaint.customer_phone or "-" }}</td>
+                <td>{{ complaint.ticket_id }}</td>
+                <td>{{ complaint.thread_id }}</td>
                 <td>{{ complaint.category }}</td>
                 <td>{{ complaint.sentiment }}</td>
                 <td>{{ complaint.urgency_score }}</td>
                 <td>{{ complaint.status }}</td>
+                <td>{{ complaint.resolution_status or "-" }}</td>
                 <td>{{ complaint.intent or "-" }}</td>
                 <td>{{ complaint.priority if complaint.priority is not none else "-" }}</td>
                 <td>{{ complaint.recommended_action or "-" }}</td>
                 <td>{{ complaint.confidence if complaint.confidence is not none else "-" }}</td>
                 <td>{{ complaint.created_at }}</td>
+                <td>
+                    <button type="button" onclick="toggleComplaintResolution('{{ complaint.id }}')">
+                        {% if complaint.resolution_status == "resolved" %}
+                        Reopen
+                        {% else %}
+                        Resolve
+                        {% endif %}
+                    </button>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    <script>
+        async function toggleComplaintResolution(id) {
+            const response = await fetch(`/portal/complaint/${id}/resolve`, {
+                method: "POST"
+            });
+            if (response.ok) {
+                window.location.reload();
+            }
+        }
+    </script>
 </body>
 </html>

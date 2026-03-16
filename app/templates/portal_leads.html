@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Client Leads</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        a { color: #1d4ed8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; vertical-align: top; }
+        th { background: #f3f4f6; }
+        tr:nth-child(even) { background: #f9fafb; }
+        button { padding: 6px 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Sales Leads</h1>
+    <p>Logged in as: {{ user.email }}</p>
+    <p>
+        <a href="/portal/complaints">Complaints</a>
+        <a href="/portal/leads">Leads</a>
+        <a href="/portal/analytics">Analytics</a>
+        <a href="/portal/settings">Settings</a>
+        <a href="/portal/logout">Logout</a>
+    </p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Summary</th>
+                <th>Email</th>
+                <th>Ticket</th>
+                <th>Follow Up</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lead in leads %}
+            <tr>
+                <td>{{ lead.summary }}</td>
+                <td>{{ lead.customer_email or "-" }}</td>
+                <td>{{ lead.ticket_id }}</td>
+                <td>
+                    <button type="button" onclick="toggleLead('{{ lead.id }}')">
+                        {% if lead.follow_up_status == "completed" %}
+                        Mark Pending
+                        {% else %}
+                        Mark Completed
+                        {% endif %}
+                    </button>
+                    <div>{{ lead.follow_up_status or "-" }}</div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <script>
+        async function toggleLead(id) {
+            const response = await fetch(`/portal/lead/${id}/toggle`, {
+                method: "POST"
+            });
+            if (response.ok) {
+                window.location.reload();
+            }
+        }
+    </script>
+</body>
+</html>

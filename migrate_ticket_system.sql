@@ -1,0 +1,11 @@
+ALTER TABLE complaints
+ADD COLUMN IF NOT EXISTS ticket_id VARCHAR(50);
+
+ALTER TABLE complaints
+ADD COLUMN IF NOT EXISTS thread_id VARCHAR(50);
+
+ALTER TABLE complaints
+ADD COLUMN IF NOT EXISTS follow_up_status VARCHAR(20) DEFAULT 'pending';
+
+ALTER TABLE complaints
+ADD COLUMN IF NOT EXISTS resolution_status VARCHAR(20) DEFAULT 'open';

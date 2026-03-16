@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
+from app.integrations.email import send_email
+from app.services.auto_reply import generate_auto_reply
 from app.utils.logging import get_logger
+from app.utils.ticket import generate_thread_id, generate_ticket_id
 from app.workflow.dispatcher import dispatch_action
 from app.workflow.rule_engine import decide_action
 
@@ -21,6 +24,7 @@ class ComplaintRequest(BaseModel):
     source: str = Field(default="api", min_length=1, max_length=50)
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
+    ticket_id: Optional[str] = None
 
 
 class EmailWebhookRequest(BaseModel):
@@ -45,6 +49,7 @@ def _process_complaint_for_client(
     source: str,
     customer_email: Optional[str],
     customer_phone: Optional[str],
+    incoming_ticket_id: Optional[str] = None,
 ) -> str:
     # Single unified AI classification call (Gemini - free tier)
     classification = classify_message(message)
@@ -71,6 +76,8 @@ def _process_complaint_for_client(
         sentiment=sentiment_score,
         urgency=urgency,
     )
+    ticket_id = incoming_ticket_id or generate_ticket_id()
+    thread_id = generate_thread_id()
 
     complaint = Complaint(
         client_id=client.id,
@@ -85,6 +92,8 @@ def _process_complaint_for_client(
         category=category,
         sentiment=sentiment_score,
         urgency_score=urgency,
+        ticket_id=ticket_id,
+        thread_id=thread_id,
         status=action,
     )
     db.add(complaint)
@@ -104,6 +113,17 @@ def _process_complaint_for_client(
         customer_email=customer_email,
         customer_phone=customer_phone,
     )
+
+    if customer_email:
+        reply = generate_auto_reply(summary, ticket_id)
+        try:
+            send_email(
+                to_email=customer_email,
+                subject=f"Support Ticket {ticket_id}",
+                body=reply,
+            )
+        except Exception as exc:
+            logger.warning("Auto reply email failed for ticket %s: %s", ticket_id, exc)
 
     return action
 
@@ -140,6 +160,7 @@ def process_complaint(
             source=payload.source,
             customer_email=payload.customer_email,
             customer_phone=payload.customer_phone,
+            incoming_ticket_id=payload.ticket_id,
         )
         db.commit()
     except HTTPException:
