@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Automation Rules</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        a { color: #1d4ed8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; vertical-align: top; }
+        th { background: #f3f4f6; }
+        tr:nth-child(even) { background: #f9fafb; }
+        form { margin-top: 24px; display: grid; gap: 12px; max-width: 420px; }
+        label { font-weight: 600; }
+        select, input, button { padding: 8px; }
+        button { cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Automation Rules</h1>
+    <p>Logged in as: {{ user.email }}</p>
+    <p>
+        <a href="/portal">Dashboard</a>
+        <a href="/portal/leads">Leads</a>
+        <a href="/portal/complaints">Complaints</a>
+        <a href="/portal/analytics">Analytics</a>
+        <a href="/portal/automation">Automation</a>
+        <a href="/portal/settings">Settings</a>
+        <a href="/portal/logout">Logout</a>
+    </p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Rule ID</th>
+                <th>Trigger Type</th>
+                <th>Trigger Value</th>
+                <th>Action Type</th>
+                <th>Enabled</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rule in rules %}
+            <tr>
+                <td>{{ rule.id }}</td>
+                <td>{{ rule.trigger_type }}</td>
+                <td>{{ rule.trigger_value }}</td>
+                <td>{{ rule.action_type }}</td>
+                <td>{{ "Yes" if rule.enabled else "No" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <form method="post" action="/portal/automation/create">
+        <label for="trigger_type">Trigger Type</label>
+        <select id="trigger_type" name="trigger_type" required>
+            <option value="intent">intent</option>
+            <option value="category">category</option>
+            <option value="priority">priority</option>
+        </select>
+
+        <label for="trigger_value">Trigger Value</label>
+        <input id="trigger_value" name="trigger_value" required />
+
+        <label for="action_type">Action Type</label>
+        <select id="action_type" name="action_type" required>
+            <option value="notify_slack">notify_slack</option>
+            <option value="mark_high_priority">mark_high_priority</option>
+            <option value="auto_resolve">auto_resolve</option>
+        </select>
+
+        <button type="submit">Create Rule</button>
+    </form>
+</body>
+</html>

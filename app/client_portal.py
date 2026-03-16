@@ -165,6 +165,57 @@ def portal_analytics(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/portal/automation", response_class=HTMLResponse)
+def portal_automation(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    from app.db.models import AutomationRule
+
+    rules = db.query(AutomationRule).filter(
+        AutomationRule.client_id == user.client_id
+    ).all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_automation.html",
+        context={
+            "rules": rules,
+            "user": user,
+        },
+    )
+
+
+@router.post("/portal/automation/create")
+def create_rule(
+    request: Request,
+    trigger_type: str = Form(...),
+    trigger_value: str = Form(...),
+    action_type: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    from app.db.models import AutomationRule
+
+    rule = AutomationRule(
+        client_id=user.client_id,
+        trigger_type=trigger_type,
+        trigger_value=trigger_value,
+        action_type=action_type
+    )
+
+    db.add(rule)
+
+    db.commit()
+
+    return RedirectResponse(url="/portal/automation", status_code=303)
+
+
 @router.get("/portal/ticket/{ticket_id}", response_class=HTMLResponse)
 def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db)):
     user = _get_current_client_user(request, db)

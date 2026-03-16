@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -64,4 +64,17 @@ class EventLog(Base):
     client_id = Column(UUID(as_uuid=True), nullable=False)
     event_type = Column(String(100), nullable=False)
     payload = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False)
+    trigger_type = Column(String(50), nullable=False)
+    trigger_value = Column(String(100), nullable=False)
+    action_type = Column(String(50), nullable=False)
+    action_config = Column(JSON, nullable=True)
+    enabled = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

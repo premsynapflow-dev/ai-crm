@@ -9,7 +9,9 @@ from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
 from app.integrations.email import send_email
+from app.services.action_executor import execute_action
 from app.services.auto_reply import generate_auto_reply
+from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
 from app.utils.ticket import generate_thread_id, generate_ticket_id
 from app.workflow.dispatcher import dispatch_action
@@ -98,6 +100,11 @@ def _process_complaint_for_client(
     )
     db.add(complaint)
     db.flush()
+
+    rules = get_matching_rules(db, client.id, classification)
+
+    for rule in rules:
+        execute_action(rule, complaint, client)
 
     dispatch_action(
         action=action,
