@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -27,6 +27,7 @@ class Complaint(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
     message = Column(Text, nullable=False)
+    summary = Column(String(500), nullable=True)
     source = Column(String(50), nullable=False, default="api")
     customer_email = Column(String(255), nullable=True)
     customer_phone = Column(String(50), nullable=True)
@@ -51,3 +52,13 @@ class ClientUser(Base):
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EventLog(Base):
+    __tablename__ = "event_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(UUID(as_uuid=True), nullable=False)
+    event_type = Column(String(100), nullable=False)
+    payload = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

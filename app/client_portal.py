@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Client, ClientUser, Complaint
 from app.db.session import get_db
 from app.integrations.slack import send_slack_alert
+from app.services.analytics import get_complaint_stats
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -81,6 +82,24 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
         request=request,
         name="portal.html",
         context={"complaints": complaints, "user": user},
+    )
+
+
+@router.get("/portal/analytics", response_class=HTMLResponse)
+def portal_analytics(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    stats = get_complaint_stats(db, user.client_id)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_analytics.html",
+        context={
+            "stats": stats,
+            "user": user
+        }
     )
 
 

@@ -20,6 +20,7 @@ _FALLBACK = {
     "priority": 2,
     "recommended_action": "support_ticket",
     "confidence": 0.0,
+    "summary": "",
 }
 
 _ALLOWED_INTENTS = {
@@ -45,13 +46,13 @@ def classify_message(message: str) -> dict:
     Classify a customer message using Gemini 2.0 Flash (free tier).
     Returns a dict with keys:
       intent, category, sentiment, urgency_score,
-      priority, recommended_action, confidence
+      priority, recommended_action, confidence, summary
     Falls back to safe defaults on any error.
     """
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         logger.warning("GEMINI_API_KEY not set - using fallback classification.")
-        return dict(_FALLBACK)
+        return dict(_FALLBACK, summary=message[:120])
 
     prompt = (
     'Classify this customer message and return ONLY valid JSON, no markdown.\n\n'
@@ -64,6 +65,7 @@ def classify_message(message: str) -> dict:
     "- Use 'support_ticket' when: general help, order status, technical issue\n"
     "- Use 'auto_reply' when: simple FAQ, easily resolved automatically\n"
     "- Use 'product_feedback' when: feature request or product suggestion\n\n"
+    "Also include a short 1 sentence summary of the message.\n\n"
     "Return exactly this structure:\n"
     "{\n"
     '  "intent": "one of: complaint/refund_request/sales_lead/support/order_status/feature_request",\n'
@@ -72,7 +74,8 @@ def classify_message(message: str) -> dict:
     '  "urgency_score": <float 0.0 to 1.0>,\n'
     '  "priority": <integer 1-5>,\n'
     '  "recommended_action": "one of: escalate/notify_sales/support_ticket/auto_reply/product_feedback",\n'
-    '  "confidence": <float 0.0 to 1.0>\n'
+    '  "confidence": <float 0.0 to 1.0>,\n'
+    '  "summary": "short 1 sentence summary of the message"\n'
     "}"
 )
 
@@ -112,6 +115,10 @@ def classify_message(message: str) -> dict:
         recommended_action = result.get("recommended_action", "support_ticket")
         if recommended_action not in _ALLOWED_ACTIONS:
             recommended_action = "support_ticket"
+        summary = result.get("summary", message[:120])
+        if not isinstance(summary, str):
+            summary = message[:120]
+        summary = summary.strip() or message[:120]
 
         def _clamp(val, lo, hi, default):
             try:
@@ -127,8 +134,9 @@ def classify_message(message: str) -> dict:
             "priority": max(1, min(5, int(result.get("priority", 2)))),
             "recommended_action": recommended_action,
             "confidence": _clamp(result.get("confidence"), 0.0, 1.0, 0.5),
+            "summary": summary,
         }
 
     except Exception as exc:
         logger.warning("Gemini classification failed, using fallback: %s", exc)
-        return dict(_FALLBACK)
+        return dict(_FALLBACK, summary=message[:120])

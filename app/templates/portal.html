@@ -19,6 +19,7 @@
     <p>Logged in as: {{ user.email }}</p>
     <p>
         <a href="/portal">Dashboard</a>
+        <a href="/portal/analytics">Analytics</a>
         <a href="/portal/settings">Settings</a>
         <a href="/portal/logout">Logout</a>
     </p>
@@ -28,6 +29,7 @@
             <tr>
                 <th>id</th>
                 <th>message</th>
+                <th>Summary</th>
                 <th>Source</th>
                 <th>Email</th>
                 <th>Phone</th>
@@ -47,6 +49,7 @@
             <tr>
                 <td>{{ complaint.id }}</td>
                 <td>{{ complaint.message }}</td>
+                <td>{{ complaint.summary or "-" }}</td>
                 <td>{{ complaint.source }}</td>
                 <td>{{ complaint.customer_email or "-" }}</td>
                 <td>{{ complaint.customer_phone or "-" }}</td>

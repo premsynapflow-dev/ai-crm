@@ -56,6 +56,7 @@ def _process_complaint_for_client(
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
+    summary = classification["summary"]
 
     # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
     _ACTION_MAP = {
@@ -74,6 +75,7 @@ def _process_complaint_for_client(
     complaint = Complaint(
         client_id=client.id,
         message=message,
+        summary=summary,
         source=source or "api",
         customer_email=customer_email,
         customer_phone=customer_phone,

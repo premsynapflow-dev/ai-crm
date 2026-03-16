@@ -69,3 +69,24 @@ def clients_dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLRe
         name="clients.html",
         context={"clients": clients},
     )
+
+
+@router.post("/admin/create-client")
+def create_client(name: str, db: Session = Depends(get_db)):
+    import secrets
+
+    api_key = secrets.token_hex(24)
+
+    client = Client(
+        name=name,
+        api_key=api_key,
+        plan="basic",
+    )
+
+    db.add(client)
+    db.commit()
+
+    return {
+        "client_name": name,
+        "api_key": api_key,
+    }
