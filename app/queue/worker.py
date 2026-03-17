@@ -6,6 +6,7 @@ from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 _stop_event = threading.Event()
+_worker_thread = None
 
 
 def worker_loop(interval_seconds=30):
@@ -21,9 +22,16 @@ def worker_loop(interval_seconds=30):
 
 
 def start_worker_thread(interval_seconds=30):
-    thread = threading.Thread(target=worker_loop, args=(interval_seconds,), daemon=True, name="simple-queue-worker")
-    thread.start()
-    return thread
+    global _worker_thread
+    if _worker_thread and _worker_thread.is_alive():
+        return _worker_thread
+    _worker_thread = threading.Thread(target=worker_loop, args=(interval_seconds,), daemon=True, name="simple-queue-worker")
+    _worker_thread.start()
+    return _worker_thread
+
+
+def is_worker_alive():
+    return bool(_worker_thread and _worker_thread.is_alive() and not _stop_event.is_set())
 
 
 def stop_worker():

@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,7 +31,11 @@ from app.utils.logging import configure_logging, get_logger
 
 configure_logging()
 logger = get_logger(__name__)
-settings = get_settings()
+try:
+    settings = get_settings()
+except RuntimeError as exc:
+    logger.error("Configuration validation failed: %s", exc)
+    raise
 worker_thread = None
 
 app = FastAPI(title="AI Complaint Intelligence API", version="2.0.0")
@@ -62,13 +67,15 @@ async def logging_middleware(request: Request, call_next):
     started = time.perf_counter()
     response = await call_next(request)
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    client_id = getattr(request.state, "client_id", None) or "-"
     logger.info(
-        "%s %s -> %s (%sms) [%s]",
-        request.method,
+        "request_id=%s path=%s method=%s client_id=%s status=%s latency_ms=%s",
+        getattr(request.state, "request_id", "n/a"),
         request.url.path,
+        request.method,
+        client_id,
         response.status_code,
         duration_ms,
-        getattr(request.state, "request_id", "n/a"),
     )
     record_metric("request_duration_ms", duration_ms, {"path": request.url.path, "method": request.method})
     if response.status_code >= 400:
@@ -90,6 +97,18 @@ async def error_handling_middleware(request: Request, call_next):
                 "request_id": getattr(request.state, "request_id", "n/a"),
             },
         )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Invalid request data",
+            "details": exc.errors(),
+            "request_id": getattr(request.state, "request_id", "n/a"),
+        },
+    )
 
 
 @app.get("/")

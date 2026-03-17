@@ -1,14 +1,16 @@
 import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.billing.plans import PLANS
 from app.client_portal import hash_password
 from app.db.models import Client, ClientUser, DemoRequest, WaitlistEntry
 from app.db.session import SessionLocal
 from app.onboarding.flows import apply_trial_plan, enqueue_welcome_sequence
+from app.utils.request_parser import parse_request
 
 router = APIRouter(prefix="/api", tags=["public"])
 
@@ -25,7 +27,12 @@ class WaitlistRequest(BaseModel):
 
 
 @router.post("/signup")
-def signup(payload: SignupRequest):
+async def signup(request: Request):
+    try:
+        payload = SignupRequest(**(await parse_request(request)))
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
     db = SessionLocal()
     try:
         existing_user = db.query(ClientUser).filter(ClientUser.email == payload.email).first()
@@ -65,7 +72,12 @@ def signup(payload: SignupRequest):
 
 
 @router.post("/waitlist")
-def waitlist(payload: WaitlistRequest):
+async def waitlist(request: Request):
+    try:
+        payload = WaitlistRequest(**(await parse_request(request)))
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
     db = SessionLocal()
     try:
         entry = WaitlistEntry(email=payload.email, details={"company_name": payload.company_name})

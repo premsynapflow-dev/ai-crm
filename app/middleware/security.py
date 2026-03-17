@@ -13,6 +13,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if content_length and int(content_length) > 2_000_000:
             return JSONResponse(status_code=413, content={"detail": "Request body too large"})
 
+        db = SessionLocal()
+        client = None
+        try:
+            api_key = request.headers.get("x-api-key", "").strip()
+            if api_key:
+                client = db.query(Client).filter(Client.api_key == api_key).first()
+                if client:
+                    request.state.client_id = str(client.id)
+        except Exception:
+            request.state.client_id = None
+        finally:
+            db.close()
+
         response = await call_next(request)
 
         response.headers["X-Frame-Options"] = "DENY"
@@ -25,10 +38,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         db = SessionLocal()
         try:
-            api_key = request.headers.get("x-api-key", "").strip()
-            client = None
-            if api_key:
-                client = db.query(Client).filter(Client.api_key == api_key).first()
             audit = RequestAudit(
                 client_id=client.id if client else None,
                 request_id=getattr(request.state, "request_id", str(uuid.uuid4())),
