@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -7,7 +7,8 @@ from app.billing.razorpay_service import create_payment_link, create_subscriptio
 from app.billing.usage import get_usage_summary
 from app.config import get_settings
 from app.db.models import Client, Subscription
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, get_db
+from app.utils.webhook_security import verify_razorpay_signature
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 settings = get_settings()
@@ -40,7 +41,19 @@ def billing_checkout(payload: CheckoutRequest, x_api_key: str = Header(default="
 
 
 @router.post("/webhook/razorpay")
-def razorpay_webhook(payload: dict):
+async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    settings = get_settings()
+    
+    # Verify signature
+    if settings.razorpay_webhook_secret:
+        is_valid = await verify_razorpay_signature(
+            request, 
+            settings.razorpay_webhook_secret
+        )
+        if not is_valid:
+            raise HTTPException(401, "Invalid webhook signature")
+    
+    payload = await request.json()
     return handle_webhook(payload)
 
 

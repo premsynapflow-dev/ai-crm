@@ -1,4 +1,3 @@
-import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
@@ -9,7 +8,7 @@ from app.billing.plans import PLANS
 from app.db.models import Client, ClientUser, DemoRequest, WaitlistEntry
 from app.db.session import SessionLocal
 from app.onboarding.flows import apply_trial_plan, enqueue_welcome_sequence
-from app.security.passwords import hash_password
+from app.utils.security import generate_api_key, hash_password
 from app.utils.request_parser import parse_request
 
 router = APIRouter(prefix="/api", tags=["public"])
@@ -43,7 +42,8 @@ async def signup(request: Request):
         client = Client(
             name=payload.company_name,
             plan="trial",
-            api_key=secrets.token_hex(24),
+            plan_id="trial",
+            api_key=generate_api_key(32),
             created_at=datetime.now(timezone.utc),
         )
         apply_trial_plan(client)

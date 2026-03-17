@@ -7,83 +7,52 @@ from app.integrations.slack import send_slack_alert
 from app.services.event_logger import log_event
 
 
-def detect_complaint_spikes(db, client_id, send_alert=True, min_count=10):
+def detect_complaint_spikes(
+    db, 
+    client_id, 
+    send_alert: bool = True
+) -> list[dict]:
+    """Optimized spike detection with single query"""
     now = datetime.now(timezone.utc)
-    current_start = now - timedelta(hours=24)
-    previous_start = now - timedelta(hours=48)
+    last_hour = now - timedelta(hours=1)
+    last_24h = now - timedelta(hours=24)
 
-    current_rows = (
-        db.query(Complaint.category, func.count(Complaint.id))
-        .filter(
-            Complaint.client_id == client_id,
-            Complaint.created_at >= current_start,
-        )
-        .group_by(Complaint.category)
-        .all()
-    )
-    previous_rows = (
-        db.query(Complaint.category, func.count(Complaint.id))
-        .filter(
-            Complaint.client_id == client_id,
-            Complaint.created_at >= previous_start,
-            Complaint.created_at < current_start,
-        )
-        .group_by(Complaint.category)
-        .all()
-    )
-    previous_map = {category: count for category, count in previous_rows}
+    # Single query with aggregation
+    stats = db.query(
+        func.count(Complaint.id).filter(
+            Complaint.created_at >= last_hour
+        ).label('hour_count'),
+        func.count(Complaint.id).filter(
+            Complaint.created_at >= last_24h
+        ).label('day_count'),
+        func.avg(Complaint.sentiment).filter(
+            Complaint.created_at >= last_hour
+        ).label('avg_sentiment'),
+    ).filter(
+        Complaint.client_id == client_id
+    ).first()
+
+    hour_count = stats.hour_count or 0
+    day_count = stats.day_count or 0
+    avg_sentiment = stats.avg_sentiment or 0.0
+
+    expected_hourly = (day_count / 24) * 1.5
+
     spikes = []
+    if hour_count > expected_hourly and hour_count > 10:
+        spikes.append({
+            "type": "volume_spike",
+            "hour_count": hour_count,
+            "expected": expected_hourly,
+            "severity": "high" if hour_count > expected_hourly * 2 else "medium"
+        })
 
-    for category, count in current_rows:
-        previous_count = previous_map.get(category, 0)
-        threshold = max(min_count, (previous_count * 2) if previous_count else min_count)
-        if count < threshold:
-            continue
-
-        spike = {
-            "category": category or "unknown",
-            "current_count": count,
-            "previous_count": previous_count,
-        }
-        spikes.append(spike)
-
-        if not send_alert:
-            continue
-
-        recent_alerts = (
-            db.query(EventLog)
-            .filter(
-                EventLog.client_id == client_id,
-                EventLog.event_type == "complaint_spike_alert",
-                EventLog.created_at >= now - timedelta(hours=6),
-            )
-            .all()
-        )
-        duplicate = any((item.payload or {}).get("category") == spike["category"] for item in recent_alerts)
-        if duplicate:
-            continue
-
-        client = db.query(Client).filter(Client.id == client_id).first()
-        if client:
-            try:
-                send_slack_alert(
-                    (
-                        "*Complaint Spike Detected*\n"
-                        f"Category: {spike['category']}\n"
-                        f"Current 24h: {spike['current_count']}\n"
-                        f"Previous 24h: {spike['previous_count']}"
-                    ),
-                    webhook_url=client.slack_webhook_url,
-                )
-            except Exception:
-                pass
-
-        log_event(
-            db,
-            client_id,
-            "complaint_spike_alert",
-            spike,
-        )
+    if avg_sentiment < -0.5 and hour_count > 5:
+        spikes.append({
+            "type": "sentiment_drop",
+            "avg_sentiment": avg_sentiment,
+            "severity": "high" if avg_sentiment < -0.7 else "medium"
+        })
 
     return spikes
 

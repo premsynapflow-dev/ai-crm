@@ -1,87 +1,94 @@
-import json
 import os
 
 import httpx
+from typing import Dict, List
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.db.models import Complaint
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.5-flash-lite:generateContent"
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    reraise=True,
 )
-
-_FALLBACK_REPLY = (
-    "Hello,\n\n"
-    "Thank you for reaching out. We have received your message and our team is "
-    "reviewing it now. We will follow up with the next steps shortly.\n\n"
-    "Regards,\nSupport Team"
-)
-
-
-def _clamp_confidence(value, default=0.0) -> float:
-    try:
-        return max(0.0, min(1.0, float(value)))
-    except (TypeError, ValueError):
-        return default
-
-
-def generate_ai_reply(complaint, customer_history) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        logger.warning("GEMINI_API_KEY not set - using fallback AI reply.")
-        return {
-            "reply_text": _FALLBACK_REPLY,
-            "confidence_score": 0.0,
-        }
-
-    history = "\n".join(f"- {item}" for item in customer_history if item) or "- No previous complaints"
-    prompt = (
-        "You are a professional customer support agent.\n\n"
-        f"Customer complaint:\n{complaint.summary}\n\n"
-        f"Customer sentiment:\n{complaint.sentiment}\n\n"
-        f"Customer previous complaints:\n{history}\n\n"
-        "Write a short empathetic reply explaining next steps.\n"
-        "Return ONLY valid JSON in this exact shape:\n"
-        "{\n"
-        '  "reply_text": "short professional reply",\n'
-        '  "confidence_score": <float 0.0 to 1.0>\n'
-        "}"
-    )
-
-    try:
-        response = httpx.post(
-            _GEMINI_URL,
+async def _call_gemini_for_reply(prompt: str, api_key: str) -> str:
+    """Generate reply using Gemini API"""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
             params={"key": api_key},
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.2},
-            },
-            timeout=12.0,
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 500
+                },
+            }
         )
         response.raise_for_status()
-        raw_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        clean = (
-            raw_text.strip()
-            .removeprefix("```json")
-            .removeprefix("```")
-            .removesuffix("```")
-            .strip()
-        )
-        result = json.loads(clean)
-        reply_text = str(result.get("reply_text", "")).strip() or _FALLBACK_REPLY
-        confidence_score = _clamp_confidence(
-            result.get("confidence_score"),
-            default=0.0,
-        )
+        data = response.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+async def generate_ai_reply_async(
+    complaint: Complaint,
+    customer_history: List[Dict]
+) -> Dict:
+    """Async version of reply generation"""
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
         return {
-            "reply_text": reply_text,
-            "confidence_score": confidence_score,
+            "reply_text": "Thank you for contacting us. We'll review your message and get back to you soon.",
+            "confidence_score": 0.3
         }
-    except Exception as exc:
-        logger.warning("AI reply generation failed, using fallback reply: %s", exc)
+
+    # Build context
+    history_text = ""
+    if customer_history:
+        history_text = "Previous interactions:\n"
+        for item in customer_history[-3:]:  # Last 3 only
+            history_text += f"- {item.get('summary', '')}\n"
+
+    prompt = f"""You are a helpful customer service agent. Generate a professional, empathetic reply.
+
+Customer message: {complaint.summary}
+Category: {complaint.category}
+Sentiment: {complaint.sentiment}
+{history_text}
+
+Requirements:
+- Be empathetic and professional
+- Address the specific issue
+- Provide actionable next steps if applicable
+- Keep it concise (2-3 paragraphs max)
+- Don't make promises you can't keep
+
+Reply:"""
+    
+    try:
+        reply_text = await _call_gemini_for_reply(prompt, api_key)
+        confidence = 0.85 if complaint.confidence > 0.7 else 0.65
+        
         return {
-            "reply_text": _FALLBACK_REPLY,
-            "confidence_score": 0.0,
+            "reply_text": reply_text.strip(),
+            "confidence_score": confidence
         }
+    except Exception as e:
+        logger.warning(f"AI reply generation failed: {e}")
+        return {
+            "reply_text": "Thank you for your message. Our team will review and respond shortly.",
+            "confidence_score": 0.3
+        }
+
+
+def generate_ai_reply(complaint: Complaint, customer_history: List[Dict]) -> Dict:
+    """Sync wrapper - use generate_ai_reply_async in async contexts"""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(
+        generate_ai_reply_async(complaint, customer_history)
+    )

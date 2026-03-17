@@ -1,6 +1,15 @@
+import os
 import time
 import uuid
 from pathlib import Path
+
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    _HAS_SENTRY = True
+except ImportError:
+    _HAS_SENTRY = False
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,8 +30,9 @@ from app.config import get_settings
 from app.dashboard import router as dashboard_router
 from app.db.schema_guard import ensure_schema
 from app.intake.webhook import router as webhook_router
-from app.middleware.rate_limiter import DatabaseRateLimitMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
+from app.middleware.rate_limiter import DatabaseRateLimitMiddleware
+from app.middleware.audit import RequestAuditMiddleware
 from app.monitoring.health import router as health_router
 from app.monitoring.metrics import record_metric, router as metrics_router
 from app.queue.worker import start_worker_thread
@@ -35,6 +45,21 @@ try:
 except RuntimeError as exc:
     logger.error("Configuration validation failed: %s", exc)
     raise
+
+# Initialize Sentry (optional)
+if _HAS_SENTRY and settings.environment != "dev":
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN", ""),
+        environment=settings.environment,
+        traces_sample_rate=0.1,  # 10% of transactions
+        profiles_sample_rate=0.1,
+        integrations=[
+            FastApiIntegration(),
+            SqlalchemyIntegration(),
+        ],
+        before_send=lambda event, hint: event,  # Can filter events here
+    )
+
 worker_thread = None
 
 app = FastAPI(title="AI Complaint Intelligence API", version="2.0.0")
@@ -49,6 +74,7 @@ app.add_middleware(
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(DatabaseRateLimitMiddleware)
+app.add_middleware(RequestAuditMiddleware)
 
 app.mount("/public", StaticFiles(directory="public"), name="public")
 

@@ -1,16 +1,18 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.billing.usage import can_process_ticket, track_ticket_usage
+from app.dependencies.auth import require_api_key
 from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
 from app.intelligence.reply_decision import decide_reply_action
 from app.intelligence.reply_engine import generate_ai_reply
-from app.billing.usage import can_process_ticket, track_ticket_usage
+from app.queue.simple_queue import queue_job
 from app.replies.send_reply import send_complaint_reply
 from app.services.action_executor import execute_action
 from app.services.assignment import assign_team
@@ -18,6 +20,7 @@ from app.services.customer_history import get_customer_memory
 from app.services.event_logger import log_event
 from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
+from app.utils.sanitize import sanitize_email, sanitize_message, sanitize_phone
 from app.utils.ticket import generate_thread_id, generate_ticket_id
 from app.workflow.dispatcher import dispatch_action
 from app.workflow.rule_engine import decide_action
@@ -159,23 +162,6 @@ def _process_complaint_for_client(
     return action
 
 
-def _authenticate_client(db: Session, x_api_key: str) -> Client:
-    if not x_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing x-api-key header",
-        )
-
-    client = db.query(Client).filter(Client.api_key == x_api_key).first()
-    if client is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
-        )
-
-    return client
-
-
 def _enforce_usage_limit(client: Client) -> None:
     if not can_process_ticket(client.id):
         raise HTTPException(
@@ -190,23 +176,57 @@ def _enforce_usage_limit(client: Client) -> None:
 @router.post("/complaint")
 def process_complaint(
     payload: ComplaintRequest,
-    x_api_key: str = Header(default="", alias="x-api-key"),
+    client: Client = Depends(require_api_key),
     db: Session = Depends(get_db),
 ) -> dict:
     try:
-        client = _authenticate_client(db, x_api_key)
+        # Sanitize inputs
+        message = sanitize_message(payload.message)
+        customer_email = sanitize_email(payload.customer_email)
+        customer_phone = sanitize_phone(payload.customer_phone)
+
+        if not message:
+            raise HTTPException(400, "Message cannot be empty")
+
         _enforce_usage_limit(client)
-        action = _process_complaint_for_client(
-            db=db,
-            client=client,
-            message=payload.message,
-            source=payload.source,
-            customer_email=payload.customer_email,
-            customer_phone=payload.customer_phone,
-            incoming_ticket_id=payload.ticket_id,
+
+        # Create complaint immediately with minimal processing
+        ticket_id = payload.ticket_id or generate_ticket_id()
+        thread_id = generate_thread_id()
+
+        complaint = Complaint(
+            client_id=client.id,
+            summary=message[:200],  # Temporary summary
+            source=payload.source or "api",
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            ticket_id=ticket_id,
+            thread_id=thread_id,
+            status="PROCESSING",
+            category="general",  # Will be updated by AI
+            sentiment=0.0,
+            urgency_score=0.3,
+            priority=2,
         )
+        db.add(complaint)
         db.commit()
+
+        # Queue AI processing in background
+        queue_job(db, "process_complaint_ai", {
+            "complaint_id": str(complaint.id),
+            "message": message,
+        })
+
+        # Track usage
         track_ticket_usage(client.id)
+
+        # Return immediately
+        return {
+            "status": "queued",
+            "ticket_id": ticket_id,
+            "message": "Complaint received and processing started",
+        }
+
     except HTTPException:
         raise
     except OperationalError:
@@ -224,17 +244,14 @@ def process_complaint(
             detail="Complaint processing failed",
         ) from exc
 
-    return {"status": "processed", "action": action}
-
 
 @router.post("/email")
 def process_email_webhook(
     payload: EmailWebhookRequest,
-    x_api_key: str = Header(default="", alias="x-api-key"),
+    client: Client = Depends(require_api_key),
     db: Session = Depends(get_db),
 ) -> dict:
     try:
-        client = _authenticate_client(db, x_api_key)
         _enforce_usage_limit(client)
         message = f"{payload.subject} {payload.text}".strip()
         action = _process_complaint_for_client(
@@ -270,11 +287,10 @@ def process_email_webhook(
 @router.post("/whatsapp")
 def process_whatsapp_webhook(
     payload: WhatsAppWebhookRequest,
-    x_api_key: str = Header(default="", alias="x-api-key"),
+    client: Client = Depends(require_api_key),
     db: Session = Depends(get_db),
 ) -> dict:
     try:
-        client = _authenticate_client(db, x_api_key)
         _enforce_usage_limit(client)
         action = _process_complaint_for_client(
             db=db,
