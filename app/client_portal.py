@@ -1,13 +1,15 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.models import Client, ClientUser, Complaint
+from app.billing.plans import PLANS
+from app.billing.usage import get_usage_summary
+from app.db.models import Client, ClientUser, Complaint, Invoice
 from app.db.session import get_db
 from app.integrations.slack import send_slack_alert
 
@@ -94,12 +96,28 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
         Complaint.client_id == user.client_id,
         Complaint.resolution_status == "resolved",
     ).scalar()
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    usage_summary = get_usage_summary(user.client_id)
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.client_id == user.client_id)
+        .order_by(Invoice.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    monthly_limit = usage_summary.get("monthly_limit", 0) or 1
+    upgrade_recommended = usage_summary.get("tickets_processed", 0) >= int(monthly_limit * 0.8)
     return templates.TemplateResponse(
         request=request,
         name="portal.html",
         context={
             "complaints": complaints,
             "user": user,
+            "client": client,
+            "plan": PLANS.get(client.plan_id if client else "trial", PLANS["trial"]),
+            "usage_summary": usage_summary,
+            "invoices": invoices,
+            "upgrade_recommended": upgrade_recommended,
             "total_complaints": total_complaints,
             "total_leads": total_leads,
             "open_tickets": open_tickets,
@@ -213,6 +231,97 @@ def portal_analytics(request: Request, db: Session = Depends(get_db)):
             "user": user,
         },
     )
+
+
+@router.get("/portal/billing", response_class=HTMLResponse)
+def portal_billing(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    invoices = (
+        db.query(Invoice)
+        .filter(Invoice.client_id == user.client_id)
+        .order_by(Invoice.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_billing.html",
+        context={
+            "user": user,
+            "client": client,
+            "plan": PLANS.get(client.plan_id if client else "trial", PLANS["trial"]),
+            "invoices": invoices,
+        },
+    )
+
+
+@router.get("/portal/usage", response_class=HTMLResponse)
+def portal_usage(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_usage.html",
+        context={
+            "user": user,
+            "usage_summary": get_usage_summary(user.client_id),
+        },
+    )
+
+
+@router.get("/portal/upgrade", response_class=HTMLResponse)
+def portal_upgrade(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    return templates.TemplateResponse(
+        request=request,
+        name="portal_upgrade.html",
+        context={
+            "user": user,
+            "client": client,
+            "plans": PLANS,
+        },
+    )
+
+
+@router.post("/portal/upgrade", response_class=HTMLResponse)
+def portal_upgrade_submit(request: Request, plan_id: str = Form(...), db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    if not client or plan_id not in PLANS:
+        return RedirectResponse(url="/portal/upgrade", status_code=303)
+    plan = PLANS[plan_id]
+    client.plan_id = plan_id
+    client.plan = plan_id
+    client.monthly_ticket_limit = plan["monthly_tickets"]
+    db.commit()
+    return RedirectResponse(url="/portal/billing", status_code=303)
+
+
+@router.get("/portal/invoice/{invoice_id}")
+def portal_invoice_download(invoice_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id, Invoice.client_id == user.client_id).first()
+    if not invoice:
+        return PlainTextResponse("Invoice not found", status_code=404)
+    content = (
+        f"Invoice Number: {invoice.invoice_number}\n"
+        f"Status: {invoice.status}\n"
+        f"Subtotal: {invoice.subtotal}\n"
+        f"Tax: {invoice.tax}\n"
+        f"Total: {invoice.total}\n"
+        f"Payment Method: {invoice.payment_method or '-'}\n"
+    )
+    return PlainTextResponse(content, media_type="text/plain")
 
 
 @router.get("/portal/automation", response_class=HTMLResponse)

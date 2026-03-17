@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
+from app.billing.usage import can_process_ticket, track_ticket_usage
 from app.integrations.email import send_email
 from app.services.action_executor import execute_action
 from app.services.assignment import assign_team
@@ -155,6 +156,17 @@ def _authenticate_client(db: Session, x_api_key: str) -> Client:
     return client
 
 
+def _enforce_usage_limit(client: Client) -> None:
+    if not can_process_ticket(client.id):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "message": "Monthly ticket limit exceeded",
+                "upgrade_url": "/portal/upgrade",
+            },
+        )
+
+
 @router.post("/complaint")
 def process_complaint(
     payload: ComplaintRequest,
@@ -163,6 +175,7 @@ def process_complaint(
 ) -> dict:
     try:
         client = _authenticate_client(db, x_api_key)
+        _enforce_usage_limit(client)
         action = _process_complaint_for_client(
             db=db,
             client=client,
@@ -173,6 +186,7 @@ def process_complaint(
             incoming_ticket_id=payload.ticket_id,
         )
         db.commit()
+        track_ticket_usage(client.id)
     except HTTPException:
         raise
     except OperationalError:
@@ -201,6 +215,7 @@ def process_email_webhook(
 ) -> dict:
     try:
         client = _authenticate_client(db, x_api_key)
+        _enforce_usage_limit(client)
         message = f"{payload.subject} {payload.text}".strip()
         action = _process_complaint_for_client(
             db=db,
@@ -211,6 +226,7 @@ def process_email_webhook(
             customer_phone=None,
         )
         db.commit()
+        track_ticket_usage(client.id)
     except HTTPException:
         raise
     except OperationalError:
@@ -239,6 +255,7 @@ def process_whatsapp_webhook(
 ) -> dict:
     try:
         client = _authenticate_client(db, x_api_key)
+        _enforce_usage_limit(client)
         action = _process_complaint_for_client(
             db=db,
             client=client,
@@ -248,6 +265,7 @@ def process_whatsapp_webhook(
             customer_phone=payload.from_,
         )
         db.commit()
+        track_ticket_usage(client.id)
     except HTTPException:
         raise
     except OperationalError:

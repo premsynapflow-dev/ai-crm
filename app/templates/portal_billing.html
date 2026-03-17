@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Billing</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+        a { color: #1d4ed8; text-decoration: none; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #d1d5db; padding: 10px; text-align: left; }
+        th { background: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <h1>Billing</h1>
+    <p>
+        <a href="/portal">Dashboard</a>
+        <a href="/portal/inbox">Inbox</a>
+        <a href="/portal/billing">Billing</a>
+        <a href="/portal/usage">Usage</a>
+        <a href="/portal/upgrade">Upgrade</a>
+    </p>
+    <p>Current Plan: {{ plan.name }}</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Paid At</th>
+                <th>Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for invoice in invoices %}
+            <tr>
+                <td>{{ invoice.invoice_number }}</td>
+                <td>{{ invoice.status }}</td>
+                <td>{{ invoice.total }}</td>
+                <td>{{ invoice.paid_at or "-" }}</td>
+                <td><a href="/portal/invoice/{{ invoice.id }}">Download</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

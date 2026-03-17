@@ -1,4 +1,4 @@
-﻿name: Python App CI
+name: Python App CI
 
 on:
   push:
@@ -23,15 +23,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Start uvicorn (test mode)
+      - name: Run unit tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-          OPENAI_API_KEY: test-key
-          SLACK_WEBHOOK_URL: https://example.com/webhook
-          SECRET_KEY: test-secret
+          SECRET_KEY: 0123456789abcdef0123456789abcdef
+          ENVIRONMENT: dev
+          GEMINI_API_KEY: test-key
+          SLACK_WEBHOOK_URL: https://hooks.slack.com/services/test/test/test
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: adminpass123
+          JWT_SECRET_KEY: 0123456789abcdef0123456789abcdef
+        run: |
+          python -m unittest discover -s tests
+
+      - name: Start uvicorn smoke test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          SECRET_KEY: 0123456789abcdef0123456789abcdef
+          ENVIRONMENT: dev
+          GEMINI_API_KEY: test-key
+          SLACK_WEBHOOK_URL: https://hooks.slack.com/services/test/test/test
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: adminpass123
+          JWT_SECRET_KEY: 0123456789abcdef0123456789abcdef
         run: |
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --lifespan off &
           UVICORN_PID=$!
           sleep 5
-          curl --fail --silent http://127.0.0.1:8000/docs > /dev/null
+          curl --fail --silent http://127.0.0.1:8000/health > /dev/null
           kill $UVICORN_PID

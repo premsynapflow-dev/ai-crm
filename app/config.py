@@ -1,70 +1,140 @@
 import os
-from dataclasses import dataclass
+from functools import lru_cache
+from typing import Literal
 
 from dotenv import load_dotenv
+from pydantic import Field, ValidationError, field_validator
+
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+except ImportError:  # pragma: no cover - keeps local imports working before deps install
+    from pydantic import BaseModel as BaseSettings  # type: ignore[misc]
+
+    SettingsConfigDict = dict  # type: ignore[assignment]
 
 load_dotenv()
 
 
-@dataclass(frozen=True)
-class Settings:
-    database_url: str
-    openai_api_key: str
-    slack_webhook_url: str
-    secret_key: str
-    admin_username: str
-    admin_password: str
-    gemini_api_key: str
-    smtp_host: str
-    smtp_port: int
-    smtp_user: str
-    smtp_password: str
-    smtp_from: str
-
-
-def get_settings() -> Settings:
-    database_url = os.getenv("DATABASE_URL", "").strip()
-    openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL", "").strip()
-    secret_key = os.getenv("SECRET_KEY", "").strip()
-    admin_username = os.getenv("ADMIN_USERNAME", "").strip()
-    admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
-    gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    smtp_host = os.getenv("SMTP_HOST", "").strip()
-    try:
-        smtp_port = int(os.getenv("SMTP_PORT", "587").strip() or "587")
-    except ValueError:
-        smtp_port = 587
-    smtp_user = os.getenv("SMTP_USER", "").strip()
-    smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
-    smtp_from = os.getenv("SMTP_FROM", "").strip()
-
-    missing = []
-    if not database_url:
-        missing.append("DATABASE_URL")
-    if not slack_webhook_url:
-        missing.append("SLACK_WEBHOOK_URL")
-    if not secret_key:
-        missing.append("SECRET_KEY")
-    if not admin_username:
-        missing.append("ADMIN_USERNAME")
-    if not admin_password:
-        missing.append("ADMIN_PASSWORD")
-
-    if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
-
-    return Settings(
-        database_url=database_url,
-        openai_api_key=openai_api_key,
-        slack_webhook_url=slack_webhook_url,
-        secret_key=secret_key,
-        admin_username=admin_username,
-        admin_password=admin_password,
-        gemini_api_key=gemini_api_key,
-        smtp_host=smtp_host,
-        smtp_port=smtp_port,
-        smtp_user=smtp_user,
-        smtp_password=smtp_password,
-        smtp_from=smtp_from,
+class Settings(BaseSettings):
+    database_url: str = Field(alias="DATABASE_URL")
+    secret_key: str = Field(alias="SECRET_KEY")
+    environment: Literal["dev", "staging", "prod"] = Field(default="dev", alias="ENVIRONMENT")
+    allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://127.0.0.1:8000",
+            "http://localhost:8000",
+            "https://app.neuronyx.ai",
+        ],
+        alias="ALLOWED_ORIGINS",
     )
+
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
+    admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
+    admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
+
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", alias="SMTP_FROM")
+
+    app_base_url: str = Field(default="http://127.0.0.1:8000", alias="APP_BASE_URL")
+    sqlite_queue_path: str = Field(default="data/jobs.db", alias="SQLITE_QUEUE_PATH")
+    request_log_retention_days: int = Field(default=30, alias="REQUEST_LOG_RETENTION_DAYS")
+
+    razorpay_key_id: str = Field(default="", alias="RAZORPAY_KEY_ID")
+    razorpay_key_secret: str = Field(default="", alias="RAZORPAY_KEY_SECRET")
+    razorpay_webhook_secret: str = Field(default="", alias="RAZORPAY_WEBHOOK_SECRET")
+
+    jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
+    access_token_expire_minutes: int = Field(default=60, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
+
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+
+    if SettingsConfigDict is not dict:
+        model_config = SettingsConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            extra="ignore",
+            populate_by_name=True,
+        )
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("DATABASE_URL is required")
+        return value
+
+    @field_validator("secret_key")
+    @classmethod
+    def validate_secret_key(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 32:
+            raise ValueError("SECRET_KEY must be at least 32 characters")
+        return value
+
+    @field_validator("admin_password")
+    @classmethod
+    def validate_admin_password(cls, value: str) -> str:
+        if value and len(value) < 8:
+            raise ValueError("ADMIN_PASSWORD must be at least 8 characters when set")
+        return value
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def default_jwt_secret(cls, value: str, info):  # type: ignore[override]
+        return value or info.data.get("secret_key", "")
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, value):
+        if isinstance(value, list):
+            return [item.strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+
+def _manual_settings_data() -> dict:
+    return {
+        "DATABASE_URL": os.getenv("DATABASE_URL", ""),
+        "SECRET_KEY": os.getenv("SECRET_KEY", ""),
+        "ENVIRONMENT": os.getenv("ENVIRONMENT", "dev"),
+        "ALLOWED_ORIGINS": os.getenv(
+            "ALLOWED_ORIGINS",
+            "http://127.0.0.1:8000,http://localhost:8000,https://app.neuronyx.ai",
+        ),
+        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
+        "SLACK_WEBHOOK_URL": os.getenv("SLACK_WEBHOOK_URL", ""),
+        "ADMIN_USERNAME": os.getenv("ADMIN_USERNAME", "admin"),
+        "ADMIN_PASSWORD": os.getenv("ADMIN_PASSWORD", ""),
+        "SMTP_HOST": os.getenv("SMTP_HOST", ""),
+        "SMTP_PORT": os.getenv("SMTP_PORT", "587"),
+        "SMTP_USER": os.getenv("SMTP_USER", ""),
+        "SMTP_PASSWORD": os.getenv("SMTP_PASSWORD", ""),
+        "SMTP_FROM": os.getenv("SMTP_FROM", ""),
+        "APP_BASE_URL": os.getenv("APP_BASE_URL", "http://127.0.0.1:8000"),
+        "SQLITE_QUEUE_PATH": os.getenv("SQLITE_QUEUE_PATH", "data/jobs.db"),
+        "REQUEST_LOG_RETENTION_DAYS": os.getenv("REQUEST_LOG_RETENTION_DAYS", "30"),
+        "RAZORPAY_KEY_ID": os.getenv("RAZORPAY_KEY_ID", ""),
+        "RAZORPAY_KEY_SECRET": os.getenv("RAZORPAY_KEY_SECRET", ""),
+        "RAZORPAY_WEBHOOK_SECRET": os.getenv("RAZORPAY_WEBHOOK_SECRET", ""),
+        "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY", ""),
+        "ACCESS_TOKEN_EXPIRE_MINUTES": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"),
+        "REFRESH_TOKEN_EXPIRE_DAYS": os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"),
+        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+    }
+
+
+@lru_cache
+def get_settings() -> Settings:
+    try:
+        if hasattr(Settings, "model_config") and SettingsConfigDict is not dict:
+            return Settings()
+        return Settings(**_manual_settings_data())
+    except ValidationError as exc:
+        raise RuntimeError(str(exc)) from exc

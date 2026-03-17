@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Usage</title>
+</head>
+<body>
+    <h1>Usage</h1>
+    <p><a href="/portal">Back to Dashboard</a></p>
+    <ul>
+        <li>Plan: {{ usage_summary.plan_id }}</li>
+        <li>Tickets Processed: {{ usage_summary.tickets_processed }}</li>
+        <li>Monthly Limit: {{ usage_summary.monthly_limit }}</li>
+        <li>Overage: {{ usage_summary.overage }}</li>
+        <li>Overage Cost: {{ usage_summary.overage_cost }}</li>
+        <li>Period Start: {{ usage_summary.period_start }}</li>
+        <li>Period End: {{ usage_summary.period_end }}</li>
+    </ul>
+</body>
+</html>
