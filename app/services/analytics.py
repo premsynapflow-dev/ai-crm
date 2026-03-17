@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 
-from app.db.models import Complaint, MaterializedAnalytics
+from app.db.models import Complaint, EventLog, MaterializedAnalytics
 
 
 def complaint_category_breakdown(db, client_id):
@@ -106,6 +106,45 @@ def customer_satisfaction_score(db, client_id):
     return {"customer_satisfaction_score": round(float(score or 0.0), 2)}
 
 
+def ai_resolution_rate(db, client_id):
+    total = db.query(func.count(Complaint.id)).filter(
+        Complaint.client_id == client_id,
+    ).scalar() or 0
+    if total == 0:
+        return {"ai_resolution_rate": 0.0}
+
+    resolved_by_ai = db.query(func.count(Complaint.id)).filter(
+        Complaint.client_id == client_id,
+        Complaint.ai_reply_sent_at.isnot(None),
+        Complaint.resolution_status == "resolved",
+    ).scalar() or 0
+    return {"ai_resolution_rate": round(resolved_by_ai / total, 4)}
+
+
+def escalation_rate(db, client_id):
+    total = db.query(func.count(Complaint.id)).filter(
+        Complaint.client_id == client_id,
+    ).scalar() or 0
+    if total == 0:
+        return {"escalation_rate": 0.0}
+
+    escalated = db.query(func.count(Complaint.id)).filter(
+        Complaint.client_id == client_id,
+        (Complaint.ai_reply_status == "agent_review") | (Complaint.status == "ESCALATE_HIGH"),
+    ).scalar() or 0
+    return {"escalation_rate": round(escalated / total, 4)}
+
+
+def complaint_spike_alerts(db, client_id, hours=24):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    count = db.query(func.count(EventLog.id)).filter(
+        EventLog.client_id == client_id,
+        EventLog.event_type == "complaint_spike_alert",
+        EventLog.created_at >= cutoff,
+    ).scalar() or 0
+    return {"complaint_spike_alerts": count}
+
+
 def cache_metric(db, client_id, metric_key, metric_value, period_start=None, period_end=None):
     cached = (
         db.query(MaterializedAnalytics)
@@ -137,6 +176,9 @@ def analytics_overview(db, client_id):
     overview = {
         "trend": trend_detection(db, client_id, days=7),
         "response_time": response_time_tracking(db, client_id),
+        "ai_resolution": ai_resolution_rate(db, client_id),
+        "escalation": escalation_rate(db, client_id),
+        "spike_alerts": complaint_spike_alerts(db, client_id),
         "csat": customer_satisfaction_score(db, client_id),
         "sources": top_complaint_sources(db, client_id),
     }

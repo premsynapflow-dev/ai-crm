@@ -7,7 +7,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -20,8 +19,7 @@ from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
 from app.config import get_settings
 from app.dashboard import router as dashboard_router
-from app.db.models import Base
-from app.db.session import engine
+from app.db.schema_guard import ensure_schema
 from app.intake.webhook import router as webhook_router
 from app.middleware.rate_limiter import DatabaseRateLimitMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
@@ -129,51 +127,11 @@ def landing_page():
 def widget_js() -> RedirectResponse:
     return RedirectResponse(url="/public/widget.js")
 
-
-def _ensure_required_columns() -> None:
-    required_columns = {
-        "complaints": {
-            "first_response_at": "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMP WITH TIME ZONE",
-            "response_time_seconds": "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS response_time_seconds INTEGER",
-            "resolved_at": "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP WITH TIME ZONE",
-        },
-        "job_queue": {
-            "last_error": "ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS last_error TEXT",
-        },
-    }
-
-    with engine.begin() as conn:
-        inspector = inspect(conn)
-        tables = set(inspector.get_table_names())
-
-        for table_name, columns in required_columns.items():
-            if table_name not in tables:
-                logger.warning("Schema safety: table '%s' does not exist yet; create_all() will create it.", table_name)
-                continue
-
-            existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
-            missing_columns = [column_name for column_name in columns if column_name not in existing_columns]
-            if missing_columns:
-                logger.warning("Schema safety: table '%s' is missing columns %s", table_name, ", ".join(missing_columns))
-                for column_name in missing_columns:
-                    conn.execute(text(columns[column_name]))
-
-        conn.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_complaints_response_time
-                ON complaints (response_time_seconds)
-                """
-            )
-        )
-
-
 @app.on_event("startup")
 def on_startup() -> None:
     global worker_thread
     try:
-        _ensure_required_columns()
-        Base.metadata.create_all(bind=engine)
+        ensure_schema()
         logger.info("Database schema ensured.")
     except SQLAlchemyError as exc:
         logger.error("Database unavailable during startup. Error: %s", exc)

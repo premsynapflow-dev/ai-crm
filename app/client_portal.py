@@ -10,9 +10,14 @@ from app.billing.plans import PLANS
 from app.billing.usage import get_usage_summary
 from app.db.models import Client, ClientUser, Complaint, Invoice
 from app.db.session import get_db
+from app.intelligence.reply_engine import generate_ai_reply
 from app.integrations.slack import send_slack_alert
+from app.replies.send_reply import send_complaint_reply
+from app.services.customer_history import get_customer_memory
+from app.services.event_logger import log_event
 from app.security.passwords import hash_password, verify_password
 from app.security.session import BadSignature, create_session, decode_session
+from app.services.timeline import build_ticket_timeline
 from app.utils.request_parser import parse_request
 
 router = APIRouter()
@@ -101,6 +106,8 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
     if not user:
         return RedirectResponse(url="/portal/login", status_code=303)
 
+    from app.analytics.customer_pulse import generate_customer_pulse
+
     complaints = (
         db.query(Complaint)
         .filter(Complaint.client_id == user.client_id)
@@ -131,6 +138,18 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
         .limit(5)
         .all()
     )
+    ai_suggestions = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == user.client_id,
+            Complaint.ai_reply.isnot(None),
+            Complaint.ai_reply_status.in_(["pending", "agent_review"]),
+        )
+        .order_by(Complaint.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    pulse = generate_customer_pulse(db, user.client_id)
     monthly_limit = usage_summary.get("monthly_limit", 0) or 1
     upgrade_recommended = usage_summary.get("tickets_processed", 0) >= int(monthly_limit * 0.8)
     return templates.TemplateResponse(
@@ -144,6 +163,8 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
             "usage_summary": usage_summary,
             "invoices": invoices,
             "upgrade_recommended": upgrade_recommended,
+            "ai_suggestions": ai_suggestions,
+            "pulse": pulse,
             "total_complaints": total_complaints,
             "total_leads": total_leads,
             "open_tickets": open_tickets,
@@ -234,17 +255,21 @@ def portal_analytics(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse(url="/portal/login", status_code=303)
 
+    from app.analytics.customer_pulse import generate_customer_pulse
     from app.services.analytics import (
+        analytics_overview,
         complaint_category_breakdown,
         sentiment_distribution,
         urgency_distribution,
         top_complaint_sources,
     )
 
+    overview = analytics_overview(db, user.client_id)
     categories = complaint_category_breakdown(db, user.client_id)
     sentiment = sentiment_distribution(db, user.client_id)
     urgency = urgency_distribution(db, user.client_id)
     sources = top_complaint_sources(db, user.client_id)
+    pulse = generate_customer_pulse(db, user.client_id)
 
     return templates.TemplateResponse(
         request=request,
@@ -254,9 +279,22 @@ def portal_analytics(request: Request, db: Session = Depends(get_db)):
             "sentiment": sentiment,
             "urgency": urgency,
             "sources": sources,
+            "overview": overview,
+            "pulse": pulse,
             "user": user,
         },
     )
+
+
+@router.get("/client/analytics/pulse")
+def customer_pulse_endpoint(request: Request, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    from app.analytics.customer_pulse import generate_customer_pulse
+
+    return generate_customer_pulse(db, user.client_id)
 
 
 @router.get("/portal/billing", response_class=HTMLResponse)
@@ -408,7 +446,6 @@ def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db
     if not user:
         return RedirectResponse(url="/portal/login", status_code=303)
 
-    from app.services.customer_timeline import get_customer_timeline
     from app.services.reply_generator import generate_reply
 
     messages = (
@@ -422,13 +459,16 @@ def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db
     )
 
     customer_email = messages[0].customer_email if messages else None
-    timeline = get_customer_timeline(db, customer_email)
+    timeline = build_ticket_timeline(db, user.client_id, ticket_id)
+    latest_message = messages[-1] if messages else None
     suggested_reply = ""
-    if messages:
+    if latest_message and latest_message.ai_reply:
+        suggested_reply = latest_message.ai_reply
+    elif latest_message:
         suggested_reply = generate_reply(
-            messages[-1].summary,
-            messages[-1].intent,
-            messages[-1].category,
+            latest_message.summary,
+            latest_message.intent,
+            latest_message.category,
         )
 
     return templates.TemplateResponse(
@@ -440,9 +480,164 @@ def portal_ticket(request: Request, ticket_id: str, db: Session = Depends(get_db
             "history": timeline,
             "timeline": timeline,
             "suggested_reply": suggested_reply,
+            "latest_message": latest_message,
             "user": user,
         },
     )
+
+
+@router.get("/client/ticket/{ticket_id}/timeline")
+def ticket_timeline_endpoint(request: Request, ticket_id: str, db: Session = Depends(get_db)):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"events": build_ticket_timeline(db, user.client_id, ticket_id)}
+
+
+@router.post("/client/ai/suggest-reply")
+async def suggest_ai_reply(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    body = await parse_request(request)
+    complaint_id = body.get("complaint_id")
+    ticket_id = body.get("ticket_id")
+    complaint = None
+
+    if complaint_id:
+        complaint = db.query(Complaint).filter(
+            Complaint.id == complaint_id,
+            Complaint.client_id == user.client_id,
+        ).first()
+    elif ticket_id:
+        complaint = (
+            db.query(Complaint)
+            .filter(
+                Complaint.ticket_id == ticket_id,
+                Complaint.client_id == user.client_id,
+            )
+            .order_by(Complaint.created_at.desc())
+            .first()
+        )
+
+    if not complaint:
+        return JSONResponse(status_code=404, content={"error": "Complaint not found"})
+
+    customer_history = get_customer_memory(db, complaint.customer_email, limit=5)
+    suggestion = generate_ai_reply(complaint, customer_history)
+    complaint.ai_reply = suggestion["reply_text"]
+    complaint.ai_reply_confidence = suggestion["confidence_score"]
+    complaint.ai_reply_status = "pending"
+    log_event(
+        db,
+        complaint.client_id,
+        "ai_reply_regenerated",
+        {
+            "ticket_id": complaint.ticket_id,
+            "complaint_id": str(complaint.id),
+            "summary": complaint.ai_reply,
+            "confidence": complaint.ai_reply_confidence,
+        },
+    )
+    db.commit()
+    return suggestion
+
+
+@router.post("/client/reply/approve")
+def approve_ai_reply(
+    request: Request,
+    complaint_id: str = Form(...),
+    ticket_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    complaint = db.query(Complaint).filter(
+        Complaint.id == complaint_id,
+        Complaint.client_id == user.client_id,
+    ).first()
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    if not complaint or not client:
+        return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
+
+    send_complaint_reply(
+        db=db,
+        complaint=complaint,
+        client=client,
+        reply_text=complaint.ai_reply,
+    )
+    db.commit()
+    return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
+
+
+@router.post("/client/reply/edit")
+def edit_ai_reply(
+    request: Request,
+    complaint_id: str = Form(...),
+    ticket_id: str = Form(...),
+    reply_text: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    complaint = db.query(Complaint).filter(
+        Complaint.id == complaint_id,
+        Complaint.client_id == user.client_id,
+    ).first()
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    if not complaint or not client:
+        return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
+
+    complaint.ai_reply = reply_text.strip()
+    send_complaint_reply(
+        db=db,
+        complaint=complaint,
+        client=client,
+        reply_text=complaint.ai_reply,
+    )
+    db.commit()
+    return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
+
+
+@router.post("/client/reply/escalate")
+def escalate_ai_reply(
+    request: Request,
+    complaint_id: str = Form(...),
+    ticket_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_current_client_user(request, db)
+    if not user:
+        return RedirectResponse(url="/portal/login", status_code=303)
+
+    complaint = db.query(Complaint).filter(
+        Complaint.id == complaint_id,
+        Complaint.client_id == user.client_id,
+    ).first()
+    if complaint:
+        complaint.ai_reply_status = "agent_review"
+        complaint.status = "ESCALATE_HIGH"
+        log_event(
+            db,
+            complaint.client_id,
+            "agent_escalation",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.summary,
+            },
+        )
+        db.commit()
+
+    return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
 
 
 @router.get("/portal/settings", response_class=HTMLResponse)

@@ -17,9 +17,10 @@ def send_slack_alert(text: str, webhook_url: str | None = None) -> None:
 
     if not url:
         logger.warning("No Slack webhook URL configured - alert skipped.")
-        return
+        return False
 
     payload = {"text": text}
     with httpx.Client(timeout=10.0) as client:
         response = client.post(url, json=payload)
         response.raise_for_status()
+    return True

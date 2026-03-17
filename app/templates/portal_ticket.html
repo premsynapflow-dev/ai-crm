@@ -13,6 +13,10 @@
         .meta { color: #6b7280; font-size: 14px; margin-top: 8px; }
         ul { padding-left: 18px; }
         textarea { width: 100%; min-height: 180px; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+        button { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; }
+        button.primary { background: #111827; color: #fff; border-color: #111827; }
+        .timeline-item { border-left: 3px solid #d1d5db; padding-left: 12px; margin-bottom: 12px; }
     </style>
 </head>
 <body>
@@ -36,6 +40,7 @@
                 <div>{{ message.summary }}</div>
                 <div class="meta">Source: {{ message.source }}</div>
                 <div class="meta">Priority: {{ message.priority }}</div>
+                <div class="meta">AI Reply Status: {{ message.ai_reply_status or "-" }}</div>
                 <div class="meta">Created: {{ message.created_at }}</div>
             </div>
             {% endfor %}
@@ -45,28 +50,65 @@
             <h2>Customer Timeline</h2>
             <div class="card">
                 {% if timeline %}
-                <ul>
                     {% for item in timeline %}
-                    <li>
+                    <div class="timeline-item">
+                        <div><strong>{{ item.type }}</strong></div>
                         <div>{{ item.summary }}</div>
-                        <div class="meta">{{ item.created_at }}</div>
-                    </li>
+                        <div class="meta">{{ item.timestamp }}</div>
+                    </div>
                     {% endfor %}
-                </ul>
                 {% else %}
                 <div>No customer timeline available.</div>
                 {% endif %}
             </div>
 
-            <h2>AI Suggested Reply</h2>
+            <h2>AI Suggestion</h2>
             <div class="card">
                 {% if suggested_reply %}
-                <textarea readonly>{{ suggested_reply }}</textarea>
+                {% if latest_message %}
+                <div class="meta">Confidence: {{ latest_message.ai_reply_confidence if latest_message.ai_reply_confidence is not none else "-" }}</div>
+                <div class="meta">Status: {{ latest_message.ai_reply_status or "-" }}</div>
+                {% endif %}
+                <form method="POST" action="/client/reply/edit">
+                    <input type="hidden" name="complaint_id" value="{{ latest_message.id if latest_message else '' }}" />
+                    <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
+                    <textarea name="reply_text">{{ suggested_reply }}</textarea>
+                    <div class="actions">
+                        <button class="primary" type="submit">Edit &amp; Send</button>
+                    </div>
+                </form>
+                {% if latest_message %}
+                <div class="actions">
+                    <form method="POST" action="/client/reply/approve">
+                        <input type="hidden" name="complaint_id" value="{{ latest_message.id }}" />
+                        <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
+                        <button class="primary" type="submit">Approve &amp; Send</button>
+                    </form>
+                    <form method="POST" action="/client/reply/escalate">
+                        <input type="hidden" name="complaint_id" value="{{ latest_message.id }}" />
+                        <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
+                        <button type="submit">Escalate to Human</button>
+                    </form>
+                    <button type="button" onclick="regenerateSuggestion('{{ latest_message.id }}', '{{ ticket_id }}')">Regenerate</button>
+                </div>
+                {% endif %}
                 {% else %}
                 <div>No suggested reply available.</div>
                 {% endif %}
             </div>
         </div>
     </div>
+    <script>
+        async function regenerateSuggestion(complaintId, ticketId) {
+            const response = await fetch("/client/ai/suggest-reply", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ complaint_id: complaintId, ticket_id: ticketId })
+            });
+            if (response.ok) {
+                window.location.reload();
+            }
+        }
+    </script>
 </body>
 </html>

@@ -9,7 +9,7 @@ settings = get_settings()
 def send_email(to_email, subject, body):
 
     if not settings.smtp_host:
-        return
+        return False
 
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -23,3 +23,4 @@ def send_email(to_email, subject, body):
         server.login(settings.smtp_user, settings.smtp_password)
 
         server.sendmail(settings.smtp_from, [to_email], msg.as_string())
+    return True

@@ -66,7 +66,11 @@ class Complaint(Base):
     response_time_seconds = Column(Integer, nullable=True)
     first_response_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
-    customer_satisfaction_score = Column(Float, nullable=True)
+    customer_satisfaction_score = Column(Integer, nullable=True)
+    ai_reply = Column(Text, nullable=True)
+    ai_reply_confidence = Column(Float, nullable=True)
+    ai_reply_status = Column(String(50), nullable=False, default="pending")
+    ai_reply_sent_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), server_default=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="complaints")

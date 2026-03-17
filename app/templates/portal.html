@@ -83,6 +83,39 @@
         {% endif %}
     </div>
 
+    <div class="panel">
+        <h2>Customer Pulse Dashboard</h2>
+        <p><strong>Customer Sentiment:</strong> {{ pulse.sentiment_trend.direction }} ({{ pulse.sentiment_trend.current_avg }})</p>
+        <p><strong>Top Issues:</strong></p>
+        <ul>
+            {% for issue in pulse.top_issues %}
+            <li>{{ issue.category }}: {{ issue.count }}</li>
+            {% endfor %}
+        </ul>
+        <p><strong>AI Suggested Actions:</strong></p>
+        <ul>
+            {% for action in pulse.suggested_actions %}
+            <li>{{ action }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="panel">
+        <h2>AI Reply Suggestions</h2>
+        {% if ai_suggestions %}
+        <ul>
+            {% for item in ai_suggestions %}
+            <li>
+                <a href="/portal/ticket/{{ item.ticket_id }}">{{ item.ticket_id }}</a>:
+                {{ item.ai_reply }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No pending AI suggestions right now.</p>
+        {% endif %}
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -103,6 +136,8 @@
                 <th>assigned_team</th>
                 <th>recommended_action</th>
                 <th>confidence</th>
+                <th>ai_reply_status</th>
+                <th>ai_reply</th>
                 <th>created_at</th>
                 <th>Action</th>
             </tr>
@@ -127,6 +162,8 @@
                 <td>{{ complaint.assigned_team or "-" }}</td>
                 <td>{{ complaint.recommended_action or "-" }}</td>
                 <td>{{ complaint.confidence if complaint.confidence is not none else "-" }}</td>
+                <td>{{ complaint.ai_reply_status or "-" }}</td>
+                <td>{{ complaint.ai_reply or "-" }}</td>
                 <td>{{ complaint.created_at }}</td>
                 <td>
                     <button type="button" onclick="toggleComplaintResolution('{{ complaint.id }}')">

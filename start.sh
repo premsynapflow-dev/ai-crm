@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-export PYTHONUNBUFFERED=1
-PORT_VALUE="${PORT:-8000}"
+python -m app.db.schema_guard
 
-alembic upgrade head
-
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port "$PORT_VALUE"
+exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"

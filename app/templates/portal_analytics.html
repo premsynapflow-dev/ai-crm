@@ -8,8 +8,10 @@
         body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
         a { color: #1d4ed8; text-decoration: none; }
         a:hover { text-decoration: underline; }
+        .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 16px; margin-bottom: 16px; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px; }
         .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; background: #fff; }
+        .metric { font-size: 28px; font-weight: bold; margin-top: 6px; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
         th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
         th { background: #f3f4f6; }
@@ -27,6 +29,29 @@
         <a href="/portal/settings">Settings</a>
         <a href="/portal/logout">Logout</a>
     </p>
+
+    <div class="summary-grid">
+        <div class="card">
+            <div>AI Resolution Rate</div>
+            <div class="metric">{{ (overview.ai_resolution.ai_resolution_rate * 100) | round(1) }}%</div>
+        </div>
+        <div class="card">
+            <div>Average Response Time</div>
+            <div class="metric">{{ overview.response_time.average_response_time_seconds | round(0) }}s</div>
+        </div>
+        <div class="card">
+            <div>Escalation Rate</div>
+            <div class="metric">{{ (overview.escalation.escalation_rate * 100) | round(1) }}%</div>
+        </div>
+        <div class="card">
+            <div>Customer Satisfaction</div>
+            <div class="metric">{{ overview.csat.customer_satisfaction_score }}</div>
+        </div>
+        <div class="card">
+            <div>Spike Alerts (24h)</div>
+            <div class="metric">{{ overview.spike_alerts.complaint_spike_alerts }}</div>
+        </div>
+    </div>
 
     <div class="grid">
         <div class="card">
@@ -80,6 +105,41 @@
                 <tbody>
                     {% for source, count in sources %}
                     <tr><td>{{ source or "-" }}</td><td>{{ count }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Customer Pulse Dashboard</h2>
+            <p><strong>Customer Sentiment:</strong> {{ pulse.sentiment_trend.direction }} ({{ pulse.sentiment_trend.current_avg }})</p>
+            <h3>Top Issues</h3>
+            <ul>
+                {% for issue in pulse.top_issues %}
+                <li>{{ issue.category }}: {{ issue.count }}</li>
+                {% endfor %}
+            </ul>
+            <h3>AI Suggested Actions</h3>
+            <ul>
+                {% for action in pulse.suggested_actions %}
+                <li>{{ action }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2>Top Angry Customers</h2>
+            <table>
+                <thead>
+                    <tr><th>Email</th><th>Complaints</th><th>Avg Sentiment</th></tr>
+                </thead>
+                <tbody>
+                    {% for customer in pulse.churn_risk_customers %}
+                    <tr>
+                        <td>{{ customer.customer_email }}</td>
+                        <td>{{ customer.complaint_count }}</td>
+                        <td>{{ customer.avg_sentiment }}</td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>

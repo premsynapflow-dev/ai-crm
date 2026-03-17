@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session
 from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
+from app.intelligence.reply_decision import decide_reply_action
+from app.intelligence.reply_engine import generate_ai_reply
 from app.billing.usage import can_process_ticket, track_ticket_usage
-from app.integrations.email import send_email
+from app.replies.send_reply import send_complaint_reply
 from app.services.action_executor import execute_action
 from app.services.assignment import assign_team
-from app.services.auto_reply import generate_auto_reply
-from app.services.response_tracking import mark_first_response
+from app.services.customer_history import get_customer_memory
+from app.services.event_logger import log_event
 from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
 from app.utils.ticket import generate_thread_id, generate_ticket_id
@@ -111,6 +113,34 @@ def _process_complaint_for_client(
     for rule in rules:
         execute_action(rule, complaint, client)
 
+    customer_history = get_customer_memory(db, customer_email, limit=5)
+    reply_payload = generate_ai_reply(complaint, customer_history)
+    complaint.ai_reply = reply_payload["reply_text"]
+    complaint.ai_reply_confidence = reply_payload["confidence_score"]
+    reply_action = decide_reply_action(complaint.ai_reply_confidence)
+    if reply_action == "auto_send_reply":
+        send_result = send_complaint_reply(
+            db=db,
+            complaint=complaint,
+            client=client,
+            reply_text=complaint.ai_reply,
+        )
+        if not send_result["sent"]:
+            complaint.ai_reply_status = "agent_review"
+    else:
+        complaint.ai_reply_status = "agent_review"
+        log_event(
+            db,
+            client.id,
+            "ai_reply_suggested",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.ai_reply,
+                "confidence": complaint.ai_reply_confidence,
+            },
+        )
+
     dispatch_action(
         action=action,
         client_name=client.name,
@@ -125,18 +155,6 @@ def _process_complaint_for_client(
         customer_email=customer_email,
         customer_phone=customer_phone,
     )
-
-    if customer_email:
-        reply = generate_auto_reply(summary, ticket_id)
-        try:
-            send_email(
-                to_email=customer_email,
-                subject=f"Support Ticket {ticket_id}",
-                body=reply,
-            )
-            mark_first_response(db, complaint)
-        except Exception as exc:
-            logger.warning("Auto reply email failed for ticket %s: %s", ticket_id, exc)
 
     return action
 
