@@ -3,7 +3,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from passlib.context import CryptContext
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -12,22 +11,26 @@ from app.billing.usage import get_usage_summary
 from app.db.models import Client, ClientUser, Complaint, Invoice
 from app.db.session import get_db
 from app.integrations.slack import send_slack_alert
+from app.security.passwords import hash_password, verify_password
+from app.security.session import BadSignature, create_session, decode_session
+from app.utils.request_parser import parse_request
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def verify_password(plain_password: str, password_hash: str) -> bool:
-    return pwd_context.verify(plain_password, password_hash)
 
 
 def _get_current_client_user(request: Request, db: Session) -> Optional[ClientUser]:
     user_id = request.session.get("client_user_id")
+    if not user_id:
+        session_token = request.cookies.get("portal_session")
+        if session_token:
+            try:
+                data = decode_session(session_token)
+                user_id = data.get("user_id")
+                if user_id:
+                    request.session["client_user_id"] = str(user_id)
+            except BadSignature:
+                return None
     if not user_id:
         return None
     return db.query(ClientUser).filter(ClientUser.id == user_id).first()
@@ -43,29 +46,52 @@ def portal_login_page(request: Request) -> HTMLResponse:
 
 
 @router.post("/portal/login", response_class=HTMLResponse)
-def portal_login_submit(
+async def portal_login_submit(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
     user = db.query(ClientUser).filter(ClientUser.email == email).first()
-    if user and verify_password(password, user.password_hash):
-        request.session["client_user_id"] = str(user.id)
-        return RedirectResponse(url="/portal", status_code=303)
+    if not user:
+        return templates.TemplateResponse(
+            request=request,
+            name="portal_login.html",
+            context={"error": "Invalid email or password"},
+            status_code=401,
+        )
 
-    return templates.TemplateResponse(
-        request=request,
-        name="portal_login.html",
-        context={"error": "Invalid email or password"},
-        status_code=401,
+    try:
+        password_ok = verify_password(password, user.password_hash)
+    except Exception:
+        password_ok = False
+
+    if not password_ok:
+        return templates.TemplateResponse(
+            request=request,
+            name="portal_login.html",
+            context={"error": "Invalid email or password"},
+            status_code=401,
+        )
+
+    request.session["client_user_id"] = str(user.id)
+    response = RedirectResponse(url="/portal", status_code=303)
+    response.set_cookie(
+        key="portal_session",
+        value=create_session(str(user.id)),
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
     )
-
+    return response
 
 @router.get("/portal/logout")
 def portal_logout(request: Request):
     request.session.pop("client_user_id", None)
-    return RedirectResponse(url="/portal/login", status_code=303)
+    response = RedirectResponse(url="/portal/login", status_code=303)
+    response.delete_cookie("portal_session")
+    return response
 
 
 @router.get("/portal", response_class=HTMLResponse)
@@ -466,7 +492,7 @@ def portal_settings_submit(
 
 
 @router.post("/portal/settings/test")
-def portal_settings_test(
+async def portal_settings_test(
     request: Request,
     db: Session = Depends(get_db),
 ) -> JSONResponse:
@@ -475,13 +501,8 @@ def portal_settings_test(
     if not user:
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
-    import asyncio
-    import json as _json
-
-    body = {}
     try:
-        raw = asyncio.run(request.body())
-        body = _json.loads(raw)
+        body = await parse_request(request)
     except Exception:
         return JSONResponse(status_code=400, content={"error": "Invalid request"})
 

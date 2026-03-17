@@ -85,18 +85,7 @@ async def logging_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def error_handling_middleware(request: Request, call_next):
-    try:
-        return await call_next(request)
-    except Exception as exc:
-        logger.exception("Unhandled request error [%s]: %s", getattr(request.state, "request_id", "n/a"), exc)
-        record_metric("error_count", 1, {"path": request.url.path, "status": 500})
-        return JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Internal server error",
-                "request_id": getattr(request.state, "request_id", "n/a"),
-            },
-        )
+    return await call_next(request)
 
 
 @app.exception_handler(RequestValidationError)
@@ -107,6 +96,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error": "Invalid request data",
             "details": exc.errors(),
             "request_id": getattr(request.state, "request_id", "n/a"),
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def internal_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    logger.error("Unhandled error %s", request_id, exc_info=exc)
+    record_metric("error_count", 1, {"path": request.url.path, "status": 500})
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "request_id": request_id,
         },
     )
 

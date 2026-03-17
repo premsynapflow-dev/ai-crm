@@ -4,6 +4,7 @@ from app.db.models import JobQueue
 from app.db.session import SessionLocal
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
+from app.services.response_tracking import mark_first_response_by_id
 
 
 def enqueue_job(job_type, payload, scheduled_for=None):
@@ -32,6 +33,16 @@ def _process_job(job):
             subject=job.payload.get("subject", "Neuronyx Notification"),
             body=job.payload.get("body", ""),
         )
+        complaint_id = job.payload.get("complaint_id")
+        if complaint_id:
+            db = SessionLocal()
+            try:
+                if mark_first_response_by_id(db, complaint_id):
+                    db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
     elif job.job_type == "send_slack":
         send_slack_alert(
             job.payload.get("text", ""),

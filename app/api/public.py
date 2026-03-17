@@ -6,10 +6,10 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, ValidationError
 
 from app.billing.plans import PLANS
-from app.client_portal import hash_password
 from app.db.models import Client, ClientUser, DemoRequest, WaitlistEntry
 from app.db.session import SessionLocal
 from app.onboarding.flows import apply_trial_plan, enqueue_welcome_sequence
+from app.security.passwords import hash_password
 from app.utils.request_parser import parse_request
 
 router = APIRouter(prefix="/api", tags=["public"])
@@ -34,6 +34,7 @@ async def signup(request: Request):
         raise RequestValidationError(exc.errors()) from exc
 
     db = SessionLocal()
+    client = None
     try:
         existing_user = db.query(ClientUser).filter(ClientUser.email == payload.email).first()
         if existing_user:
@@ -41,12 +42,14 @@ async def signup(request: Request):
 
         client = Client(
             name=payload.company_name,
+            plan="trial",
             api_key=secrets.token_hex(24),
             created_at=datetime.now(timezone.utc),
         )
         apply_trial_plan(client)
         db.add(client)
-        db.flush()
+        db.commit()
+        db.refresh(client)
 
         user = ClientUser(
             client_id=client.id,
@@ -66,6 +69,12 @@ async def signup(request: Request):
         raise
     except Exception:
         db.rollback()
+        if client is not None:
+            try:
+                db.delete(client)
+                db.commit()
+            except Exception:
+                db.rollback()
         raise
     finally:
         db.close()

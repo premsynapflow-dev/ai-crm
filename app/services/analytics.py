@@ -83,6 +83,7 @@ def category_breakdown_over_time(db, client_id, days=30):
 
 
 def response_time_tracking(db, client_id):
+    # Use the stored response_time_seconds column so analytics stays cheap at scale.
     average = db.query(func.avg(Complaint.response_time_seconds)).filter(
         Complaint.client_id == client_id,
         Complaint.response_time_seconds.isnot(None),

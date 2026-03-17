@@ -7,6 +7,7 @@ from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.chatbot import generate_reply
 from app.intelligence.classifier import classify_message, summarize_if_needed
+from app.services.response_tracking import mark_first_response
 from app.utils.ticket import generate_thread_id, generate_ticket_id
 
 router = APIRouter(prefix="/api", tags=["chatbot"])
@@ -54,6 +55,9 @@ def chat_endpoint(payload: ChatRequest, x_api_key: str = Header(default="", alia
         status="CHATBOT_REPLY",
     )
     db.add(complaint)
+    db.flush()
+    if ai_result.get("reply"):
+        mark_first_response(db, complaint)
     db.commit()
     track_ticket_usage(client.id)
 

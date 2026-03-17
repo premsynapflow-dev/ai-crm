@@ -5,10 +5,10 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.client_portal import verify_password
 from app.config import get_settings
 from app.db.models import ClientUser
 from app.db.session import get_db
+from app.security.passwords import verify_password
 
 router = APIRouter(prefix="/api/v1/auth", tags=["api-auth"])
 settings = get_settings()
@@ -35,7 +35,13 @@ def decode_token(token: str, salt: str, max_age: int):
 @router.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(ClientUser).filter(ClientUser.email == payload.email).first()
-    if not user or not verify_password(payload.password, user.password_hash):
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    try:
+        password_ok = verify_password(payload.password, user.password_hash)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid credentials") from exc
+    if not password_ok:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     now = datetime.now(timezone.utc)
     access_token = _create_token({"sub": str(user.id), "type": "access", "iat": now.isoformat()}, "access")

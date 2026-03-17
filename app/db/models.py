@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -41,6 +42,7 @@ class Client(Base):
 
 class Complaint(Base):
     __tablename__ = "complaints"
+    __table_args__ = (Index("idx_complaints_response_time", "response_time_seconds"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
@@ -61,11 +63,11 @@ class Complaint(Base):
     follow_up_status = Column(String(20), default="pending")
     resolution_status = Column(String(20), default="open")
     status = Column(String(50), nullable=False, default="PENDING")
-    response_time_seconds = Column(Float, nullable=True)
+    response_time_seconds = Column(Integer, nullable=True)
     first_response_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     customer_satisfaction_score = Column(Float, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=func.now(), server_default=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="complaints")
 

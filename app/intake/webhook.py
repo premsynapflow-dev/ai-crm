@@ -13,6 +13,7 @@ from app.integrations.email import send_email
 from app.services.action_executor import execute_action
 from app.services.assignment import assign_team
 from app.services.auto_reply import generate_auto_reply
+from app.services.response_tracking import mark_first_response
 from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
 from app.utils.ticket import generate_thread_id, generate_ticket_id
@@ -133,6 +134,7 @@ def _process_complaint_for_client(
                 subject=f"Support Ticket {ticket_id}",
                 body=reply,
             )
+            mark_first_response(db, complaint)
         except Exception as exc:
             logger.warning("Auto reply email failed for ticket %s: %s", ticket_id, exc)
 

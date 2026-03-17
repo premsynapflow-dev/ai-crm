@@ -22,7 +22,7 @@ statements = [
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP WITH TIME ZONE;",
     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS slack_webhook_url VARCHAR(500);",
     "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS assigned_team VARCHAR(50);",
-    "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS response_time_seconds DOUBLE PRECISION;",
+    "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS response_time_seconds INTEGER;",
     "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMP WITH TIME ZONE;",
     "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP WITH TIME ZONE;",
     "ALTER TABLE complaints ADD COLUMN IF NOT EXISTS customer_satisfaction_score DOUBLE PRECISION;",
@@ -41,5 +41,7 @@ statements = [
 with engine.begin() as conn:
     for statement in statements:
         conn.execute(text(statement))
+    conn.execute(text("ALTER TABLE complaints ALTER COLUMN response_time_seconds TYPE INTEGER USING response_time_seconds::integer;"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_complaints_response_time ON complaints (response_time_seconds);"))
 
 print("Migration complete: revenue-ready schema ensured.")
