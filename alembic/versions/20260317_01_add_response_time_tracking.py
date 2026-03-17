@@ -18,6 +18,9 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+    if "complaints" not in tables:
+        return
     columns = {column["name"] for column in inspector.get_columns("complaints")}
     indexes = {index["name"] for index in inspector.get_indexes("complaints")}
 
@@ -54,6 +57,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+    if "complaints" not in tables:
+        return
     indexes = {index["name"] for index in inspector.get_indexes("complaints")}
     columns = {column["name"] for column in inspector.get_columns("complaints")}
 
