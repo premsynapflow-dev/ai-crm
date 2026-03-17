@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -55,31 +56,32 @@ app.mount("/public", StaticFiles(directory="public"), name="public")
 
 
 @app.middleware("http")
-async def request_id_middleware(request: Request, call_next):
-    request.state.request_id = str(uuid.uuid4())
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request.state.request_id
-    return response
-
-
-@app.middleware("http")
-async def logging_middleware(request: Request, call_next):
+async def request_logging(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
     started = time.perf_counter()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Request failed [%s]", request_id)
+        raise
+
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
     client_id = getattr(request.state, "client_id", None) or "-"
     logger.info(
-        "request_id=%s path=%s method=%s client_id=%s status=%s latency_ms=%s",
-        getattr(request.state, "request_id", "n/a"),
-        request.url.path,
-        request.method,
-        client_id,
-        response.status_code,
-        duration_ms,
+        {
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "client_id": client_id,
+            "status": response.status_code,
+            "latency_ms": duration_ms,
+        }
     )
     record_metric("request_duration_ms", duration_ms, {"path": request.url.path, "method": request.method})
     if response.status_code >= 400:
         record_metric("error_count", 1, {"path": request.url.path, "status": response.status_code})
+    response.headers["X-Request-ID"] = request_id
     return response
 
 
@@ -103,7 +105,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def internal_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-    logger.error("Unhandled error %s", request_id, exc_info=exc)
+    logger.exception(
+        "Unhandled request error [%s]",
+        request_id,
+        exc_info=exc,
+    )
     record_metric("error_count", 1, {"path": request.url.path, "status": 500})
     return JSONResponse(
         status_code=500,
@@ -128,6 +134,31 @@ def widget_js() -> RedirectResponse:
 def on_startup() -> None:
     global worker_thread
     try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE complaints
+                    ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMP WITH TIME ZONE
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE complaints
+                    ADD COLUMN IF NOT EXISTS response_time_seconds INTEGER
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_complaints_response_time
+                    ON complaints (response_time_seconds)
+                    """
+                )
+            )
         Base.metadata.create_all(bind=engine)
         logger.info("Database schema ensured.")
     except SQLAlchemyError as exc:
