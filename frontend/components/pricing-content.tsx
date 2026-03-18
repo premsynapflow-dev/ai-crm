@@ -24,7 +24,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
-import { Check, X, CreditCard, Zap, Building2, Sparkles, Download, FileText, Spinner } from 'lucide-react'
+import { Check, X, CreditCard, Zap, Building2, Sparkles, Download, FileText, Loader2 } from 'lucide-react'
 import { generateInvoices, usageData } from '@/lib/sample-data'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -492,7 +492,7 @@ export function PricingContent() {
             >
               {isProcessing ? (
                 <>
-                  <Spinner className="mr-2" />
+                  <Loader2 className="mr-2 animate-spin" />
                   Processing...
                 </>
               ) : (
