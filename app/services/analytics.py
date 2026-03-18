@@ -173,6 +173,15 @@ def cache_metric(db, client_id, metric_key, metric_value, period_start=None, per
 
 
 def analytics_overview(db, client_id):
+    # Get raw data from queries
+    sources_raw = top_complaint_sources(db, client_id)
+
+    # Convert SQLAlchemy Row objects to JSON-serializable dicts
+    sources_data = [
+        {"source": str(row[0]) if row[0] else "unknown", "count": int(row[1])}
+        for row in sources_raw
+    ]
+
     overview = {
         "trend": trend_detection(db, client_id, days=7),
         "response_time": response_time_tracking(db, client_id),
@@ -180,7 +189,7 @@ def analytics_overview(db, client_id):
         "escalation": escalation_rate(db, client_id),
         "spike_alerts": complaint_spike_alerts(db, client_id),
         "csat": customer_satisfaction_score(db, client_id),
-        "sources": top_complaint_sources(db, client_id),
+        "sources": sources_data,  # Now properly serializable to JSON
     }
     cache_metric(db, client_id, "overview", overview)
     return overview
