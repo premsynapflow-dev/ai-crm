@@ -1,17 +1,4 @@
-[phases.setup]
-nixPkgs = ["nodejs-20_x", "python310"]
-
-[phases.install]
-cmds = [
-  "cd frontend && npm install",
-  "python3 -m pip install --upgrade pip",
-  "python3 -m pip install -r requirements.txt"
-]
-
-[phases.build]
-cmds = [
-  "cd frontend && npm run build"
-]
+providers = ["node", "python"]
 
 [start]
 cmd = "bash start.sh"
