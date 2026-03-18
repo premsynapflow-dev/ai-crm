@@ -20,10 +20,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.analytics import router as analytics_api_router
+from app.api.billing import router as billing_api_router
 from app.api.chatbot import router as chatbot_api_router
+from app.api.invoices import router as invoices_router
+from app.api.plans import router as plans_router
 from app.api.public import router as public_api_router
+from app.api.session_auth import router as session_auth_router
 from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
+from app.api.v1.me import router as me_router
 from app.api.admin_prompts import router as admin_prompts_router
 from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
@@ -147,6 +152,9 @@ async def internal_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 def landing_page():
+    frontend_index = Path("frontend/out/index.html")
+    if frontend_index.exists():
+        return FileResponse(frontend_index)
     return FileResponse(Path("app/public/index.html"))
 
 
@@ -171,11 +179,45 @@ app.include_router(webhook_router)
 app.include_router(dashboard_router)
 app.include_router(client_portal_router)
 app.include_router(billing_router)
+app.include_router(billing_api_router)
 app.include_router(chatbot_api_router)
 app.include_router(analytics_api_router)
+app.include_router(session_auth_router)
 app.include_router(public_api_router)
 app.include_router(auth_v1_router)
 app.include_router(complaints_v1_router)
+app.include_router(me_router)
+app.include_router(plans_router)
+app.include_router(invoices_router)
 app.include_router(admin_prompts_router)
 app.include_router(health_router)
 app.include_router(metrics_router)
+
+frontend_dir = Path("frontend/out")
+
+if (frontend_dir / "_next").exists():
+    app.mount("/_next", StaticFiles(directory=frontend_dir / "_next"), name="next-static")
+
+
+if frontend_dir.exists():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "metrics", "docs", "redoc", "openapi.json"}
+        first_segment = full_path.split("/", 1)[0]
+
+        if first_segment in reserved_prefixes:
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+        file_path = frontend_dir / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+
+        html_path = frontend_dir / f"{full_path}.html"
+        if html_path.is_file():
+            return FileResponse(html_path)
+
+        index_path = frontend_dir / full_path / "index.html"
+        if index_path.is_file():
+            return FileResponse(index_path)
+
+        return FileResponse(frontend_dir / "index.html")

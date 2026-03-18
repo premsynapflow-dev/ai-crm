@@ -1,49 +1,134 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
-from app.db.models import Client
+from app.auth import resolve_current_client
+from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.services.analytics import (
     analytics_customers,
     analytics_overview,
     category_breakdown_over_time,
     complaint_category_breakdown,
+    sentiment_distribution,
     trend_detection,
 )
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics-api"])
 
 
+def _resolve_client(request: Request, db: Session, x_api_key: str) -> Client:
+    if x_api_key:
+        client = db.query(Client).filter(Client.api_key == x_api_key).first()
+        if client:
+            return client
+    return resolve_current_client(request, db, required=True)
+
+
+def _serialize_category_breakdown(db: Session, client_id):
+    return [
+        {"category": str(category or "unknown"), "count": int(count)}
+        for category, count in complaint_category_breakdown(db, client_id)
+    ]
+
+
+def _serialize_sentiment_distribution(db: Session, client_id):
+    buckets = {"positive": 0, "neutral": 0, "negative": 0}
+    for raw_sentiment, count in sentiment_distribution(db, client_id):
+        sentiment_value = float(raw_sentiment or 0)
+        if sentiment_value > 0.2:
+            buckets["positive"] += int(count)
+        elif sentiment_value < -0.2:
+            buckets["negative"] += int(count)
+        else:
+            buckets["neutral"] += int(count)
+    return [{"sentiment": key, "count": value} for key, value in buckets.items()]
+
+
 @router.get("/overview")
-def analytics_overview_endpoint(x_api_key: str = Header(default="", alias="x-api-key"), db: Session = Depends(get_db)):
-    client = db.query(Client).filter(Client.api_key == x_api_key).first()
-    if not client:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return analytics_overview(db, client.id)
+def analytics_overview_endpoint(
+    request: Request,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    overview = analytics_overview(db, client.id)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    total = db.query(Complaint).filter(Complaint.client_id == client.id).count()
+    resolved_today = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == client.id,
+            Complaint.resolution_status == "resolved",
+            Complaint.resolved_at.isnot(None),
+            Complaint.resolved_at >= today_start,
+        )
+        .count()
+    )
+
+    return {
+        "total_complaints": total,
+        "resolved_today": resolved_today,
+        "avg_response_time": overview.get("response_time", {}).get("average_response_time_seconds", 0),
+        "customer_satisfaction": overview.get("csat", {}).get("customer_satisfaction_score", 0),
+        "category_breakdown": _serialize_category_breakdown(db, client.id),
+        "sentiment_distribution": _serialize_sentiment_distribution(db, client.id),
+        **overview,
+    }
 
 
 @router.get("/trends")
-def analytics_trends_endpoint(days: int = 7, x_api_key: str = Header(default="", alias="x-api-key"), db: Session = Depends(get_db)):
-    client = db.query(Client).filter(Client.api_key == x_api_key).first()
-    if not client:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+def analytics_trends_endpoint(
+    request: Request,
+    days: int = 7,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
     return trend_detection(db, client.id, days=days)
 
 
 @router.get("/categories")
-def analytics_categories_endpoint(days: int = 30, x_api_key: str = Header(default="", alias="x-api-key"), db: Session = Depends(get_db)):
-    client = db.query(Client).filter(Client.api_key == x_api_key).first()
-    if not client:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+def analytics_categories_endpoint(
+    request: Request,
+    days: int = 30,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
     return {
-        "current": complaint_category_breakdown(db, client.id),
+        "current": _serialize_category_breakdown(db, client.id),
         "timeline": category_breakdown_over_time(db, client.id, days=days),
     }
 
 
+@router.get("/category-breakdown")
+def analytics_category_breakdown_endpoint(
+    request: Request,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    return _serialize_category_breakdown(db, client.id)
+
+
+@router.get("/sentiment-distribution")
+def analytics_sentiment_distribution_endpoint(
+    request: Request,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    return _serialize_sentiment_distribution(db, client.id)
+
+
 @router.get("/customers")
-def analytics_customers_endpoint(x_api_key: str = Header(default="", alias="x-api-key"), db: Session = Depends(get_db)):
-    client = db.query(Client).filter(Client.api_key == x_api_key).first()
-    if not client:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+def analytics_customers_endpoint(
+    request: Request,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
     return analytics_customers(db, client.id)

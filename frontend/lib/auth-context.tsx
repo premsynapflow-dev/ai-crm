@@ -1,0 +1,102 @@
+"use client"
+
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+
+import { authAPI, type PlanId, type User } from '@/lib/api/auth'
+import { billingAPI } from '@/lib/api/billing'
+
+interface AuthUser extends User {
+  avatar?: string
+}
+
+interface AuthContextType {
+  user: AuthUser | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  login: (email: string, password: string) => Promise<boolean>
+  logout: () => void
+  updatePlan: (plan: PlanId) => void
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+
+    authAPI.getCurrentUser()
+      .then((currentUser) => {
+        if (active) {
+          setUser(currentUser)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUser(null)
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const loggedInUser = await authAPI.login({ email, password })
+      setUser(loggedInUser)
+      return true
+    } catch {
+      setUser(null)
+      return false
+    }
+  }
+
+  const logout = () => {
+    setUser(null)
+    void authAPI.logout()
+  }
+
+  const updatePlan = (plan: PlanId) => {
+    const previousUser = user
+    if (!previousUser) {
+      return
+    }
+
+    setUser({ ...previousUser, plan, plan_id: plan })
+    void billingAPI.upgradePlan(plan).catch(() => {
+      setUser(previousUser)
+    })
+  }
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        login,
+        logout,
+        updatePlan,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
+}

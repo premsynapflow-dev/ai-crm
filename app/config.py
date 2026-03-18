@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     environment: Literal["dev", "staging", "prod"] = Field(default="dev", alias="ENVIRONMENT")
     allowed_origins: list[str] = Field(
         default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
             "http://127.0.0.1:8000",
             "http://localhost:8000",
             "https://synapflow.up.railway.app",
@@ -121,7 +123,7 @@ def _manual_settings_data() -> dict:
         "ENVIRONMENT": os.getenv("ENVIRONMENT", "dev"),
         "ALLOWED_ORIGINS": os.getenv(
             "ALLOWED_ORIGINS",
-            "http://127.0.0.1:8000,http://localhost:8000,https://synapflow.up.railway.app",
+            "http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:8000,http://localhost:8000,https://synapflow.up.railway.app",
         ),
         "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
         "SLACK_WEBHOOK_URL": os.getenv("SLACK_WEBHOOK_URL", ""),
