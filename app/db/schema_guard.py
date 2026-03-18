@@ -9,6 +9,20 @@ logger = get_logger(__name__)
 
 
 REQUIRED_COLUMNS = {
+    "clients": {
+        "custom_prompt_enabled": (
+            "ALTER TABLE clients "
+            "ADD COLUMN IF NOT EXISTS custom_prompt_enabled BOOLEAN DEFAULT FALSE"
+        ),
+        "custom_prompt_config": (
+            "ALTER TABLE clients "
+            "ADD COLUMN IF NOT EXISTS custom_prompt_config JSONB"
+        ),
+        "custom_prompt_updated_at": (
+            "ALTER TABLE clients "
+            "ADD COLUMN IF NOT EXISTS custom_prompt_updated_at TIMESTAMPTZ"
+        ),
+    },
     "complaints": {
         "resolved_at": (
             "ALTER TABLE complaints "

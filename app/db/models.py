@@ -33,6 +33,11 @@ class Client(Base):
     slack_webhook_url = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+    # Custom AI prompt configuration (per-client)
+    custom_prompt_enabled = Column(Boolean, nullable=False, default=False)
+    custom_prompt_config = Column(JSON, nullable=True)
+    custom_prompt_updated_at = Column(DateTime(timezone=True), nullable=True)
+
     complaints = relationship("Complaint", back_populates="client", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="client", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="client", cascade="all, delete-orphan")

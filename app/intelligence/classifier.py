@@ -1,9 +1,10 @@
 import json
 import os
 import httpx
-from typing import Dict
+from typing import Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from app.intelligence.prompt_builder import build_classification_prompt
 from app.utils.logging import get_logger
 from app.utils.circuit_breaker import gemini_breaker, CircuitBreakerOpenError
 
@@ -64,32 +65,9 @@ async def _call_gemini_api(prompt: str, api_key: str) -> dict:
         return response.json()
 
 
-def _build_classification_prompt(message: str) -> str:
-    """Build prompt for classification"""
-    return (
-        'Classify this customer message and return ONLY valid JSON, no markdown.\n\n'
-        f'Message: "{message}"\n\n'
-        "Rules for recommended_action:\n"
-        "- Use 'escalate' when: refund request, fraud claim, urgent complaint, "
-        "legal threat, abuse, or sentiment is very negative (below -0.7)\n"
-        "- Use 'notify_sales' when: pricing inquiry, enterprise/bulk question, "
-        "upgrade interest, or sales opportunity\n"
-        "- Use 'support_ticket' when: general help, order status, technical issue\n"
-        "- Use 'auto_reply' when: simple FAQ, easily resolved automatically\n"
-        "- Use 'product_feedback' when: feature request or product suggestion\n\n"
-        "Also include a short concise summary of the message.\n\n"
-        "Return exactly this structure:\n"
-        "{\n"
-        '  "intent": "one of: complaint/refund_request/sales_lead/support/order_status/feature_request",\n'
-        '  "category": "one of: refund/billing/technical/abuse/general/sales",\n'
-        '  "sentiment": <float -1.0 to 1.0>,\n'
-        '  "urgency_score": <float 0.0 to 1.0>,\n'
-        '  "priority": <integer 1-5>,\n'
-        '  "recommended_action": "one of: escalate/notify_sales/support_ticket/auto_reply/product_feedback",\n'
-        '  "confidence": <float 0.0 to 1.0>,\n'
-        '  "summary": "short concise summary of the message"\n'
-        "}"
-    )
+def _build_classification_prompt(message: str, custom_config: Optional[dict] = None) -> str:
+    """Build classification prompt - uses custom config if provided"""
+    return build_classification_prompt(message, custom_config)
 
 
 def _parse_and_validate(raw_response: dict, message: str) -> dict:
@@ -144,10 +122,16 @@ def _parse_and_validate(raw_response: dict, message: str) -> dict:
         return dict(_FALLBACK, summary=message[:120])
 
 
-async def classify_message_async(message: str) -> Dict:
+async def classify_message_async(message: str, custom_config: Optional[dict] = None) -> Dict:
     """ 
     Async version: Classify a customer message using Gemini.
-    Returns classification dict or fallback on error.
+
+    Args:
+        message: Customer message to classify
+        custom_config: Optional custom prompt config for this client
+
+    Returns:
+        Classification dict or fallback on error.
     """
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
@@ -155,7 +139,8 @@ async def classify_message_async(message: str) -> Dict:
         return dict(_FALLBACK, summary=message[:120])
     
     try:
-        prompt = _build_classification_prompt(message)
+        # Use custom prompt builder
+        prompt = _build_classification_prompt(message, custom_config)
         raw_response = await _call_gemini_api(prompt, api_key)
         return _parse_and_validate(raw_response, message)
     except CircuitBreakerOpenError:
@@ -166,7 +151,7 @@ async def classify_message_async(message: str) -> Dict:
         return dict(_FALLBACK, summary=message[:120])
 
 
-def classify_message(message: str) -> Dict:
+def classify_message(message: str, custom_config: Optional[dict] = None) -> Dict:
     """
     Sync wrapper for backwards compatibility.
     Use classify_message_async in async contexts.
@@ -177,7 +162,7 @@ def classify_message(message: str) -> Dict:
         if loop.is_running():
             # If called from async context, use async version
             raise RuntimeError("Use classify_message_async in async context")
-        return loop.run_until_complete(classify_message_async(message))
+        return loop.run_until_complete(classify_message_async(message, custom_config))
     except RuntimeError:
         # Fallback for sync contexts
         logger.warning("Called sync classify_message - consider using async version")

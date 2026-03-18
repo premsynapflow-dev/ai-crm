@@ -7,6 +7,7 @@ from app.db.session import SessionLocal
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
 from app.intelligence.classifier import classify_message_async
+from app.intelligence.prompt_builder import get_prompt_config_for_client
 from app.intelligence.reply_engine import generate_ai_reply_async
 from app.services.customer_history import get_customer_memory
 from app.replies.send_reply import send_complaint_reply
@@ -96,9 +97,16 @@ async def process_complaint_ai_job(payload: Dict):
         client = db.query(Client).filter(
             Client.id == complaint.client_id
         ).first()
+
+        if not client:
+            logger.error(f"Client {complaint.client_id} not found")
+            return
         
-        # Run AI classification
-        classification = await classify_message_async(message)
+        # NEW: Get custom prompt config for this client
+        custom_config = get_prompt_config_for_client(client)
+        
+        # Run AI classification with custom config
+        classification = await classify_message_async(message, custom_config)
         
         # Update complaint
         complaint.intent = classification["intent"]
@@ -116,7 +124,11 @@ async def process_complaint_ai_job(payload: Dict):
             complaint.customer_email, 
             limit=5
         )
-        reply_payload = await generate_ai_reply_async(complaint, customer_history)
+        reply_payload = await generate_ai_reply_async(
+            complaint, 
+            customer_history,
+            custom_config  # Pass custom config
+        )
         
         complaint.ai_reply = reply_payload["reply_text"]
         complaint.ai_reply_confidence = reply_payload["confidence_score"]
@@ -139,7 +151,7 @@ async def process_complaint_ai_job(payload: Dict):
         complaint.status = "PROCESSED"
         db.commit()
         
-        logger.info(f"Processed complaint {complaint_id} in background")
+        logger.info(f"Processed complaint {complaint_id} in background (custom_prompt={custom_config is not None})")
         
     except Exception as e:
         logger.exception(f"Failed to process complaint AI job: {e}")

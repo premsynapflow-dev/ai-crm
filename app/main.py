@@ -24,6 +24,7 @@ from app.api.chatbot import router as chatbot_api_router
 from app.api.public import router as public_api_router
 from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
+from app.api.admin_prompts import router as admin_prompts_router
 from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
 from app.config import get_settings
@@ -175,5 +176,6 @@ app.include_router(analytics_api_router)
 app.include_router(public_api_router)
 app.include_router(auth_v1_router)
 app.include_router(complaints_v1_router)
+app.include_router(admin_prompts_router)
 app.include_router(health_router)
 app.include_router(metrics_router)

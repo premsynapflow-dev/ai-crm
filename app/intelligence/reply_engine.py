@@ -1,10 +1,11 @@
 import os
 
 import httpx
-from typing import Dict, List
+from typing import Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.db.models import Complaint
+from app.intelligence.prompt_builder import build_reply_prompt
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -36,9 +37,10 @@ async def _call_gemini_for_reply(prompt: str, api_key: str) -> str:
 
 async def generate_ai_reply_async(
     complaint: Complaint,
-    customer_history: List[Dict]
+    customer_history: List[Dict],
+    custom_config: Optional[Dict] = None,
 ) -> Dict:
-    """Async version of reply generation"""
+    """Async version of reply generation with custom prompt support"""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         return {
@@ -46,29 +48,13 @@ async def generate_ai_reply_async(
             "confidence_score": 0.3
         }
 
-    # Build context
-    history_text = ""
-    if customer_history:
-        history_text = "Previous interactions:\n"
-        for item in customer_history[-3:]:  # Last 3 only
-            history_text += f"- {item.get('summary', '')}\n"
+    # Build custom prompt using template
+    prompt = build_reply_prompt(
+        complaint.summary,
+        customer_history,
+        custom_config  # Pass custom config
+    )
 
-    prompt = f"""You are a helpful customer service agent. Generate a professional, empathetic reply.
-
-Customer message: {complaint.summary}
-Category: {complaint.category}
-Sentiment: {complaint.sentiment}
-{history_text}
-
-Requirements:
-- Be empathetic and professional
-- Address the specific issue
-- Provide actionable next steps if applicable
-- Keep it concise (2-3 paragraphs max)
-- Don't make promises you can't keep
-
-Reply:"""
-    
     try:
         reply_text = await _call_gemini_for_reply(prompt, api_key)
         confidence = 0.85 if complaint.confidence > 0.7 else 0.65
@@ -85,10 +71,14 @@ Reply:"""
         }
 
 
-def generate_ai_reply(complaint: Complaint, customer_history: List[Dict]) -> Dict:
+def generate_ai_reply(
+    complaint: Complaint,
+    customer_history: List[Dict],
+    custom_config: Optional[Dict] = None,
+) -> Dict:
     """Sync wrapper - use generate_ai_reply_async in async contexts"""
     import asyncio
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(
-        generate_ai_reply_async(complaint, customer_history)
+        generate_ai_reply_async(complaint, customer_history, custom_config)
     )
