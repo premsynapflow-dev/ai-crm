@@ -5,101 +5,374 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SynapFlow - Ticket {{ ticket_id }}</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
-        a { color: #1d4ed8; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-        .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; background: #fff; margin-bottom: 16px; }
-        .meta { color: #6b7280; font-size: 14px; margin-top: 8px; }
-        ul { padding-left: 18px; }
-        textarea { width: 100%; min-height: 180px; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
-        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-        button { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; }
-        button.primary { background: #111827; color: #fff; border-color: #111827; }
-        .timeline-item { border-left: 3px solid #d1d5db; padding-left: 12px; margin-bottom: 12px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1419 100%);
+            color: #e4e8f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 20% 50%, rgba(0, 150, 255, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 80%, rgba(0, 200, 255, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        nav {
+            background: rgba(15, 20, 35, 0.7);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 150, 255, 0.2);
+            padding: 16px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .nav-links a {
+            color: #9ca3af;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover {
+            color: #00d4ff;
+            background: rgba(0, 150, 255, 0.1);
+        }
+
+        .page-header {
+            margin: 40px 0 32px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .ticket-id {
+            font-size: 16px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: linear-gradient(135deg, rgba(15, 20, 35, 0.7) 0%, rgba(25, 30, 45, 0.5) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 150, 255, 0.2);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(0, 150, 255, 0.4);
+        }
+
+        .card h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #00d4ff;
+            margin-bottom: 20px;
+        }
+
+        .message-content {
+            color: #e4e8f0;
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .meta {
+            color: #6b7280;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        .meta strong {
+            color: #9ca3af;
+        }
+
+        .timeline-item {
+            border-left: 3px solid rgba(0, 150, 255, 0.3);
+            padding-left: 16px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+        }
+
+        .timeline-item:last-child {
+            border-left-color: transparent;
+        }
+
+        .timeline-type {
+            font-weight: 600;
+            color: #00d4ff;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .timeline-summary {
+            color: #d1d5db;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 4px;
+        }
+
+        .timeline-time {
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 180px;
+            padding: 16px;
+            background: rgba(15, 20, 35, 0.5);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            border-radius: 8px;
+            color: #e4e8f0;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 0 3px rgba(0, 150, 255, 0.1);
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        button, .btn {
+            padding: 12px 20px;
+            background: rgba(0, 150, 255, 0.2);
+            color: #00d4ff;
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        button:hover, .btn:hover {
+            background: rgba(0, 150, 255, 0.3);
+            border-color: #00d4ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 150, 255, 0.2);
+        }
+
+        button.primary {
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+            color: #0a0e27;
+            border: none;
+        }
+
+        button.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 150, 255, 0.4);
+        }
+
+        .confidence-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(0, 150, 255, 0.15);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #00d4ff;
+            margin-top: 8px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 32px 0;
+            margin-top: 60px;
+            border-top: 1px solid rgba(0, 150, 255, 0.2);
+            color: #6b7280;
+            font-size: 13px;
+        }
+
+        footer strong {
+            color: #00d4ff;
+        }
+
+        @media (max-width: 1024px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>SynapFlow</h1>
-    <p class="tagline">AI Complaint Intelligence</p>
-    <h2>Ticket: {{ ticket_id }}</h2>
-    <p>
-        <a href="/portal">Dashboard</a>
-        <a href="/portal/inbox">Inbox</a>
-        <a href="/portal/leads">Leads</a>
-        <a href="/portal/complaints">Complaints</a>
-        <a href="/portal/analytics">Analytics</a>
-        <a href="/portal/automation">Automation</a>
-        <a href="/portal/settings">Settings</a>
-        <a href="/portal/logout">Logout</a>
-    </p>
-
-    <div class="layout">
-        <div>
-            <h2>Message Thread</h2>
-            {% for message in messages %}
-            <div class="card">
-                <div>{{ message.summary }}</div>
-                <div class="meta">Source: {{ message.source }}</div>
-                <div class="meta">Priority: {{ message.priority }}</div>
-                <div class="meta">AI Reply Status: {{ message.ai_reply_status or "-" }}</div>
-                <div class="meta">Created: {{ message.created_at }}</div>
-            </div>
-            {% endfor %}
-        </div>
-
-        <div>
-            <h2>Customer Timeline</h2>
-            <div class="card">
-                {% if timeline %}
-                    {% for item in timeline %}
-                    <div class="timeline-item">
-                        <div><strong>{{ item.type }}</strong></div>
-                        <div>{{ item.summary }}</div>
-                        <div class="meta">{{ item.timestamp }}</div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                <div>No customer timeline available.</div>
-                {% endif %}
-            </div>
-
-            <h2>AI Suggestion</h2>
-            <div class="card">
-                {% if suggested_reply %}
-                {% if latest_message %}
-                <div class="meta">Confidence: {{ latest_message.ai_reply_confidence if latest_message.ai_reply_confidence is not none else "-" }}</div>
-                <div class="meta">Status: {{ latest_message.ai_reply_status or "-" }}</div>
-                {% endif %}
-                <form method="POST" action="/client/reply/edit">
-                    <input type="hidden" name="complaint_id" value="{{ latest_message.id if latest_message else '' }}" />
-                    <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
-                    <textarea name="reply_text">{{ suggested_reply }}</textarea>
-                    <div class="actions">
-                        <button class="primary" type="submit">Edit &amp; Send</button>
-                    </div>
-                </form>
-                {% if latest_message %}
-                <div class="actions">
-                    <form method="POST" action="/client/reply/approve">
-                        <input type="hidden" name="complaint_id" value="{{ latest_message.id }}" />
-                        <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
-                        <button class="primary" type="submit">Approve &amp; Send</button>
-                    </form>
-                    <form method="POST" action="/client/reply/escalate">
-                        <input type="hidden" name="complaint_id" value="{{ latest_message.id }}" />
-                        <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
-                        <button type="submit">Escalate to Human</button>
-                    </form>
-                    <button type="button" onclick="regenerateSuggestion('{{ latest_message.id }}', '{{ ticket_id }}')">Regenerate</button>
+    <nav>
+        <div class="container">
+            <div class="nav-content">
+                <div class="logo">SynapFlow</div>
+                <div class="nav-links">
+                    <a href="/portal">Dashboard</a>
+                    <a href="/portal/inbox">Inbox</a>
+                    <a href="/portal/leads">Leads</a>
+                    <a href="/portal/complaints">Complaints</a>
+                    <a href="/portal/analytics">Analytics</a>
+                    <a href="/portal/automation">Automation</a>
+                    <a href="/portal/settings">Settings</a>
+                    <a href="/portal/logout">Logout</a>
                 </div>
-                {% endif %}
-                {% else %}
-                <div>No suggested reply available.</div>
-                {% endif %}
             </div>
         </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">Ticket Details</h1>
+            <div class="ticket-id">{{ ticket_id }}</div>
+        </div>
+
+        <div class="layout">
+            <div>
+                <h2 style="color: #00d4ff; margin-bottom: 20px;">Message Thread</h2>
+                {% for message in messages %}
+                <div class="card">
+                    <div class="message-content">{{ message.summary }}</div>
+                    <div class="meta"><strong>Source:</strong> {{ message.source }}</div>
+                    <div class="meta"><strong>Priority:</strong> {{ message.priority }}</div>
+                    <div class="meta"><strong>AI Reply Status:</strong> {{ message.ai_reply_status or "N/A" }}</div>
+                    <div class="meta"><strong>Created:</strong> {{ message.created_at }}</div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div>
+                <div class="card">
+                    <h2>Customer Timeline</h2>
+                    {% if timeline %}
+                        {% for item in timeline %}
+                        <div class="timeline-item">
+                            <div class="timeline-type">{{ item.type }}</div>
+                            <div class="timeline-summary">{{ item.summary }}</div>
+                            <div class="timeline-time">{{ item.timestamp }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <div style="color: #6b7280;">No timeline events available.</div>
+                    {% endif %}
+                </div>
+
+                <div class="card">
+                    <h2>AI Suggestion</h2>
+                    {% if suggested_reply %}
+                        {% if latest_message %}
+                        <div class="confidence-badge">
+                            Confidence: {{ (latest_message.ai_reply_confidence * 100) | round(0) if latest_message.ai_reply_confidence is not none else "N/A" }}%
+                        </div>
+                        <div class="meta" style="margin-bottom: 16px;">
+                            <strong>Status:</strong> {{ latest_message.ai_reply_status or "N/A" }}
+                        </div>
+                        {% endif %}
+                        <form method="POST" action="/client/reply/edit">
+                            <input type="hidden" name="complaint_id" value="{{ latest_message.id if latest_message else '' }}" />
+                            <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
+                            <textarea name="reply_text">{{ suggested_reply }}</textarea>
+                            <div class="actions">
+                                <button class="primary" type="submit">Edit & Send</button>
+                            </div>
+                        </form>
+                        {% if latest_message %}
+                        <div class="actions">
+                            <form method="POST" action="/client/reply/approve">
+                                <input type="hidden" name="complaint_id" value="{{ latest_message.id }}" />
+                                <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
+                                <button class="primary" type="submit">Approve & Send</button>
+                            </form>
+                            <form method="POST" action="/client/reply/escalate">
+                                <input type="hidden" name="complaint_id" value="{{ latest_message.id }}" />
+                                <input type="hidden" name="ticket_id" value="{{ ticket_id }}" />
+                                <button type="submit">Escalate to Human</button>
+                            </form>
+                            <button type="button" onclick="regenerateSuggestion('{{ latest_message.id }}', '{{ ticket_id }}')">Regenerate</button>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <div style="color: #6b7280;">No suggested reply available.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>© 2026 <strong>SynapFlow</strong>. All rights reserved.</p>
+        </footer>
     </div>
+
     <script>
         async function regenerateSuggestion(complaintId, ticketId) {
             const response = await fetch("/client/ai/suggest-reply", {
@@ -112,11 +385,5 @@
             }
         }
     </script>
-
-    <footer style="text-align: center; padding: 20px; margin-top: 40px; border-top: 1px solid #e5e7eb; background-color: #f9fafb;">
-        <p style="color: #6b7280; font-size: 14px; margin: 0;">
-            © 2026 <strong style="color: #111827;">SynapFlow</strong>. All rights reserved.
-        </p>
-    </footer>
 </body>
 </html>

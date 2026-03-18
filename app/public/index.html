@@ -5,61 +5,362 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SynapFlow - AI Complaint Intelligence</title>
     <style>
-        body { margin: 0; font-family: Georgia, serif; background: linear-gradient(135deg, #f7f3ec, #e6f0ff); color: #14213d; }
-        .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 24px; }
-        .hero { padding: 80px 0 40px; }
-        h1 { font-size: 56px; line-height: 1.05; margin: 0 0 16px; }
-        p { font-size: 18px; line-height: 1.6; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 36px; }
-        .card { background: rgba(255,255,255,0.8); border: 1px solid rgba(20,33,61,0.1); border-radius: 16px; padding: 20px; }
-        .pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin: 48px 0; }
-        .price { font-size: 28px; font-weight: 700; }
-        form { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
-        input, button { padding: 12px 14px; border-radius: 8px; border: 1px solid #cbd5e1; }
-        button { background: #14213d; color: #fff; cursor: pointer; }
-        iframe { width: 100%; min-height: 320px; border: 0; background: #fff; border-radius: 16px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1419 100%);
+            color: #e4e8f0;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 20% 50%, rgba(0, 150, 255, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(0, 200, 255, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 50% 80%, rgba(0, 180, 255, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            animation: gradientShift 15s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 120px 0 80px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 72px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 50%, #00f0ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 24px;
+            letter-spacing: -2px;
+            line-height: 1.1;
+        }
+
+        .tagline {
+            font-size: 22px;
+            color: #9ca3af;
+            line-height: 1.6;
+            margin-bottom: 48px;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Signup Form */
+        .signup-form {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        input {
+            padding: 16px 20px;
+            background: rgba(15, 20, 35, 0.7);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            border-radius: 8px;
+            color: #e4e8f0;
+            font-size: 15px;
+            min-width: 200px;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 0 3px rgba(0, 150, 255, 0.1);
+        }
+
+        input::placeholder {
+            color: #6b7280;
+        }
+
+        button {
+            padding: 16px 32px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+            color: #0a0e27;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0, 150, 255, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(0, 150, 255, 0.5);
+        }
+
+        .signup-status {
+            font-size: 14px;
+            margin-top: 16px;
+            min-height: 20px;
+        }
+
+        /* Features Grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin: 80px 0;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, rgba(15, 20, 35, 0.7) 0%, rgba(25, 30, 45, 0.5) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 150, 255, 0.2);
+            border-radius: 16px;
+            padding: 32px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: #00d4ff;
+            transform: translateY(-8px);
+            box-shadow: 0 12px 40px rgba(0, 150, 255, 0.2);
+        }
+
+        .feature-card h3 {
+            font-size: 22px;
+            color: #00d4ff;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .feature-card p {
+            color: #9ca3af;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        /* Pricing Section */
+        .pricing {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 80px 0;
+        }
+
+        .pricing-card {
+            background: linear-gradient(135deg, rgba(15, 20, 35, 0.8) 0%, rgba(25, 30, 45, 0.6) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            border-radius: 16px;
+            padding: 36px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pricing-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #00d4ff 0%, #0096ff 100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .pricing-card:hover {
+            border-color: #00d4ff;
+            transform: translateY(-8px);
+            box-shadow: 0 16px 48px rgba(0, 150, 255, 0.3);
+        }
+
+        .pricing-card:hover::before {
+            opacity: 1;
+        }
+
+        .pricing-card h3 {
+            font-size: 20px;
+            color: #00d4ff;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .price {
+            font-size: 40px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+
+        .pricing-card p {
+            color: #9ca3af;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        /* Section Titles */
+        .section-title {
+            font-size: 36px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        /* Demo Section */
+        .demo {
+            margin: 80px 0;
+        }
+
+        .demo-container {
+            background: linear-gradient(135deg, rgba(15, 20, 35, 0.7) 0%, rgba(25, 30, 45, 0.5) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 150, 255, 0.2);
+            border-radius: 16px;
+            padding: 4px;
+            margin-top: 32px;
+        }
+
+        iframe {
+            width: 100%;
+            min-height: 500px;
+            border: 0;
+            border-radius: 12px;
+            background: rgba(10, 14, 39, 0.5);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 60px 0 40px;
+            border-top: 1px solid rgba(0, 150, 255, 0.2);
+            margin-top: 100px;
+        }
+
+        footer p {
+            color: #6b7280;
+            font-size: 14px;
+        }
+
+        footer strong {
+            color: #00d4ff;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 48px;
+            }
+
+            .tagline {
+                font-size: 18px;
+            }
+
+            .signup-form {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            input, button {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="wrap">
+    <div class="container">
         <section class="hero">
             <h1>SynapFlow</h1>
-            <p>SynapFlow helps solo teams classify complaints, unify channels, route tickets, and recover revenue with fast AI workflows built on affordable infrastructure.</p>
-            <form method="post" action="/api/signup" id="signup-form">
-                <input type="text" name="company_name" placeholder="Company name" />
-                <input type="email" name="email" placeholder="Work email" />
-                <input type="password" name="password" placeholder="Create password" />
+            <p class="tagline">
+                AI-powered complaint intelligence for solo teams. Classify, route, and resolve customer issues with lightning-fast automation.
+            </p>
+            <form class="signup-form" id="signup-form">
+                <input type="text" name="company_name" placeholder="Company name" required />
+                <input type="email" name="email" placeholder="Work email" required />
+                <input type="password" name="password" placeholder="Create password" required />
                 <button type="submit">Start Free Trial</button>
             </form>
-            <p id="signup-status" style="font-size:14px; margin-top:12px; color:#334155;"></p>
+            <p class="signup-status" id="signup-status"></p>
         </section>
 
-        <section class="grid">
-            <div class="card">
+        <section class="features">
+            <div class="feature-card">
                 <h3>Auto-classify complaints</h3>
-                <p>Gemini sorts incoming customer issues into the right queue with summaries, urgency, and automation triggers.</p>
+                <p>Gemini AI instantly categorizes incoming issues with summaries, urgency scores, and intelligent routing rules.</p>
             </div>
-            <div class="card">
-                <h3>Multi-channel</h3>
-                <p>Capture issues from widgets, email, WhatsApp, and API calls into one shared ticket stream.</p>
+            <div class="feature-card">
+                <h3>Multi-channel intake</h3>
+                <p>Capture complaints from email, WhatsApp, widgets, and API calls in one unified ticket stream.</p>
             </div>
-            <div class="card">
+            <div class="feature-card">
                 <h3>Smart routing</h3>
-                <p>Send every ticket to the right team, automate the simple stuff, and surface the leads that are ready to buy.</p>
+                <p>Automatically route tickets to the right team, escalate urgent issues, and identify sales leads.</p>
             </div>
         </section>
+
+        <h2 class="section-title">Simple, transparent pricing</h2>
 
         <section class="pricing">
-            <div class="card"><h3>Trial</h3><div class="price">Free</div><p>50 tickets/month, widget + email, Slack alerts.</p></div>
-            <div class="card"><h3>Pro</h3><div class="price">?4,999</div><p>1,000 tickets/month, automation, multi-channel support.</p></div>
-            <div class="card"><h3>Business</h3><div class="price">?14,999</div><p>5,000 tickets/month, advanced analytics, priority support.</p></div>
+            <div class="pricing-card">
+                <h3>Trial</h3>
+                <div class="price">Free</div>
+                <p>50 tickets/month<br/>Widget + email support<br/>Slack alerts<br/>7-day trial</p>
+            </div>
+            <div class="pricing-card">
+                <h3>Pro</h3>
+                <div class="price">₹4,999</div>
+                <p>1,000 tickets/month<br/>All channels<br/>Automation rules<br/>Analytics dashboard</p>
+            </div>
+            <div class="pricing-card">
+                <h3>Business</h3>
+                <div class="price">₹14,999</div>
+                <p>5,000 tickets/month<br/>Priority support<br/>Custom integrations<br/>Advanced analytics</p>
+            </div>
         </section>
 
-        <section>
-            <h2>Demo Video</h2>
-            <iframe src="about:blank" title="SynapFlow demo placeholder"></iframe>
+        <section class="demo">
+            <h2 class="section-title">See it in action</h2>
+            <div class="demo-container">
+                <iframe src="about:blank" title="SynapFlow demo"></iframe>
+            </div>
         </section>
     </div>
+
+    <footer>
+        <div class="container">
+            <p>© 2026 <strong>SynapFlow</strong>. All rights reserved.</p>
+        </div>
+    </footer>
+
     <script>
         const signupForm = document.getElementById("signup-form");
         const signupStatus = document.getElementById("signup-status");
@@ -75,7 +376,7 @@
             };
 
             signupStatus.textContent = "Creating your trial...";
-            signupStatus.style.color = "#334155";
+            signupStatus.style.color = "#9ca3af";
 
             try {
                 const response = await fetch("/api/signup", {
@@ -91,18 +392,14 @@
                     throw new Error(result.error || result.detail || "Signup failed");
                 }
 
-                signupStatus.textContent = "Trial created successfully. Save your API key from the response in your setup flow.";
-                signupStatus.style.color = "#065f46";
+                signupStatus.textContent = "Trial created successfully! Check your email for setup instructions.";
+                signupStatus.style.color = "#00d4ff";
                 signupForm.reset();
             } catch (error) {
                 signupStatus.textContent = error.message || "Signup failed";
-                signupStatus.style.color = "#991b1b";
+                signupStatus.style.color = "#f87171";
             }
         });
     </script>
-
-    <footer style="text-align: center; padding: 20px; margin-top: 40px; border-top: 1px solid #e5e7eb; background-color: #f9fafb;">
-        <p style="color: #6b7280; font-size: 14px; margin: 0;">
-            © 2026 <strong style="color: #111827;">SynapFlow</strong>. All rights reserved.
-        </p>
-    </footer>
+</body>
+</html>
