@@ -708,7 +708,7 @@ async def portal_settings_test(
     try:
         send_slack_alert(
             text=(
-                "*Neuronyx test alert*\n"
+                "*SynapFlow test alert*\n"
                 "Your Slack integration is working correctly.\n"
                 "Sales leads and high-priority complaints will appear here."
             ),

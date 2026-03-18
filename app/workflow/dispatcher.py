@@ -23,7 +23,7 @@ def dispatch_action(
 
     - Sales leads    -> Slack alert to client's workspace
     - ESCALATE_HIGH  -> Slack alert to client's workspace
-     - Everything else -> no-op (future: email, CRM)
+     - Everything else -> no-op (future: email, outbound systems)
     """
     if recommended_action == "notify_sales":
         slack_message = (

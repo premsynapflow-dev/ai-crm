@@ -1,4 +1,4 @@
--- Performance indexes for AI Complaint Engine
+-- Performance indexes for SynapFlow
 -- Run this in Supabase SQL editor
 
 -- Critical for webhook processing

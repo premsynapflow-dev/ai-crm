@@ -54,7 +54,7 @@ def create_payment_link(client_id, amount):
     payload = {
         "amount": amount,
         "currency": "INR",
-        "description": f"Neuronyx usage payment for client {client_id}",
+        "description": f"SynapFlow usage payment for client {client_id}",
         "notes": {"client_id": str(client_id)},
     }
     return client.payment_link.create(payload)

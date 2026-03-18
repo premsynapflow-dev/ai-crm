@@ -313,7 +313,7 @@ def check_query_optimization():
 async def main():
     """Run all verification checks"""
     print("=" * 70)
-    print("DEPLOYMENT VERIFICATION - AI COMPLAINT ENGINE")
+    print("DEPLOYMENT VERIFICATION - SynapFlow")
     print("=" * 70)
     
     checks = [

@@ -10,8 +10,8 @@ def enqueue_welcome_sequence(client, user_email):
         "send_email",
         {
             "to_email": user_email,
-            "subject": "Welcome to Neuronyx",
-            "body": "Welcome to Neuronyx. Start by connecting your channels and Slack workspace.",
+            "subject": "Welcome to SynapFlow",
+            "body": "Welcome to SynapFlow. Start by connecting your channels and Slack workspace.",
         },
     )
     enqueue_job(
@@ -28,7 +28,7 @@ def enqueue_welcome_sequence(client, user_email):
         {
             "to_email": user_email,
             "subject": "Your trial is ending soon",
-            "body": "Your Neuronyx trial is almost over. Upgrade any time from the billing section.",
+            "body": "Your SynapFlow trial is almost over. Upgrade any time from the billing section.",
         },
         scheduled_for=now + timedelta(days=6),
     )

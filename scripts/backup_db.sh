@@ -8,7 +8,7 @@ fi
 
 mkdir -p backups
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-OUTPUT="backups/neuronyx_${TIMESTAMP}.sql"
+OUTPUT="backups/synapflow_${TIMESTAMP}.sql"
 
 pg_dump "$DATABASE_URL" > "$OUTPUT"
 echo "Backup written to $OUTPUT"

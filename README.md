@@ -1,94 +1,23 @@
-# AI Complaint Engine
+# SynapFlow
 
-Neuronyx is a multi-tenant FastAPI SaaS for complaint intelligence, customer support automation, and lightweight billing on a solo-founder budget.
+AI-powered complaint intelligence platform.
 
-## What This Repo Now Includes
+**Live:** https://synapflow.up.railway.app
+**Stack:** FastAPI, PostgreSQL, Gemini AI, Razorpay
+**Author:** Prem Arunkumar Bisoy
 
-- Multi-channel complaint ingestion:
-  - `POST /webhook/complaint`
-  - `POST /webhook/email`
-  - `POST /webhook/whatsapp`
-  - embedded widget from `public/widget.js`
-- Gemini classification and summarization
-- Ticketing with `ticket_id` and `thread_id`
-- Client-specific Slack alerts with global fallback
-- Automation rules and execution engine
-- Client portal with:
-  - inbox
-  - complaint dashboard
-  - ticket thread view
-  - leads CRM view
-  - analytics
-  - billing and usage screens
-  - Slack settings
-- Trial, plan, usage, overage, invoice, and subscription foundations
-- Background job queue running inside the API process
-- Health and metrics endpoints
-- Versioned API routes under `/api/v1`
+---
 
-## Stack
+## Quick Start
 
-- FastAPI
-- PostgreSQL / Supabase
-- Gemini 2.0 Flash
-- SQLAlchemy sync engine
-- Jinja templates
-- Razorpay
-- Railway or Render
-
-## Local Setup
-
-### 1. Create and activate a virtual environment
-
-PowerShell:
-
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-### 2. Install dependencies
+1. Copy `.env.example` to `.env` and configure values.
+2. Install dependencies:
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-### 3. Create `.env`
-
-Start from `.env.example`:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Minimum variables you must set:
-
-- `DATABASE_URL`
-- `SECRET_KEY`
-- `GEMINI_API_KEY`
-- `ADMIN_PASSWORD`
-
-Recommended for full product flow:
-
-- `SLACK_WEBHOOK_URL`
-- `RAZORPAY_KEY_ID`
-- `RAZORPAY_KEY_SECRET`
-- `RAZORPAY_WEBHOOK_SECRET`
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USER`
-- `SMTP_PASSWORD`
-- `SMTP_FROM`
-
-Notes:
-
-- Use the direct Supabase Postgres URL on port `5432`
-- Do not append `?sslmode=require` to `DATABASE_URL`; the app passes SSL through SQLAlchemy `connect_args`
-- `SECRET_KEY` must be at least 32 characters
-
-### 4. Run migrations
-
-Run the older migrations if you are upgrading an existing project, then run the consolidated migration:
+3. Run migrations:
 
 ```powershell
 python migrate_add_slack_url.py
@@ -98,24 +27,11 @@ python migrate_replace_message_with_summary.py
 python migrate_revenue_ready.py
 ```
 
-If you are using ticketing and automation, also apply:
-
-```powershell
-# Run these in Supabase SQL editor or psql
-# migrate_ticket_system.sql
-# migrate_automation_rules.sql
-# migrate_add_assigned_team.sql
-```
-
-### 5. Start the app
+4. Run the app:
 
 ```powershell
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-
-Or:
-
-```bash
 bash start.sh
 ```
 

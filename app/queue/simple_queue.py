@@ -52,7 +52,7 @@ def queue_job(db, job_type, payload, scheduled_for=None):
 def process_send_email_job(payload: Dict):
     send_email(
         to_email=payload.get("to_email"),
-        subject=payload.get("subject", "Neuronyx Notification"),
+        subject=payload.get("subject", "SynapFlow Notification"),
         body=payload.get("body", ""),
     )
     complaint_id = payload.get("complaint_id")
