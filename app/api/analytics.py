@@ -49,11 +49,12 @@ def _serialize_sentiment_distribution(db: Session, client_id):
 @router.get("/overview")
 def analytics_overview_endpoint(
     request: Request,
+    days: int = 30,
     x_api_key: str = Header(default="", alias="x-api-key"),
     db: Session = Depends(get_db),
 ):
     client = _resolve_client(request, db, x_api_key)
-    overview = analytics_overview(db, client.id)
+    overview = analytics_overview(db, client.id, days=max(1, min(days, 90)))
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
     total = db.query(Complaint).filter(Complaint.client_id == client.id).count()
@@ -75,6 +76,7 @@ def analytics_overview_endpoint(
         "customer_satisfaction": overview.get("csat", {}).get("customer_satisfaction_score", 0),
         "category_breakdown": _serialize_category_breakdown(db, client.id),
         "sentiment_distribution": _serialize_sentiment_distribution(db, client.id),
+        "days": days,
         **overview,
     }
 

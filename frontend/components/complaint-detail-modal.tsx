@@ -1,6 +1,6 @@
-"use client"
+﻿"use client"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -22,9 +22,9 @@ import {
   Send,
   AlertTriangle,
   CheckCircle2,
-  Clock
+  Clock,
 } from 'lucide-react'
-import { type Complaint } from '@/lib/api/complaints'
+import { complaintsAPI, type Complaint } from '@/lib/api/complaints'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -32,40 +32,68 @@ interface ComplaintDetailModalProps {
   complaint: Complaint | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onComplaintUpdated?: (complaint: Complaint) => void
 }
 
 const priorityColors: Record<string, string> = {
   low: 'bg-green-100 text-green-700',
   medium: 'bg-yellow-100 text-yellow-700',
   high: 'bg-orange-100 text-orange-700',
-  critical: 'bg-red-100 text-red-700'
+  critical: 'bg-red-100 text-red-700',
 }
 
 const sentimentColors: Record<string, string> = {
   positive: 'bg-green-100 text-green-700',
   neutral: 'bg-gray-100 text-gray-700',
-  negative: 'bg-red-100 text-red-700'
+  negative: 'bg-red-100 text-red-700',
 }
 
-export function ComplaintDetailModal({ complaint, open, onOpenChange }: ComplaintDetailModalProps) {
+export function ComplaintDetailModal({
+  complaint,
+  open,
+  onOpenChange,
+  onComplaintUpdated,
+}: ComplaintDetailModalProps) {
+  const [currentComplaint, setCurrentComplaint] = useState<Complaint | null>(complaint)
   const [reply, setReply] = useState('')
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [isEscalating, setIsEscalating] = useState(false)
+  const [isResolving, setIsResolving] = useState(false)
 
-  if (!complaint) return null
+  useEffect(() => {
+    setCurrentComplaint(complaint)
+    setReply(complaint?.suggestedResponse ?? '')
+  }, [complaint])
+
+  if (!currentComplaint) {
+    return null
+  }
+
+  const applyUpdate = (updatedComplaint: Complaint) => {
+    setCurrentComplaint(updatedComplaint)
+    onComplaintUpdated?.(updatedComplaint)
+  }
 
   const handleUseAISuggestion = () => {
-    if (complaint.suggestedResponse) {
-      setReply(complaint.suggestedResponse)
+    if (currentComplaint.suggestedResponse) {
+      setReply(currentComplaint.suggestedResponse)
       toast.success('AI suggestion applied')
     }
   }
 
   const handleRegenerate = async () => {
     setIsRegenerating(true)
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    setIsRegenerating(false)
-    toast.success('New response generated')
+    try {
+      const updatedComplaint = await complaintsAPI.suggestReply(currentComplaint.id)
+      applyUpdate(updatedComplaint)
+      setReply(updatedComplaint.suggestedResponse ?? '')
+      toast.success('New response generated')
+    } catch {
+      toast.error('Failed to generate a new response')
+    } finally {
+      setIsRegenerating(false)
+    }
   }
 
   const handleSendReply = async () => {
@@ -73,119 +101,139 @@ export function ComplaintDetailModal({ complaint, open, onOpenChange }: Complain
       toast.error('Please enter a reply')
       return
     }
+
     setIsSending(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setIsSending(false)
-    setReply('')
-    toast.success('Reply sent successfully')
-    onOpenChange(false)
+    try {
+      const updatedComplaint = await complaintsAPI.reply(currentComplaint.id, reply)
+      applyUpdate(updatedComplaint)
+      setReply('')
+      toast.success('Reply sent successfully')
+      onOpenChange(false)
+    } catch {
+      toast.error('Failed to send reply')
+    } finally {
+      setIsSending(false)
+    }
   }
 
-  const handleEscalate = () => {
-    toast.success('Complaint escalated to manager')
-    onOpenChange(false)
+  const handleEscalate = async () => {
+    setIsEscalating(true)
+    try {
+      const updatedComplaint = await complaintsAPI.escalate(currentComplaint.id)
+      applyUpdate(updatedComplaint)
+      toast.success('Complaint escalated to manager')
+      onOpenChange(false)
+    } catch {
+      toast.error('Failed to escalate complaint')
+    } finally {
+      setIsEscalating(false)
+    }
   }
 
-  const handleMarkResolved = () => {
-    toast.success('Complaint marked as resolved')
-    onOpenChange(false)
+  const handleMarkResolved = async () => {
+    setIsResolving(true)
+    try {
+      const updatedComplaint = await complaintsAPI.markResolved(currentComplaint.id)
+      applyUpdate(updatedComplaint)
+      toast.success('Complaint marked as resolved')
+      onOpenChange(false)
+    } catch {
+      toast.error('Failed to mark complaint as resolved')
+    } finally {
+      setIsResolving(false)
+    }
   }
 
   const timeline = [
-    { time: complaint.createdAt, action: 'Complaint received', icon: Mail },
-    { time: complaint.createdAt, action: 'AI analysis completed', icon: Brain },
-    { time: complaint.updatedAt, action: 'Status updated', icon: Clock }
+    { time: currentComplaint.createdAt, action: 'Complaint received', icon: Mail },
+    { time: currentComplaint.createdAt, action: 'AI analysis completed', icon: Brain },
+    { time: currentComplaint.updatedAt, action: 'Status updated', icon: Clock },
   ]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="font-mono text-sm text-muted-foreground">{complaint.id}</span>
+            <span className="font-mono text-sm text-muted-foreground">{currentComplaint.id}</span>
             <Separator orientation="vertical" className="h-4" />
-            <span className="text-xl">{complaint.subject}</span>
+            <span className="text-xl">{currentComplaint.subject}</span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Customer Info */}
-          <div className="flex flex-wrap gap-4 p-4 bg-muted/50 rounded-lg">
+          <div className="flex flex-wrap gap-4 rounded-lg bg-muted/50 p-4">
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{complaint.customerName}</span>
+              <span className="font-medium">{currentComplaint.customerName}</span>
             </div>
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">{complaint.customerEmail}</span>
+              <span className="text-muted-foreground">{currentComplaint.customerEmail || 'No email provided'}</span>
             </div>
             <div className="flex items-center gap-2">
               <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">{complaint.customerPhone}</span>
+              <span className="text-muted-foreground">{currentComplaint.customerPhone || 'No phone provided'}</span>
             </div>
           </div>
 
-          {/* Complaint Message */}
           <div>
-            <h4 className="text-sm font-semibold mb-2">Complaint Details</h4>
-            <p className="text-muted-foreground leading-relaxed p-4 bg-card border rounded-lg">
-              {complaint.message}
+            <h4 className="mb-2 text-sm font-semibold">Complaint Details</h4>
+            <p className="rounded-lg border bg-card p-4 leading-relaxed text-muted-foreground">
+              {currentComplaint.message}
             </p>
           </div>
 
-          {/* AI Analysis */}
-          <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border border-blue-100">
-            <div className="flex items-center gap-2 mb-4">
+          <div className="rounded-lg border border-blue-100 bg-gradient-to-br from-blue-50 to-purple-50 p-4">
+            <div className="mb-4 flex items-center gap-2">
               <Brain className="h-5 w-5 text-primary" />
               <h4 className="font-semibold text-primary">AI Analysis</h4>
             </div>
-            
+
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Category</p>
+                <p className="mb-1 text-xs text-muted-foreground">Category</p>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="capitalize">
-                    {complaint.category}
+                    {currentComplaint.category}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {complaint.aiConfidence}% confidence
+                    {currentComplaint.aiConfidence}% confidence
                   </span>
                 </div>
-                <Progress value={complaint.aiConfidence} className="h-1 mt-2" />
+                <Progress value={currentComplaint.aiConfidence} className="mt-2 h-1" />
               </div>
-              
+
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Priority</p>
+                <p className="mb-1 text-xs text-muted-foreground">Priority</p>
                 <div className="flex items-center gap-2">
-                  <Badge className={cn("capitalize", priorityColors[complaint.priority])}>
-                    {complaint.priority}
+                  <Badge className={cn('capitalize', priorityColors[currentComplaint.priority])}>
+                    {currentComplaint.priority}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {complaint.aiConfidence - 3}% confidence
+                    {Math.max(currentComplaint.aiConfidence - 3, 0)}% confidence
                   </span>
                 </div>
-                <Progress value={complaint.aiConfidence - 3} className="h-1 mt-2" />
+                <Progress value={Math.max(currentComplaint.aiConfidence - 3, 0)} className="mt-2 h-1" />
               </div>
-              
+
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Sentiment</p>
+                <p className="mb-1 text-xs text-muted-foreground">Sentiment</p>
                 <div className="flex items-center gap-2">
-                  <Badge className={cn("capitalize", sentimentColors[complaint.sentiment])}>
-                    {complaint.sentiment === 'positive' ? '😊' : complaint.sentiment === 'negative' ? '😠' : '😐'}{' '}
-                    {complaint.sentiment}
+                  <Badge className={cn('capitalize', sentimentColors[currentComplaint.sentiment])}>
+                    {currentComplaint.sentiment}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {complaint.aiConfidence + 2}% confidence
+                    {Math.min(currentComplaint.aiConfidence + 2, 100)}% confidence
                   </span>
                 </div>
-                <Progress value={Math.min(complaint.aiConfidence + 2, 100)} className="h-1 mt-2" />
+                <Progress value={Math.min(currentComplaint.aiConfidence + 2, 100)} className="mt-2 h-1" />
               </div>
             </div>
           </div>
 
-          {/* AI Suggested Response */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <h4 className="text-sm font-semibold">AI Suggested Response</h4>
@@ -196,31 +244,31 @@ export function ComplaintDetailModal({ complaint, open, onOpenChange }: Complain
                 onClick={handleRegenerate}
                 disabled={isRegenerating}
               >
-                <RefreshCw className={cn("h-4 w-4 mr-1", isRegenerating && "animate-spin")} />
+                <RefreshCw className={cn('mr-1 h-4 w-4', isRegenerating && 'animate-spin')} />
                 Regenerate
               </Button>
             </div>
-            <div className="p-4 bg-muted/50 rounded-lg border text-sm whitespace-pre-line">
-              {complaint.suggestedResponse}
+            <div className="rounded-lg border bg-muted/50 p-4 text-sm whitespace-pre-line">
+              {currentComplaint.suggestedResponse || 'No AI suggestion available yet.'}
             </div>
             <Button
               variant="outline"
               size="sm"
               className="mt-2"
               onClick={handleUseAISuggestion}
+              disabled={!currentComplaint.suggestedResponse}
             >
-              <Sparkles className="h-4 w-4 mr-1" />
+              <Sparkles className="mr-1 h-4 w-4" />
               Use This Response
             </Button>
           </div>
 
-          {/* Timeline */}
           <div>
-            <h4 className="text-sm font-semibold mb-3">Timeline</h4>
+            <h4 className="mb-3 text-sm font-semibold">Timeline</h4>
             <div className="space-y-3">
               {timeline.map((item, index) => (
                 <div key={index} className="flex items-start gap-3">
-                  <div className="p-2 bg-muted rounded-full">
+                  <div className="rounded-full bg-muted p-2">
                     <item.icon className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <div>
@@ -230,7 +278,7 @@ export function ComplaintDetailModal({ complaint, open, onOpenChange }: Complain
                         day: 'numeric',
                         month: 'short',
                         hour: '2-digit',
-                        minute: '2-digit'
+                        minute: '2-digit',
                       })}
                     </p>
                   </div>
@@ -239,35 +287,38 @@ export function ComplaintDetailModal({ complaint, open, onOpenChange }: Complain
             </div>
           </div>
 
-          {/* Reply Section */}
           <div>
-            <h4 className="text-sm font-semibold mb-2">Send Reply</h4>
+            <h4 className="mb-2 text-sm font-semibold">Send Reply</h4>
             <Textarea
               placeholder="Type your response..."
               value={reply}
-              onChange={(e) => setReply(e.target.value)}
+              onChange={(event) => setReply(event.target.value)}
               rows={4}
               className="resize-none"
             />
           </div>
 
-          {/* Actions */}
           <div className="flex flex-wrap gap-3 pt-2">
             <Button
               onClick={handleSendReply}
               disabled={isSending}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="mr-2 h-4 w-4" />
               {isSending ? 'Sending...' : 'Send Reply'}
             </Button>
-            <Button variant="outline" onClick={handleEscalate}>
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Escalate to Manager
+            <Button variant="outline" onClick={handleEscalate} disabled={isEscalating}>
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              {isEscalating ? 'Escalating...' : 'Escalate to Manager'}
             </Button>
-            <Button variant="outline" onClick={handleMarkResolved} className="text-green-600 hover:text-green-700">
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Mark as Resolved
+            <Button
+              variant="outline"
+              onClick={handleMarkResolved}
+              disabled={isResolving}
+              className="text-green-600 hover:text-green-700"
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              {isResolving ? 'Updating...' : 'Mark as Resolved'}
             </Button>
           </div>
         </div>
@@ -275,3 +326,4 @@ export function ComplaintDetailModal({ complaint, open, onOpenChange }: Complain
     </Dialog>
   )
 }
+

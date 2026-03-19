@@ -15,7 +15,7 @@ interface AuthContextType {
   isLoading: boolean
   login: (email: string, password: string) => Promise<boolean>
   logout: () => void
-  updatePlan: (plan: PlanId) => void
+  updatePlan: (plan: PlanId) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -65,16 +65,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void authAPI.logout()
   }
 
-  const updatePlan = (plan: PlanId) => {
+  const updatePlan = async (plan: PlanId) => {
     const previousUser = user
     if (!previousUser) {
       return
     }
 
     setUser({ ...previousUser, plan, plan_id: plan })
-    void billingAPI.upgradePlan(plan).catch(() => {
+    try {
+      await billingAPI.upgradePlan(plan)
+    } catch {
       setUser(previousUser)
-    })
+      throw new Error('Failed to update plan')
+    }
   }
 
   return (

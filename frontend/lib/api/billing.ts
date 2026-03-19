@@ -14,7 +14,11 @@ export interface Invoice {
   invoice_number: string
   status: string
   total: number
+  subtotal: number
+  tax: number
+  invoice_date: string | null
   paid_at: string | null
+  payment_method: string | null
 }
 
 export interface Usage {
@@ -28,6 +32,19 @@ export interface Usage {
   trial_active: boolean
   period_start: string
   period_end: string
+  current_usage: number
+  remaining_tickets: number
+  usage_percentage: number
+  projected_usage: number
+  days_remaining: number
+  days_total: number
+  elapsed_days: number
+  daily_average: number
+  peak_day: string | null
+  peak_day_count: number
+  history: Array<{ date: string; tickets: number }>
+  category_breakdown: Array<{ category: string; tickets: number }>
+  overage_rate: number
 }
 
 export const billingAPI = {

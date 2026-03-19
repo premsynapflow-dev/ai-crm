@@ -1,5 +1,6 @@
-"use client"
+﻿"use client"
 
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,36 +20,70 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer,
 } from 'recharts'
 import { AlertTriangle, TrendingUp, ArrowUpRight } from 'lucide-react'
-import { usageData, dailyUsage, usageByCategory } from '@/lib/sample-data'
 import Link from 'next/link'
+import { billingAPI, type Usage } from '@/lib/api/billing'
 
 export function UsageContent() {
-  const usagePercentage = (usageData.ticketsUsed / usageData.ticketsLimit) * 100
+  const [usage, setUsage] = useState<Usage | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+
+    billingAPI.getUsage()
+      .then((response) => {
+        if (active) {
+          setUsage(response)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUsage(null)
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (isLoading) {
+    return <div className="flex h-96 items-center justify-center">Loading usage data...</div>
+  }
+
+  if (!usage) {
+    return <div className="flex h-96 items-center justify-center">Unable to load usage data.</div>
+  }
+
+  const usagePercentage = usage.usage_percentage
   const isNearLimit = usagePercentage > 80
-  const willExceed = usageData.projectedUsage > usageData.ticketsLimit
+  const willExceed = usage.projected_usage > usage.monthly_limit
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Usage & Limits</h1>
-        <p className="text-muted-foreground mt-1">Monitor your ticket usage and plan limits</p>
+        <p className="mt-1 text-muted-foreground">Monitor your ticket usage and plan limits</p>
       </div>
 
-      {/* Warning Banner */}
       {isNearLimit && (
         <Card className="border-orange-200 bg-orange-50">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 bg-orange-100 rounded-full">
+          <CardContent className="flex items-center gap-4 p-4">
+            <div className="rounded-full bg-orange-100 p-3">
               <AlertTriangle className="h-6 w-6 text-orange-600" />
             </div>
             <div className="flex-1">
               <p className="font-medium text-orange-900">You&apos;re approaching your monthly limit</p>
               <p className="text-sm text-orange-700">
-                You&apos;ve used {usagePercentage.toFixed(0)}% of your monthly ticket allocation. 
+                You&apos;ve used {usagePercentage.toFixed(0)}% of your monthly ticket allocation.
                 Consider upgrading to avoid overage charges.
               </p>
             </div>
@@ -59,7 +94,6 @@ export function UsageContent() {
         </Card>
       )}
 
-      {/* Current Usage Card */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -67,9 +101,8 @@ export function UsageContent() {
             <CardDescription>Your ticket usage this billing period</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center">
-            {/* Circular Progress */}
-            <div className="relative w-48 h-48">
-              <svg className="w-48 h-48 transform -rotate-90">
+            <div className="relative h-48 w-48">
+              <svg className="h-48 w-48 -rotate-90 transform">
                 <circle
                   cx="96"
                   cy="96"
@@ -97,13 +130,13 @@ export function UsageContent() {
                 </defs>
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-bold">{usageData.ticketsUsed}</span>
-                <span className="text-muted-foreground">of {usageData.ticketsLimit}</span>
+                <span className="text-4xl font-bold">{usage.current_usage}</span>
+                <span className="text-muted-foreground">of {usage.monthly_limit}</span>
                 <span className="text-sm text-muted-foreground">tickets</span>
               </div>
             </div>
 
-            <div className="w-full mt-6 space-y-4">
+            <div className="mt-6 w-full space-y-4">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Usage</span>
                 <span className="font-medium">{usagePercentage.toFixed(1)}%</span>
@@ -111,76 +144,76 @@ export function UsageContent() {
               <Progress value={usagePercentage} className="h-3" />
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Remaining</span>
-                <span className="font-medium">{usageData.ticketsLimit - usageData.ticketsUsed} tickets</span>
+                <span className="font-medium">{usage.remaining_tickets} tickets</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Forecast Card */}
         <Card>
           <CardHeader>
             <CardTitle>Usage Forecast</CardTitle>
             <CardDescription>Projected usage based on current rate</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl text-center">
-              <p className="text-sm text-muted-foreground mb-2">Projected Monthly Usage</p>
-              <p className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                ~{usageData.projectedUsage}
+            <div className="rounded-xl bg-gradient-to-br from-blue-50 to-purple-50 p-6 text-center">
+              <p className="mb-2 text-sm text-muted-foreground">Projected Monthly Usage</p>
+              <p className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-4xl font-bold text-transparent">
+                ~{usage.projected_usage}
               </p>
-              <p className="text-sm text-muted-foreground mt-2">tickets</p>
+              <p className="mt-2 text-sm text-muted-foreground">tickets</p>
               {willExceed && (
                 <Badge className="mt-4 bg-orange-100 text-orange-700">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  {usageData.projectedUsage - usageData.ticketsLimit} over limit
+                  <TrendingUp className="mr-1 h-3 w-3" />
+                  {usage.projected_usage - usage.monthly_limit} over limit
                 </Badge>
               )}
             </div>
 
             {willExceed && (
-              <div className="p-4 border border-orange-200 bg-orange-50 rounded-lg">
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
                 <p className="text-sm text-orange-800">
-                  <strong>Heads up!</strong> At your current rate, you&apos;ll use approximately {usageData.projectedUsage} tickets this month, 
-                  which is {usageData.projectedUsage - usageData.ticketsLimit} tickets over your limit.
+                  <strong>Heads up!</strong> At your current rate, you&apos;ll use approximately {usage.projected_usage} tickets this month,
+                  which is {usage.projected_usage - usage.monthly_limit} tickets over your limit.
                 </p>
-                <Button asChild variant="link" className="text-orange-700 p-0 mt-2 h-auto">
+                <Button asChild variant="link" className="mt-2 h-auto p-0 text-orange-700">
                   <Link href="/pricing">
                     Upgrade to avoid overage charges
-                    <ArrowUpRight className="h-4 w-4 ml-1" />
+                    <ArrowUpRight className="ml-1 h-4 w-4" />
                   </Link>
                 </Button>
               </div>
             )}
 
             <div className="space-y-3">
-              <div className="flex justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex justify-between rounded-lg bg-muted/50 p-3">
                 <span className="text-sm text-muted-foreground">Days remaining</span>
-                <span className="font-medium">12 days</span>
+                <span className="font-medium">{usage.days_remaining} days</span>
               </div>
-              <div className="flex justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex justify-between rounded-lg bg-muted/50 p-3">
                 <span className="text-sm text-muted-foreground">Daily average</span>
-                <span className="font-medium">25 tickets</span>
+                <span className="font-medium">{usage.daily_average.toFixed(1)} tickets</span>
               </div>
-              <div className="flex justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex justify-between rounded-lg bg-muted/50 p-3">
                 <span className="text-sm text-muted-foreground">Peak day</span>
-                <span className="font-medium">42 tickets (Mar 12)</span>
+                <span className="font-medium">
+                  {usage.peak_day ? `${usage.peak_day} (${usage.peak_day_count} tickets)` : 'No activity yet'}
+                </span>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Usage History Chart */}
       <Card>
         <CardHeader>
           <CardTitle>Usage History</CardTitle>
-          <CardDescription>Daily ticket usage for the current month</CardDescription>
+          <CardDescription>Daily ticket usage for the current billing period</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dailyUsage}>
+              <LineChart data={usage.history}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="date" className="text-xs" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis className="text-xs" />
@@ -188,7 +221,7 @@ export function UsageContent() {
                   contentStyle={{
                     backgroundColor: 'hsl(var(--card))',
                     border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
+                    borderRadius: '8px',
                   }}
                 />
                 <Line
@@ -211,7 +244,6 @@ export function UsageContent() {
         </CardContent>
       </Card>
 
-      {/* Usage by Category */}
       <Card>
         <CardHeader>
           <CardTitle>Usage by Category</CardTitle>
@@ -228,36 +260,43 @@ export function UsageContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {usageByCategory.map((cat) => {
-                const percentage = (cat.tickets / usageData.ticketsUsed) * 100
-                return (
-                  <TableRow key={cat.category}>
-                    <TableCell className="font-medium">{cat.category}</TableCell>
-                    <TableCell>{cat.tickets}</TableCell>
-                    <TableCell>{percentage.toFixed(1)}%</TableCell>
-                    <TableCell>
-                      <Progress value={percentage} className="h-2" />
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
+              {usage.category_breakdown.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    No usage data available for this billing period yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                usage.category_breakdown.map((category) => {
+                  const percentage = usage.current_usage > 0 ? (category.tickets / usage.current_usage) * 100 : 0
+                  return (
+                    <TableRow key={category.category}>
+                      <TableCell className="font-medium">{category.category}</TableCell>
+                      <TableCell>{category.tickets}</TableCell>
+                      <TableCell>{percentage.toFixed(1)}%</TableCell>
+                      <TableCell>
+                        <Progress value={percentage} className="h-2" />
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {/* Overage Charges */}
-      {usageData.overageCharges > 0 && (
+      {usage.overage > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Overage Charges</CardTitle>
-            <CardDescription>Additional charges for exceeding your plan limit</CardDescription>
+            <CardDescription>Additional charges for exceeding your plan limit this period</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Billing Period</TableHead>
                   <TableHead>Overage Tickets</TableHead>
                   <TableHead>Rate</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -265,20 +304,13 @@ export function UsageContent() {
               </TableHeader>
               <TableBody>
                 <TableRow>
-                  <TableCell>Mar 15, 2026</TableCell>
-                  <TableCell>12</TableCell>
-                  <TableCell>₹2/ticket</TableCell>
-                  <TableCell className="text-right font-medium">₹24</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Mar 18, 2026</TableCell>
-                  <TableCell>8</TableCell>
-                  <TableCell>₹2/ticket</TableCell>
-                  <TableCell className="text-right font-medium">₹16</TableCell>
-                </TableRow>
-                <TableRow className="bg-muted/50">
-                  <TableCell colSpan={3} className="font-medium">Total Overage Charges</TableCell>
-                  <TableCell className="text-right font-bold">₹40</TableCell>
+                  <TableCell>
+                    {new Date(usage.period_start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} - {' '}
+                    {new Date(usage.period_end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </TableCell>
+                  <TableCell>{usage.overage}</TableCell>
+                  <TableCell>INR {usage.overage_rate}/ticket</TableCell>
+                  <TableCell className="text-right font-medium">INR {usage.overage_cost.toLocaleString()}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -288,3 +320,4 @@ export function UsageContent() {
     </div>
   )
 }
+

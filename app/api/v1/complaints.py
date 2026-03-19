@@ -11,8 +11,10 @@ from app.billing.usage import can_process_ticket, track_ticket_usage
 from app.config import get_settings
 from app.db.models import Client, ClientUser, Complaint
 from app.db.session import get_db
+from app.intelligence.reply_engine import generate_ai_reply
 from app.intake.webhook import _process_complaint_for_client
 from app.replies.send_reply import send_complaint_reply
+from app.services.customer_history import get_customer_memory
 from app.services.event_logger import log_event
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints-v1"])
@@ -293,6 +295,28 @@ def reply_to_complaint(
     return {"complaint": _serialize_complaint(complaint), **result}
 
 
+@router.post("/{complaint_id}/suggest-reply")
+def suggest_reply_for_complaint(
+    complaint_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    user = _get_authenticated_user(request, db, authorization)
+    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    customer_history = get_customer_memory(db, complaint.customer_email, limit=5)
+    suggestion = generate_ai_reply(complaint, customer_history)
+    complaint.ai_reply = suggestion["reply_text"]
+    complaint.ai_reply_confidence = suggestion["confidence_score"]
+    complaint.ai_reply_status = "pending"
+    db.commit()
+    db.refresh(complaint)
+    return _serialize_complaint(complaint)
+
+
 @router.post("/{complaint_id}/escalate")
 def escalate_complaint(
     complaint_id: str,
@@ -321,3 +345,20 @@ def escalate_complaint(
     db.commit()
     db.refresh(complaint)
     return _serialize_complaint(complaint)
+
+
+@router.delete("/{complaint_id}")
+def delete_complaint(
+    complaint_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    user = _get_authenticated_user(request, db, authorization)
+    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    db.delete(complaint)
+    db.commit()
+    return {"ok": True, "id": complaint_id}

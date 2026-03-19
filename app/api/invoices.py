@@ -26,7 +26,11 @@ def get_invoices(
             "invoice_number": inv.invoice_number,
             "status": inv.status,
             "total": float(inv.total),
+            "subtotal": float(inv.subtotal),
+            "tax": float(inv.tax),
+            "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
             "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
+            "payment_method": inv.payment_method,
         }
         for inv in invoices
     ]

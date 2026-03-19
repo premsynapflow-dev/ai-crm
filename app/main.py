@@ -25,6 +25,7 @@ from app.api.chatbot import router as chatbot_api_router
 from app.api.invoices import router as invoices_router
 from app.api.plans import router as plans_router
 from app.api.public import router as public_api_router
+from app.api.settings import router as settings_router
 from app.api.session_auth import router as session_auth_router
 from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
@@ -189,6 +190,7 @@ app.include_router(complaints_v1_router)
 app.include_router(me_router)
 app.include_router(plans_router)
 app.include_router(invoices_router)
+app.include_router(settings_router)
 app.include_router(admin_prompts_router)
 app.include_router(health_router)
 app.include_router(metrics_router)

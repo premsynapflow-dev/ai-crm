@@ -15,6 +15,8 @@ export interface Complaint {
   createdAt: string
   updatedAt: string
   suggestedResponse?: string
+  ticketId?: string
+  resolutionStatus?: string
 }
 
 export interface ComplaintFilters {
@@ -41,6 +43,15 @@ interface ComplaintApiPayload {
   updated_at?: string
   ai_confidence?: number
   ai_reply?: string
+  ticket_id?: string
+  resolution_status?: string
+}
+
+export interface ComplaintListResponse {
+  items: Complaint[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 function normalizeComplaint(complaint: ComplaintApiPayload): Complaint {
@@ -59,11 +70,13 @@ function normalizeComplaint(complaint: ComplaintApiPayload): Complaint {
     createdAt: complaint.created_at ?? new Date().toISOString(),
     updatedAt: complaint.updated_at ?? complaint.created_at ?? new Date().toISOString(),
     suggestedResponse: complaint.ai_reply,
+    ticketId: complaint.ticket_id,
+    resolutionStatus: complaint.resolution_status,
   }
 }
 
 export const complaintsAPI = {
-  getAll: async (filters?: ComplaintFilters): Promise<Complaint[]> => {
+  list: async (filters?: ComplaintFilters): Promise<ComplaintListResponse> => {
     const params = new URLSearchParams()
     if (filters?.category) params.append('category', filters.category)
     if (filters?.priority) params.append('priority', filters.priority)
@@ -74,7 +87,17 @@ export const complaintsAPI = {
 
     const response = await api.get(`/api/v1/complaints${params.toString() ? `?${params.toString()}` : ''}`)
     const items = Array.isArray(response.data) ? response.data : response.data.items ?? []
-    return items.map(normalizeComplaint)
+    return {
+      items: items.map(normalizeComplaint),
+      total: Number(response.data?.total ?? items.length),
+      page: Number(response.data?.page ?? filters?.page ?? 1),
+      pageSize: Number(response.data?.page_size ?? filters?.pageSize ?? items.length),
+    }
+  },
+
+  getAll: async (filters?: ComplaintFilters): Promise<Complaint[]> => {
+    const response = await complaintsAPI.list(filters)
+    return response.items
   },
 
   getById: async (id: string): Promise<Complaint> => {
@@ -86,13 +109,28 @@ export const complaintsAPI = {
     const response = await api.post(`/api/v1/complaints/${id}/reply`, {
       reply_text: replyText,
     })
-    return response.data
+    return normalizeComplaint(response.data.complaint ?? response.data)
   },
 
   markResolved: async (id: string) => {
     const response = await api.patch(`/api/v1/complaints/${id}`, {
       status: 'resolved',
     })
-    return response.data
+    return normalizeComplaint(response.data)
+  },
+
+  suggestReply: async (id: string) => {
+    const response = await api.post(`/api/v1/complaints/${id}/suggest-reply`)
+    return normalizeComplaint(response.data)
+  },
+
+  escalate: async (id: string) => {
+    const response = await api.post(`/api/v1/complaints/${id}/escalate`)
+    return normalizeComplaint(response.data)
+  },
+
+  delete: async (id: string) => {
+    const response = await api.delete(`/api/v1/complaints/${id}`)
+    return response.data as { ok: boolean; id: string }
   },
 }
