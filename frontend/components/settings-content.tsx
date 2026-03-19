@@ -229,7 +229,7 @@ export function SettingsContent() {
 
                 <div className="flex items-center gap-2">
                   <div className="flex-1 overflow-x-auto rounded-md bg-muted p-3 font-mono text-sm">
-                    {showApiKey ? summary.api_key : summary.api_key.replace(/.(?=.{4})/g, '•')}
+                    {showApiKey ? summary.api_key : summary.api_key.replace(/.(?=.{4})/g, '*')}
                   </div>
                   <Button variant="outline" size="icon" onClick={() => setShowApiKey(!showApiKey)}>
                     {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
