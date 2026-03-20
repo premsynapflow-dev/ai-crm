@@ -28,18 +28,28 @@ export interface AnalyticsOverview {
   escalation: { escalation_rate: number }
 }
 
+export interface AnalyticsCategoryBreakdownItem {
+  category: string
+  count: number
+}
+
+export interface AnalyticsSentimentDistributionItem {
+  sentiment: string
+  count: number
+}
+
 export const analyticsAPI = {
   getOverview: async (days = 30): Promise<AnalyticsOverview> => {
     const response = await api.get('/api/analytics/overview', { params: { days } })
     return response.data
   },
 
-  getCategoryBreakdown: async () => {
+  getCategoryBreakdown: async (): Promise<AnalyticsCategoryBreakdownItem[]> => {
     const response = await api.get('/api/analytics/category-breakdown')
     return response.data
   },
 
-  getSentimentDistribution: async () => {
+  getSentimentDistribution: async (): Promise<AnalyticsSentimentDistributionItem[]> => {
     const response = await api.get('/api/analytics/sentiment-distribution')
     return response.data
   },

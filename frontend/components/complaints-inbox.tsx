@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useDeferredValue, useEffect, useState } from 'react'
+import type { CheckedState } from '@radix-ui/react-checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -71,7 +72,7 @@ export function ComplaintsInbox() {
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [totalComplaints, setTotalComplaints] = useState(0)
   const [categories, setCategories] = useState<string[]>([])
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set<string>())
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
@@ -83,7 +84,7 @@ export function ComplaintsInbox() {
   const [isMutating, setIsMutating] = useState(false)
   const deferredSearch = useDeferredValue(searchQuery)
 
-  const loadComplaints = async (page = currentPage) => {
+  const loadComplaints = async (page: number = currentPage): Promise<void> => {
     setIsLoading(true)
     try {
       const response = await complaintsAPI.list({
@@ -96,7 +97,7 @@ export function ComplaintsInbox() {
       })
       setComplaints(response.items)
       setTotalComplaints(response.total)
-      setSelectedIds(new Set())
+      setSelectedIds(new Set<string>())
 
       if (response.items.length === 0 && page > 1 && response.total > 0) {
         setCurrentPage(page - 1)
@@ -122,8 +123,12 @@ export function ComplaintsInbox() {
         if (!active) {
           return
         }
-        const nextCategories = Array.from(
-          new Set((items ?? []).map((item: { category: string }) => item.category).filter(Boolean)),
+        const nextCategories: string[] = Array.from(
+          new Set(
+            (items ?? [])
+              .map((item) => item.category)
+              .filter((category): category is string => Boolean(category)),
+          ),
         )
         setCategories(nextCategories)
       })
@@ -537,4 +542,3 @@ export function ComplaintsInbox() {
     </div>
   )
 }
-
