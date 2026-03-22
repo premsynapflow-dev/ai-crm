@@ -1,3 +1,15 @@
+"""
+Complaints API endpoints.
+
+SECURITY NOTE: All endpoints MUST filter by client.id to ensure data isolation.
+Never return complaints from other clients.
+
+Example of correct filtering:
+    complaints = db.query(Complaint).filter(
+        Complaint.client_id == client.id
+    ).all()
+"""
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -146,8 +158,12 @@ def _get_user_from_token(db: Session, authorization: str | None):
 
 def _get_authenticated_user(request: Request, db: Session, authorization: str | None):
     if authorization:
-        return _get_user_from_token(db, authorization)
-    return resolve_current_client_user(request, db)
+        user = _get_user_from_token(db, authorization)
+    else:
+        user = resolve_current_client_user(request, db)
+    request.state.client_id = str(user.client_id)
+    request.state.client_user_id = str(user.id)
+    return user
 
 
 def _generate_suggested_response(db: Session, complaint: Complaint, client: Client) -> dict:

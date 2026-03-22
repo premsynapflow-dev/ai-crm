@@ -1,3 +1,10 @@
+"""
+Analytics API endpoints.
+
+SECURITY NOTE: All analytics queries MUST filter by client_id.
+Never aggregate or return data across multiple clients.
+"""
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -23,6 +30,7 @@ def _resolve_client(request: Request, db: Session, x_api_key: str) -> Client:
     if x_api_key:
         client = db.query(Client).filter(Client.api_key == x_api_key).first()
         if client:
+            request.state.client_id = str(client.id)
             return client
     return resolve_current_client(request, db, required=True)
 

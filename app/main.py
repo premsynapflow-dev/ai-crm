@@ -30,6 +30,7 @@ from app.api.session_auth import router as session_auth_router
 from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
 from app.api.v1.me import router as me_router
+from app.api.v1.security_test import router as security_test_router
 from app.api.admin_prompts import router as admin_prompts_router
 from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
@@ -43,6 +44,7 @@ from app.middleware.audit import RequestAuditMiddleware
 from app.monitoring.health import router as health_router
 from app.monitoring.metrics import record_metric, router as metrics_router
 from app.queue.worker import start_worker_thread
+from app.security_check import run_all_security_checks
 from app.utils.logging import configure_logging, get_logger
 
 configure_logging()
@@ -52,6 +54,11 @@ try:
 except RuntimeError as exc:
     logger.error("Configuration validation failed: %s", exc)
     raise
+
+logger.info("Running security verification checks...")
+security_status = run_all_security_checks()
+if not security_status:
+    logger.warning("SECURITY: Some security checks failed. Review the logs above.")
 
 # Initialize Sentry (optional)
 if _HAS_SENTRY and settings.environment != "dev":
@@ -188,6 +195,7 @@ app.include_router(public_api_router)
 app.include_router(auth_v1_router)
 app.include_router(complaints_v1_router)
 app.include_router(me_router)
+app.include_router(security_test_router)
 app.include_router(plans_router)
 app.include_router(invoices_router)
 app.include_router(settings_router)
