@@ -1,13 +1,14 @@
 import Cookies from 'js-cookie'
 
 import api from '../api'
+import type { PlanId } from '../plan-features'
+
+export type { PlanId } from '../plan-features'
 
 export interface LoginCredentials {
   email: string
   password: string
 }
-
-export type PlanId = 'trial' | 'pro' | 'business'
 
 export interface User {
   id: string
@@ -21,7 +22,7 @@ export interface User {
 
 function normalizeUser(payload: unknown): User {
   const raw = (payload ?? {}) as Record<string, unknown>
-  const plan = String(raw.plan_id ?? raw.plan ?? 'trial') as PlanId
+  const plan = String(raw.plan_id ?? raw.plan ?? 'starter') as PlanId
 
   return {
     id: String(raw.id ?? ''),

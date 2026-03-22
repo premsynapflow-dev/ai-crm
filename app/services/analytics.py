@@ -238,9 +238,11 @@ def response_time_tracking(db, client_id):
 
 
 def customer_satisfaction_score(db, client_id):
-    score = db.query(func.avg(Complaint.customer_satisfaction_score)).filter(
+    score = db.query(
+        func.avg(func.coalesce(Complaint.satisfaction_score, Complaint.customer_satisfaction_score))
+    ).filter(
         Complaint.client_id == client_id,
-        Complaint.customer_satisfaction_score.isnot(None),
+        or_(Complaint.satisfaction_score.isnot(None), Complaint.customer_satisfaction_score.isnot(None)),
     ).scalar()
     if score is None:
         resolved = db.query(func.count(Complaint.id)).filter(

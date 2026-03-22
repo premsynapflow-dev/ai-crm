@@ -28,7 +28,7 @@ def enqueue_welcome_sequence(client, user_email):
         {
             "to_email": user_email,
             "subject": "Your trial is ending soon",
-            "body": "Your SynapFlow trial is almost over. Upgrade any time from the billing section.",
+            "body": "Your SynapFlow Starter trial is almost over. Upgrade any time from the billing section.",
         },
         scheduled_for=now + timedelta(days=6),
     )
@@ -37,16 +37,16 @@ def enqueue_welcome_sequence(client, user_email):
         {
             "to_email": user_email,
             "subject": "Your trial has ended",
-            "body": "Your trial has ended. Upgrade to Pro or Business to keep processing tickets.",
+            "body": "Your trial has ended. Upgrade to Pro, Max, or Scale to keep processing tickets.",
         },
         scheduled_for=now + timedelta(days=8),
     )
 
 
 def apply_trial_plan(client):
-    plan = PLANS["trial"]
-    client.plan_id = "trial"
-    client.plan = "trial"
+    plan = PLANS["starter"]
+    client.plan_id = "starter"
+    client.plan = "starter"
     client.monthly_ticket_limit = plan["monthly_tickets"]
     client.trial_ends_at = datetime.now(timezone.utc) + timedelta(days=plan["trial_days"])
     return client

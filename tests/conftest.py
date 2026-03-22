@@ -52,9 +52,9 @@ def test_client_record(test_db):
         id=uuid.uuid4(),
         name="Test Company",
         api_key=generate_api_key(),
-        plan_id="trial",
-        monthly_ticket_limit=50,
-        trial_ends_at=datetime.now(timezone.utc) + timedelta(days=7)
+        plan_id="starter",
+        monthly_ticket_limit=500,
+        trial_ends_at=datetime.now(timezone.utc) + timedelta(days=30)
     )
     test_db.add(client)
     test_db.commit()

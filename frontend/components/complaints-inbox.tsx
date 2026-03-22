@@ -1,7 +1,6 @@
 ﻿"use client"
 
 import { useDeferredValue, useEffect, useState } from 'react'
-import type { CheckedState } from '@radix-ui/react-checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +37,7 @@ import {
   AlertTriangle,
   Trash2,
   CheckCircle2,
+  ArrowUpDown,
   Loader2,
 } from 'lucide-react'
 import { analyticsAPI } from '@/lib/api/analytics'
@@ -67,6 +67,7 @@ const statusColors: Record<string, string> = {
 }
 
 const ITEMS_PER_PAGE = 20
+type SortField = 'createdAt' | 'priority' | 'customerName' | 'status'
 
 export function ComplaintsInbox() {
   const [complaints, setComplaints] = useState<Complaint[]>([])
@@ -78,30 +79,27 @@ export function ComplaintsInbox() {
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [sortField, setSortField] = useState<SortField>('createdAt')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isMutating, setIsMutating] = useState(false)
   const deferredSearch = useDeferredValue(searchQuery)
+  const totalPages = Math.max(Math.ceil(totalComplaints / ITEMS_PER_PAGE), 1)
 
-  const loadComplaints = async (page: number = currentPage): Promise<void> => {
+  const loadComplaints = async (): Promise<void> => {
     setIsLoading(true)
     try {
-      const response = await complaintsAPI.list({
-        page,
-        pageSize: ITEMS_PER_PAGE,
+      const items = await complaintsAPI.getAll({
         category: categoryFilter === 'all' ? undefined : categoryFilter,
         priority: priorityFilter === 'all' ? undefined : priorityFilter,
         status: statusFilter === 'all' ? undefined : statusFilter,
         search: deferredSearch.trim() || undefined,
       })
-      setComplaints(response.items)
-      setTotalComplaints(response.total)
+      setComplaints(items)
+      setTotalComplaints(items.length)
       setSelectedIds(new Set<string>())
-
-      if (response.items.length === 0 && page > 1 && response.total > 0) {
-        setCurrentPage(page - 1)
-      }
     } catch {
       setComplaints([])
       setTotalComplaints(0)
@@ -112,8 +110,8 @@ export function ComplaintsInbox() {
   }
 
   useEffect(() => {
-    void loadComplaints(currentPage)
-  }, [currentPage, categoryFilter, priorityFilter, statusFilter, deferredSearch])
+    void loadComplaints()
+  }, [categoryFilter, priorityFilter, statusFilter, deferredSearch])
 
   useEffect(() => {
     let active = true
@@ -143,11 +141,36 @@ export function ComplaintsInbox() {
     }
   }, [])
 
-  const totalPages = Math.max(Math.ceil(totalComplaints / ITEMS_PER_PAGE), 1)
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  const priorityRank: Record<Complaint['priority'], number> = {
+    low: 1,
+    medium: 2,
+    high: 3,
+    critical: 4,
+  }
+  const sortedComplaints = [...complaints].sort((left, right) => {
+    const direction = sortDirection === 'asc' ? 1 : -1
+    if (sortField === 'priority') {
+      return (priorityRank[left.priority] - priorityRank[right.priority]) * direction
+    }
+    if (sortField === 'createdAt') {
+      return (new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()) * direction
+    }
+    return String(left[sortField]).localeCompare(String(right[sortField])) * direction
+  })
+  const paginatedComplaints = sortedComplaints.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  )
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(complaints.map((complaint) => complaint.id)))
+      setSelectedIds(new Set(paginatedComplaints.map((complaint) => complaint.id)))
     } else {
       setSelectedIds(new Set())
     }
@@ -168,7 +191,7 @@ export function ComplaintsInbox() {
     try {
       await Promise.all(Array.from(selectedIds).map((id) => complaintsAPI.markResolved(id)))
       toast.success(`${selectedIds.size} complaints marked as resolved`)
-      await loadComplaints(currentPage)
+      await loadComplaints()
     } catch {
       toast.error('Failed to resolve selected complaints')
     } finally {
@@ -181,7 +204,7 @@ export function ComplaintsInbox() {
     try {
       await Promise.all(Array.from(selectedIds).map((id) => complaintsAPI.escalate(id)))
       toast.success(`${selectedIds.size} complaints escalated`)
-      await loadComplaints(currentPage)
+      await loadComplaints()
     } catch {
       toast.error('Failed to escalate selected complaints')
     } finally {
@@ -194,7 +217,7 @@ export function ComplaintsInbox() {
     try {
       await Promise.all(Array.from(selectedIds).map((id) => complaintsAPI.delete(id)))
       toast.success(`${selectedIds.size} complaints deleted`)
-      await loadComplaints(currentPage)
+      await loadComplaints()
     } catch {
       toast.error('Failed to delete selected complaints')
     } finally {
@@ -220,23 +243,38 @@ export function ComplaintsInbox() {
     setModalOpen(true)
   }
 
+  const handleSingleResolve = async (complaintId: string) => {
+    setIsMutating(true)
+    try {
+      const updatedComplaint = await complaintsAPI.markResolved(complaintId)
+      setComplaints((current) => current.map((item) => (item.id === updatedComplaint.id ? updatedComplaint : item)))
+      toast.success('Complaint marked as resolved')
+    } catch {
+      toast.error('Failed to resolve complaint')
+    } finally {
+      setIsMutating(false)
+    }
+  }
+
   const handleComplaintUpdated = (updatedComplaint: Complaint) => {
     setComplaints((current) => current.map((item) => (item.id === updatedComplaint.id ? updatedComplaint : item)))
     setSelectedComplaint(updatedComplaint)
   }
 
-  const allSelected = complaints.length > 0 && complaints.every((complaint) => selectedIds.has(complaint.id))
+  const allSelected = paginatedComplaints.length > 0 && paginatedComplaints.every((complaint) => selectedIds.has(complaint.id))
   const showingFrom = totalComplaints === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1
   const showingTo = Math.min(currentPage * ITEMS_PER_PAGE, totalComplaints)
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Complaints Inbox</h1>
-        <p className="mt-1 text-muted-foreground">Manage and respond to customer complaints</p>
+      <div className="overflow-hidden rounded-[28px] border border-white/60 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_34%),linear-gradient(135deg,_rgba(255,255,255,0.97),_rgba(241,245,249,0.92))] p-6 shadow-[0_35px_100px_-55px_rgba(15,23,42,0.65)]">
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Complaints inbox</h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600">
+          Search, sort, bulk-manage, and respond to customer complaints from one operational queue.
+        </p>
       </div>
 
-      <Card>
+      <Card className="border-white/70 bg-white/90 shadow-[0_20px_70px_-50px_rgba(15,23,42,0.55)]">
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-4">
             <div className="min-w-[200px] flex-1">
@@ -293,11 +331,33 @@ export function ComplaintsInbox() {
                 <SelectItem value="escalated">Escalated</SelectItem>
               </SelectContent>
             </Select>
+
+            <Select value={sortField} onValueChange={(value) => setSortField(value as SortField)}>
+              <SelectTrigger className="w-[180px]">
+                <ArrowUpDown className="mr-2 h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="createdAt">Newest first</SelectItem>
+                <SelectItem value="priority">Priority</SelectItem>
+                <SelectItem value="customerName">Customer</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="outline"
+              onClick={() => setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}
+              className="gap-2"
+            >
+              <ArrowUpDown className="h-4 w-4" />
+              {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <Button
           variant="outline"
           size="sm"
@@ -336,7 +396,7 @@ export function ComplaintsInbox() {
         )}
       </div>
 
-      <Card>
+      <Card className="border-white/70 bg-white/90 shadow-[0_20px_70px_-50px_rgba(15,23,42,0.55)]">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Complaints</span>
@@ -386,7 +446,7 @@ export function ComplaintsInbox() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  complaints.map((complaint) => (
+                  paginatedComplaints.map((complaint) => (
                     <TableRow key={complaint.id} className="hover:bg-muted/50">
                       <TableCell>
                         <Checkbox
@@ -430,31 +490,44 @@ export function ComplaintsInbox() {
                         })}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-2">
                           <Button
-                            variant="ghost"
-                            size="icon"
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleViewDetails(complaint)}
-                            className="h-8 w-8"
+                            className="gap-2"
                           >
                             <Eye className="h-4 w-4" />
+                            View
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="icon"
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleViewDetails(complaint)}
-                            className="h-8 w-8"
+                            className="gap-2"
                           >
                             <MessageSquare className="h-4 w-4" />
+                            Reply
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="icon"
+                            variant="outline"
+                            size="sm"
                             onClick={() => void handleSingleEscalate(complaint.id)}
-                            className="h-8 w-8"
+                            className="gap-2"
                             disabled={isMutating}
                           >
                             <AlertTriangle className="h-4 w-4" />
+                            Escalate
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleSingleResolve(complaint.id)}
+                            className="gap-2"
+                            disabled={isMutating}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            Resolve
                           </Button>
                         </div>
                       </TableCell>

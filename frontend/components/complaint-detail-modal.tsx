@@ -18,15 +18,18 @@ import {
   Phone,
   Brain,
   Sparkles,
-  RefreshCw,
   Send,
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Loader2,
 } from 'lucide-react'
 import { complaintsAPI, type Complaint } from '@/lib/api/complaints'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useAuth } from '@/lib/auth-context'
+import { planIncludesFeature } from '@/lib/plan-features'
+import { UpgradePrompt } from '@/components/upgrade-prompt'
 
 interface ComplaintDetailModalProps {
   complaint: Complaint | null
@@ -54,6 +57,7 @@ export function ComplaintDetailModal({
   onOpenChange,
   onComplaintUpdated,
 }: ComplaintDetailModalProps) {
+  const { user } = useAuth()
   const [currentComplaint, setCurrentComplaint] = useState<Complaint | null>(complaint)
   const [reply, setReply] = useState('')
   const [isRegenerating, setIsRegenerating] = useState(false)
@@ -83,11 +87,20 @@ export function ComplaintDetailModal({
   }
 
   const handleRegenerate = async () => {
+    if (!planIncludesFeature(user?.plan_id, 'ai_suggested_responses')) {
+      toast.error('AI suggested responses require the Pro plan or higher')
+      return
+    }
+
     setIsRegenerating(true)
     try {
-      const updatedComplaint = await complaintsAPI.suggestReply(currentComplaint.id)
+      const suggestion = await complaintsAPI.suggestReply(currentComplaint.id)
+      const updatedComplaint = {
+        ...currentComplaint,
+        suggestedResponse: suggestion.suggestedResponse,
+      }
       applyUpdate(updatedComplaint)
-      setReply(updatedComplaint.suggestedResponse ?? '')
+      setReply(suggestion.suggestedResponse ?? '')
       toast.success('New response generated')
     } catch {
       toast.error('Failed to generate a new response')
@@ -149,6 +162,7 @@ export function ComplaintDetailModal({
     { time: currentComplaint.createdAt, action: 'AI analysis completed', icon: Brain },
     { time: currentComplaint.updatedAt, action: 'Status updated', icon: Clock },
   ]
+  const hasSuggestedResponses = planIncludesFeature(user?.plan_id, 'ai_suggested_responses')
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -242,21 +256,33 @@ export function ComplaintDetailModal({
                 variant="ghost"
                 size="sm"
                 onClick={handleRegenerate}
-                disabled={isRegenerating}
+                disabled={isRegenerating || !hasSuggestedResponses}
               >
-                <RefreshCw className={cn('mr-1 h-4 w-4', isRegenerating && 'animate-spin')} />
-                Regenerate
+                {isRegenerating ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+                Refresh
               </Button>
             </div>
+            {!hasSuggestedResponses && (
+              <div className="mb-3">
+                <UpgradePrompt
+                  compact
+                  title="Unlock AI suggested responses"
+                  description="Use similar resolved complaints to draft empathetic replies faster."
+                  requiredPlan="Pro"
+                />
+              </div>
+            )}
             <div className="rounded-lg border bg-muted/50 p-4 text-sm whitespace-pre-line">
-              {currentComplaint.suggestedResponse || 'No AI suggestion available yet.'}
+              {hasSuggestedResponses
+                ? (currentComplaint.suggestedResponse || 'No AI suggestion available yet.')
+                : 'Upgrade to Pro or higher to generate AI suggested responses.'}
             </div>
             <Button
               variant="outline"
               size="sm"
               className="mt-2"
               onClick={handleUseAISuggestion}
-              disabled={!currentComplaint.suggestedResponse}
+              disabled={!currentComplaint.suggestedResponse || !hasSuggestedResponses}
             >
               <Sparkles className="mr-1 h-4 w-4" />
               Use This Response

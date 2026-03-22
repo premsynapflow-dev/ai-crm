@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -39,7 +39,6 @@ import {
   User
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -61,23 +60,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [notifications, setNotifications] = useState(3)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Simulate new notifications
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.7) {
-        setNotifications(prev => prev + 1)
-        toast.info('New complaint received', {
-          description: 'A customer has submitted a new complaint'
-        })
-      }
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [])
-
   const handleLogout = () => {
     logout()
-    toast.success('Logged out successfully')
   }
 
   const SidebarContent = () => (
@@ -174,7 +158,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   )
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.08),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(241,245,249,1))]">
       {/* Desktop Sidebar */}
       <aside className={cn(
         "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 hidden lg:block",
@@ -205,7 +189,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         collapsed ? "lg:ml-16" : "lg:ml-64"
       )}>
         {/* Header */}
-        <header className="sticky top-0 z-30 h-16 bg-card/80 backdrop-blur-sm border-b border-border">
+        <header className="sticky top-0 z-30 h-16 border-b border-border bg-card/80 backdrop-blur-sm">
           <div className="flex items-center justify-between h-full px-4 lg:px-6">
             <div className="flex items-center gap-4 lg:hidden">
               <div className="w-10" /> {/* Spacer for mobile menu button */}
@@ -224,6 +208,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
             {/* Right Actions */}
             <div className="flex items-center gap-2">
+              {user?.plan_id && (
+                <Badge variant="outline" className="hidden border-emerald-200 bg-emerald-50 text-emerald-700 md:inline-flex">
+                  {user.plan_id}
+                </Badge>
+              )}
               {/* Notifications */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -243,9 +232,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     {[...Array(Math.min(notifications, 5))].map((_, i) => (
                       <DropdownMenuItem key={i} className="p-3 cursor-pointer">
                         <div>
-                          <p className="text-sm font-medium">New complaint received</p>
+                          <p className="text-sm font-medium">Complaint queue update</p>
                           <p className="text-xs text-muted-foreground">
-                            {i === 0 ? 'Just now' : `${i * 5} minutes ago`}
+                            {i === 0 ? 'New complaint waiting for review' : `${i * 5} minutes ago`}
                           </p>
                         </div>
                       </DropdownMenuItem>

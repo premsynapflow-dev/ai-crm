@@ -17,6 +17,13 @@ export interface Complaint {
   suggestedResponse?: string
   ticketId?: string
   resolutionStatus?: string
+  firstResponseAt?: string | null
+  resolvedAt?: string | null
+  sentimentScore?: number | null
+  sentimentLabel?: string | null
+  sentimentIndicators: string[]
+  assignedTo?: string | null
+  satisfactionScore?: number | null
 }
 
 export interface ComplaintFilters {
@@ -45,6 +52,19 @@ interface ComplaintApiPayload {
   ai_reply?: string
   ticket_id?: string
   resolution_status?: string
+  first_response_at?: string | null
+  resolved_at?: string | null
+  sentiment_score?: number | null
+  sentiment_label?: string | null
+  sentiment_indicators?: string[]
+  assigned_to?: string | null
+  satisfaction_score?: number | null
+}
+
+export interface SuggestedResponseResult {
+  suggestedResponse: string
+  confidence: number
+  basedOnSimilarCases: number
 }
 
 export interface ComplaintListResponse {
@@ -72,6 +92,13 @@ function normalizeComplaint(complaint: ComplaintApiPayload): Complaint {
     suggestedResponse: complaint.ai_reply,
     ticketId: complaint.ticket_id,
     resolutionStatus: complaint.resolution_status,
+    firstResponseAt: complaint.first_response_at ?? null,
+    resolvedAt: complaint.resolved_at ?? null,
+    sentimentScore: complaint.sentiment_score ?? null,
+    sentimentLabel: complaint.sentiment_label ?? null,
+    sentimentIndicators: complaint.sentiment_indicators ?? [],
+    assignedTo: complaint.assigned_to ?? null,
+    satisfactionScore: complaint.satisfaction_score ?? null,
   }
 }
 
@@ -96,7 +123,11 @@ export const complaintsAPI = {
   },
 
   getAll: async (filters?: ComplaintFilters): Promise<Complaint[]> => {
-    const response = await complaintsAPI.list(filters)
+    const response = await complaintsAPI.list({
+      ...filters,
+      page: 1,
+      pageSize: filters?.pageSize ?? 500,
+    })
     return response.items
   },
 
@@ -119,9 +150,13 @@ export const complaintsAPI = {
     return normalizeComplaint(response.data)
   },
 
-  suggestReply: async (id: string) => {
-    const response = await api.post(`/api/v1/complaints/${id}/suggest-reply`)
-    return normalizeComplaint(response.data)
+  suggestReply: async (id: string): Promise<SuggestedResponseResult> => {
+    const response = await api.get(`/api/v1/complaints/${id}/suggest-response`)
+    return {
+      suggestedResponse: String(response.data?.suggested_response ?? ''),
+      confidence: Number(response.data?.confidence ?? 0),
+      basedOnSimilarCases: Number(response.data?.based_on_similar_cases ?? 0),
+    }
   },
 
   escalate: async (id: string) => {

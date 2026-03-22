@@ -87,7 +87,7 @@ export function SettingsContent() {
     return <div className="flex h-96 items-center justify-center">Unable to load settings.</div>
   }
 
-  const isBusinessPlan = (summary.profile.plan_id ?? user?.plan ?? 'trial') === 'business'
+  const isBusinessPlan = new Set(['max', 'scale', 'enterprise']).has(summary.profile.plan_id ?? user?.plan ?? 'starter')
   const initials = summary.profile.name
     .split(' ')
     .map((part) => part[0])

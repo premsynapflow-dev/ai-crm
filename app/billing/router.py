@@ -15,11 +15,13 @@ settings = get_settings()
 
 
 class CheckoutRequest(BaseModel):
-    plan_id: str = Field(..., pattern="^(trial|pro|business)$")
+    plan_id: str = Field(..., pattern="^(starter|pro|max|scale|enterprise)$")
+    billing_cycle: str = Field(default="monthly", pattern="^(monthly|annual)$")
 
 
 class UpgradeRequest(BaseModel):
-    plan_id: str = Field(..., pattern="^(trial|pro|business)$")
+    plan_id: str = Field(..., pattern="^(starter|pro|max|scale|enterprise)$")
+    billing_cycle: str = Field(default="monthly", pattern="^(monthly|annual)$")
 
 
 def _get_client_by_api_key(x_api_key: str) -> Client:
@@ -37,7 +39,7 @@ def _get_client_by_api_key(x_api_key: str) -> Client:
 @router.post("/checkout")
 def billing_checkout(payload: CheckoutRequest, x_api_key: str = Header(default="", alias="x-api-key")):
     client = _get_client_by_api_key(x_api_key)
-    return create_subscription(client.id, payload.plan_id)
+    return create_subscription(client.id, payload.plan_id, payload.billing_cycle)
 
 
 @router.post("/webhook/razorpay")
@@ -72,9 +74,11 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
         if not db_client:
             raise HTTPException(status_code=404, detail="Client not found")
         plan = PLANS[payload.plan_id]
+        if payload.plan_id == "enterprise":
+            raise HTTPException(status_code=400, detail="Enterprise requires sales contact")
         db_client.plan_id = payload.plan_id
         db_client.plan = payload.plan_id
-        db_client.monthly_ticket_limit = plan["monthly_tickets"]
+        db_client.monthly_ticket_limit = plan["tickets_per_month"]
         subscription = (
             db.query(Subscription)
             .filter(Subscription.client_id == client.id)
@@ -85,7 +89,20 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
             subscription.plan = payload.plan_id
             subscription.status = "active"
         db.commit()
-        return {"status": "upgraded", "plan_id": payload.plan_id}
+        payment_url = None
+        price = plan["annual_price"] if payload.billing_cycle == "annual" else plan["monthly_price"]
+        if price:
+            try:
+                payment_link = create_payment_link(client.id, int(price) * 100)
+                payment_url = payment_link.get("short_url")
+            except Exception:
+                payment_url = None
+        return {
+            "status": "upgraded",
+            "plan_id": payload.plan_id,
+            "billing_cycle": payload.billing_cycle,
+            "payment_url": payment_url,
+        }
     except Exception:
         db.rollback()
         raise

@@ -29,8 +29,21 @@ import {
   Clock,
   Target,
   Brain,
+  Flame,
+  ShieldAlert,
+  Loader2,
 } from 'lucide-react'
-import { analyticsAPI, type AnalyticsOverview } from '@/lib/api/analytics'
+import { UpgradePrompt } from '@/components/upgrade-prompt'
+import { useAuth } from '@/lib/auth-context'
+import { getFeatureGateDetail } from '@/lib/api-error'
+import {
+  analyticsAPI,
+  type AnalyticsOverview,
+  type ChurnRiskCustomer,
+  type RootCauseAnalysisResponse,
+  type TeamPerformanceResponse,
+} from '@/lib/api/analytics'
+import { planIncludesFeature } from '@/lib/plan-features'
 import { cn } from '@/lib/utils'
 
 interface StatCardProps {
@@ -89,9 +102,16 @@ const statusColors: Record<string, string> = {
 }
 
 export function AnalyticsContent() {
+  const { user } = useAuth()
   const [dateRange, setDateRange] = useState<DateRange>('30d')
   const [analytics, setAnalytics] = useState<AnalyticsOverview | null>(null)
+  const [rootCause, setRootCause] = useState<RootCauseAnalysisResponse | null>(null)
+  const [teamPerformance, setTeamPerformance] = useState<TeamPerformanceResponse | null>(null)
+  const [churnRiskCustomers, setChurnRiskCustomers] = useState<ChurnRiskCustomer[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [rootCauseLocked, setRootCauseLocked] = useState(false)
+  const [teamLocked, setTeamLocked] = useState(false)
+  const [churnLocked, setChurnLocked] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -99,13 +119,50 @@ export function AnalyticsContent() {
     async function loadAnalytics() {
       setIsLoading(true)
       try {
-        const overview = await analyticsAPI.getOverview(rangeToDays[dateRange])
+        const hasRootCause = planIncludesFeature(user?.plan_id, 'root_cause_analysis')
+        const hasTeamPerformance = planIncludesFeature(user?.plan_id, 'team_performance')
+        const hasChurnRisk = planIncludesFeature(user?.plan_id, 'churn_risk_scoring')
+
+        const [overviewResult, rootCauseResult, teamResult, churnResult] = await Promise.allSettled([
+          analyticsAPI.getOverview(rangeToDays[dateRange]),
+          hasRootCause ? analyticsAPI.getRootCauseAnalysis(rangeToDays[dateRange]) : Promise.resolve(null),
+          hasTeamPerformance ? analyticsAPI.getTeamPerformance(rangeToDays[dateRange]) : Promise.resolve(null),
+          hasChurnRisk ? analyticsAPI.getChurnRisk() : Promise.resolve([]),
+        ])
+
         if (active) {
-          setAnalytics(overview)
+          setAnalytics(overviewResult.status === 'fulfilled' ? overviewResult.value : null)
+
+          if (rootCauseResult.status === 'fulfilled') {
+            setRootCause(rootCauseResult.value)
+            setRootCauseLocked(!hasRootCause)
+          } else {
+            setRootCause(null)
+            setRootCauseLocked(Boolean(getFeatureGateDetail(rootCauseResult.reason)))
+          }
+
+          if (teamResult.status === 'fulfilled') {
+            setTeamPerformance(teamResult.value)
+            setTeamLocked(!hasTeamPerformance)
+          } else {
+            setTeamPerformance(null)
+            setTeamLocked(Boolean(getFeatureGateDetail(teamResult.reason)))
+          }
+
+          if (churnResult.status === 'fulfilled') {
+            setChurnRiskCustomers(churnResult.value)
+            setChurnLocked(!hasChurnRisk)
+          } else {
+            setChurnRiskCustomers([])
+            setChurnLocked(Boolean(getFeatureGateDetail(churnResult.reason)))
+          }
         }
       } catch {
         if (active) {
           setAnalytics(null)
+          setRootCause(null)
+          setTeamPerformance(null)
+          setChurnRiskCustomers([])
         }
       } finally {
         if (active) {
@@ -119,7 +176,7 @@ export function AnalyticsContent() {
     return () => {
       active = false
     }
-  }, [dateRange])
+  }, [dateRange, user?.plan_id])
 
   const volumeTrend = analytics?.volume_trend.map((item) => ({ date: item.date, complaints: item.count })) ?? []
   const topCategories = (analytics?.category_breakdown ?? []).slice(0, 5)
@@ -141,6 +198,12 @@ export function AnalyticsContent() {
   const averageResponseMinutes = Math.round((analytics?.avg_response_time ?? 0) / 60)
   const autoResolutionRate = ((analytics?.ai_resolution.ai_resolution_rate ?? 0) * 100).toFixed(1)
   const escalationRate = ((analytics?.escalation.escalation_rate ?? 0) * 100).toFixed(1)
+  const teamPerformanceData = teamPerformance?.team_performance ?? []
+  const topRiskCustomers = churnRiskCustomers.slice(0, 5)
+  const churnRiskBreakdown = [
+    { level: 'High', count: churnRiskCustomers.filter((item) => item.risk_level === 'high').length, fill: '#F9A45D' },
+    { level: 'Critical', count: churnRiskCustomers.filter((item) => item.risk_level === 'critical').length, fill: '#F36C5D' },
+  ]
 
   return (
     <div className="space-y-6">
@@ -170,7 +233,10 @@ export function AnalyticsContent() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-96 items-center justify-center">Loading analytics...</div>
+        <div className="flex h-96 items-center justify-center gap-3">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">Loading analytics...</span>
+        </div>
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -448,6 +514,173 @@ export function AnalyticsContent() {
                   </Badge>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Flame className="h-5 w-5 text-rose-500" />
+                  <CardTitle>Root Cause Analysis</CardTitle>
+                </div>
+                <CardDescription>Trending complaint categories and where operational attention is needed most.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {rootCauseLocked ? (
+                  <UpgradePrompt
+                    title="Unlock root cause analysis"
+                    description="Compare complaint categories period over period and surface fast-growing issues."
+                    requiredPlan="Max"
+                  />
+                ) : rootCause ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl bg-slate-950 p-4 text-white">
+                      <p className="text-sm text-slate-300">Overall period change</p>
+                      <p className="mt-2 text-3xl font-semibold">
+                        {rootCause.overall_change_percentage > 0 ? '+' : ''}
+                        {rootCause.overall_change_percentage}%
+                      </p>
+                      <p className="mt-2 text-sm text-slate-400">{rootCause.period}</p>
+                    </div>
+                    {rootCause.top_issues.slice(0, 4).map((issue) => (
+                      <div key={issue.category} className="flex items-center justify-between rounded-xl border p-4">
+                        <div>
+                          <p className="font-medium">{issue.category}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {issue.current_count} complaints, {issue.percentage_of_total}% of total
+                          </p>
+                        </div>
+                        <Badge className={issue.change_percentage > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}>
+                          {issue.change_percentage > 0 ? '+' : ''}
+                          {issue.change_percentage}%
+                        </Badge>
+                      </div>
+                    ))}
+                    <div className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
+                      {rootCause.insights[0] ?? 'No critical issue spikes detected.'}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    Root cause analysis is not available yet for this range.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-sky-600" />
+                  <CardTitle>Team Performance</CardTitle>
+                </div>
+                <CardDescription>Resolution quality, response speed, and workload by assigned owner.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {teamLocked ? (
+                  <UpgradePrompt
+                    title="Unlock team performance"
+                    description="Measure agent workload, resolution rate, and handling speed across the team."
+                    requiredPlan="Max"
+                  />
+                ) : teamPerformanceData.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={teamPerformanceData}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                          <XAxis dataKey="agent_name" className="text-xs" />
+                          <YAxis className="text-xs" />
+                          <Tooltip />
+                          <Bar dataKey="total_tickets" fill="#0EA5E9" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="resolved_tickets" fill="#22C55E" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="grid gap-3">
+                      {teamPerformanceData.slice(0, 3).map((member) => (
+                        <div key={member.agent_name} className="flex items-center justify-between rounded-xl border p-4">
+                          <div>
+                            <p className="font-medium">{member.agent_name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {member.avg_response_time_hours}h avg response, {member.avg_handle_time_hours}h avg handle
+                            </p>
+                          </div>
+                          <Badge className="bg-emerald-100 text-emerald-700">
+                            {member.resolution_rate}% resolved
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    Team performance data is not available yet.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-orange-500" />
+                <CardTitle>Churn Risk Outlook</CardTitle>
+              </div>
+              <CardDescription>High and critical risk customers who may need retention-first support.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {churnLocked ? (
+                <UpgradePrompt
+                  title="Unlock churn risk scoring"
+                  description="Highlight customers with repeated unresolved complaints and worsening sentiment."
+                  requiredPlan="Max"
+                />
+              ) : churnRiskCustomers.length > 0 ? (
+                <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+                  <div className="h-[220px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={churnRiskBreakdown}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="level" className="text-xs" />
+                        <YAxis className="text-xs" />
+                        <Tooltip />
+                        <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                          {churnRiskBreakdown.map((entry) => (
+                            <Cell key={entry.level} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-3">
+                    {topRiskCustomers.map((customer) => (
+                      <div key={customer.customer_email} className="rounded-xl border p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{customer.customer_email}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">{customer.recommendation}</p>
+                          </div>
+                          <Badge className={customer.risk_level === 'critical' ? 'bg-rose-100 text-rose-700' : 'bg-orange-100 text-orange-700'}>
+                            {customer.risk_level}
+                          </Badge>
+                        </div>
+                        <div className="mt-3 flex gap-4 text-xs text-muted-foreground">
+                          <span>Risk score {customer.risk_score}</span>
+                          <span>{customer.unresolved_count} unresolved</span>
+                          <span>Avg sentiment {customer.avg_sentiment}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                  No high-risk customers were identified in the selected period.
+                </div>
+              )}
             </CardContent>
           </Card>
         </>

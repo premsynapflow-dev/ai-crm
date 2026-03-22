@@ -6,15 +6,31 @@ from app.db.models import JobQueue, Complaint, Client
 from app.db.session import SessionLocal
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
+from app.billing.plans import PLANS
 from app.intelligence.classifier import classify_message_async
 from app.intelligence.prompt_builder import get_prompt_config_for_client
 from app.intelligence.reply_engine import generate_ai_reply_async
+from app.services.assignment import assign_team
 from app.services.customer_history import get_customer_memory
+from app.services.sentiment import analyze_sentiment
 from app.replies.send_reply import send_complaint_reply
 from app.services.response_tracking import mark_first_response_by_id
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _fallback_sentiment_details(raw_score: float | int | None) -> dict:
+    score = float(raw_score or 0.0)
+    if score <= -0.6:
+        return {"score": 5, "label": "furious", "indicators": []}
+    if score <= -0.25:
+        return {"score": 4, "label": "angry", "indicators": []}
+    if score < 0.15:
+        return {"score": 3, "label": "frustrated", "indicators": []}
+    if score < 0.45:
+        return {"score": 2, "label": "upset", "indicators": []}
+    return {"score": 1, "label": "calm", "indicators": []}
 
 
 def enqueue_job(job_type, payload, scheduled_for=None):
@@ -112,11 +128,22 @@ async def process_complaint_ai_job(payload: Dict):
         complaint.intent = classification["intent"]
         complaint.category = classification["category"]
         complaint.sentiment = classification["sentiment"]
+        complaint.assigned_to = assign_team(complaint.category, complaint.intent)
+        complaint.assigned_team = complaint.assigned_to
         complaint.urgency_score = classification["urgency_score"]
         complaint.priority = classification["priority"]
         complaint.recommended_action = classification["recommended_action"]
         complaint.confidence = classification["confidence"]
         complaint.summary = classification["summary"]
+        sentiment_details = _fallback_sentiment_details(classification["sentiment"])
+        if PLANS.get(client.plan_id, PLANS["starter"]).get("feature_flags", {}).get("sentiment_analysis"):
+            sentiment_details = {
+                **sentiment_details,
+                **analyze_sentiment(complaint.summary or message),
+            }
+        complaint.sentiment_score = sentiment_details.get("score")
+        complaint.sentiment_label = sentiment_details.get("label")
+        complaint.sentiment_indicators = sentiment_details.get("indicators")
         
         # Generate AI reply
         customer_history = get_customer_memory(

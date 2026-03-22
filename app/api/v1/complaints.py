@@ -11,10 +11,10 @@ from app.billing.usage import can_process_ticket, track_ticket_usage
 from app.config import get_settings
 from app.db.models import Client, ClientUser, Complaint
 from app.db.session import get_db
-from app.intelligence.reply_engine import generate_ai_reply
+from app.middleware.feature_gate import ensure_feature_access
 from app.intake.webhook import _process_complaint_for_client
 from app.replies.send_reply import send_complaint_reply
-from app.services.customer_history import get_customer_memory
+from app.services.ai import suggest_response
 from app.services.event_logger import log_event
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints-v1"])
@@ -93,10 +93,17 @@ def _serialize_complaint(complaint: Complaint) -> dict[str, object]:
         "status": _status_label(complaint),
         "created_at": created_at,
         "updated_at": updated_at,
+        "first_response_at": complaint.first_response_at.isoformat() if complaint.first_response_at else None,
+        "resolved_at": complaint.resolved_at.isoformat() if complaint.resolved_at else None,
         "ai_confidence": round(confidence, 2),
         "ai_reply": complaint.ai_reply,
         "ticket_id": complaint.ticket_id,
         "resolution_status": complaint.resolution_status,
+        "sentiment_score": complaint.sentiment_score,
+        "sentiment_label": complaint.sentiment_label,
+        "sentiment_indicators": complaint.sentiment_indicators or [],
+        "assigned_to": complaint.assigned_to or complaint.assigned_team,
+        "satisfaction_score": complaint.satisfaction_score or complaint.customer_satisfaction_score,
     }
 
 
@@ -141,6 +148,29 @@ def _get_authenticated_user(request: Request, db: Session, authorization: str | 
     if authorization:
         return _get_user_from_token(db, authorization)
     return resolve_current_client_user(request, db)
+
+
+def _generate_suggested_response(db: Session, complaint: Complaint, client: Client) -> dict:
+    ensure_feature_access(client, "ai_suggested_responses")
+    similar = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == client.id,
+            Complaint.category == complaint.category,
+            Complaint.resolution_status == "resolved",
+            Complaint.ai_reply.isnot(None),
+        )
+        .limit(5)
+        .all()
+    )
+    similar_data = [
+        {
+            "complaint_text": item.summary,
+            "resolution": item.ai_reply,
+        }
+        for item in similar
+    ]
+    return suggest_response(complaint.summary, complaint.category, similar_data)
 
 
 @router.get("")
@@ -307,14 +337,36 @@ def suggest_reply_for_complaint(
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    customer_history = get_customer_memory(db, complaint.customer_email, limit=5)
-    suggestion = generate_ai_reply(complaint, customer_history)
-    complaint.ai_reply = suggestion["reply_text"]
-    complaint.ai_reply_confidence = suggestion["confidence_score"]
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    suggestion = _generate_suggested_response(db, complaint, client)
+    complaint.ai_reply = suggestion["suggested_response"]
+    complaint.ai_reply_confidence = suggestion["confidence"]
     complaint.ai_reply_status = "pending"
     db.commit()
     db.refresh(complaint)
     return _serialize_complaint(complaint)
+
+
+@router.get("/{complaint_id}/suggest-response")
+def get_suggested_response(
+    complaint_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    user = _get_authenticated_user(request, db, authorization)
+    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    return _generate_suggested_response(db, complaint, client)
 
 
 @router.post("/{complaint_id}/escalate")

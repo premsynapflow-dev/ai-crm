@@ -41,8 +41,8 @@ async def signup(request: Request):
 
         client = Client(
             name=payload.company_name,
-            plan="trial",
-            plan_id="trial",
+            plan="starter",
+            plan_id="starter",
             api_key=generate_api_key(32),
             created_at=datetime.now(timezone.utc),
         )

@@ -1,18 +1,24 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_client
 from app.billing.plans import PLANS
+from app.billing.razorpay_service import create_payment_link
 from app.billing.usage import get_usage_summary
+from app.config import get_settings
 from app.db.models import Client
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api", tags=["billing-api"])
+settings = get_settings()
 
 
 class UpgradePlanRequest(BaseModel):
     plan_id: str
+    billing_cycle: str = Field(default="monthly", pattern="^(monthly|annual)$")
 
 
 @router.get("/usage")
@@ -28,16 +34,36 @@ def upgrade_plan(
 ):
     if payload.plan_id not in PLANS:
         raise HTTPException(status_code=400, detail="Unknown plan")
+    if payload.plan_id == "enterprise":
+        raise HTTPException(status_code=400, detail="Enterprise requires sales contact")
 
     plan = PLANS[payload.plan_id]
     client.plan_id = payload.plan_id
     client.plan = payload.plan_id
-    client.monthly_ticket_limit = plan["monthly_tickets"]
+    client.monthly_ticket_limit = plan["tickets_per_month"]
+    if payload.plan_id == "starter" and plan.get("trial_days"):
+        client.trial_ends_at = client.trial_ends_at or (
+            datetime.now(timezone.utc) + timedelta(days=plan["trial_days"])
+        )
+    else:
+        client.trial_ends_at = None
     db.commit()
     db.refresh(client)
+
+    price = plan["annual_price"] if payload.billing_cycle == "annual" else plan["monthly_price"]
+    payment_url = None
+    if price and settings.razorpay_key_id and settings.razorpay_key_secret:
+        try:
+            payment_link = create_payment_link(client.id, amount=int(price) * 100)
+            payment_url = payment_link.get("short_url")
+        except Exception:
+            payment_url = None
 
     return {
         "ok": True,
         "plan_id": client.plan_id,
         "monthly_ticket_limit": client.monthly_ticket_limit,
+        "billing_cycle": payload.billing_cycle,
+        "razorpay_plan_id": plan.get("razorpay_plan_ids", {}).get(payload.billing_cycle),
+        "payment_url": payment_url,
     }

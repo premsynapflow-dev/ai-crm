@@ -24,6 +24,22 @@ REQUIRED_COLUMNS = {
         ),
     },
     "complaints": {
+        "sentiment_score": (
+            "ALTER TABLE complaints "
+            "ADD COLUMN IF NOT EXISTS sentiment_score INTEGER"
+        ),
+        "sentiment_label": (
+            "ALTER TABLE complaints "
+            "ADD COLUMN IF NOT EXISTS sentiment_label VARCHAR(50)"
+        ),
+        "sentiment_indicators": (
+            "ALTER TABLE complaints "
+            "ADD COLUMN IF NOT EXISTS sentiment_indicators JSONB"
+        ),
+        "assigned_to": (
+            "ALTER TABLE complaints "
+            "ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(255)"
+        ),
         "resolved_at": (
             "ALTER TABLE complaints "
             "ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ"
@@ -39,6 +55,10 @@ REQUIRED_COLUMNS = {
         "customer_satisfaction_score": (
             "ALTER TABLE complaints "
             "ADD COLUMN IF NOT EXISTS customer_satisfaction_score INTEGER"
+        ),
+        "satisfaction_score": (
+            "ALTER TABLE complaints "
+            "ADD COLUMN IF NOT EXISTS satisfaction_score INTEGER"
         ),
         "ai_reply": (
             "ALTER TABLE complaints "

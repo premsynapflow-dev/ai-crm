@@ -69,7 +69,7 @@ def can_process_ticket(client_id):
     db = SessionLocal()
     try:
         record, client = _get_or_create_usage(db, client_id)
-        if client and client.plan_id == "trial":
+        if client and client.plan_id == "starter":
             if client.trial_ends_at and client.trial_ends_at <= datetime.now(timezone.utc):
                 return False
             limit = client.monthly_ticket_limit if client else 0
@@ -93,8 +93,8 @@ def calculate_overage(client_id, db=None):
     try:
         record, client = _get_or_create_usage(db, client_id)
         overage = max(record.tickets_processed - (client.monthly_ticket_limit if client else 0), 0)
-        plan = PLANS.get(client.plan_id if client else "trial", PLANS["trial"])
-        overage_price = plan.get("overage_price", 0)
+        plan = PLANS.get(client.plan_id if client else "starter", PLANS["starter"])
+        overage_price = plan.get("overage_rate", plan.get("overage_price", 0))
         return overage * overage_price
     finally:
         if owns_session:
@@ -105,8 +105,8 @@ def get_usage_summary(client_id):
     db = SessionLocal()
     try:
         record, client = _get_or_create_usage(db, client_id)
-        trial_active = True
-        if client and client.plan_id == "trial" and client.trial_ends_at:
+        trial_active = False
+        if client and client.trial_ends_at:
             trial_active = client.trial_ends_at > datetime.now(timezone.utc)
         now = datetime.now(timezone.utc)
         current_usage = int(record.tickets_processed or 0)
@@ -164,10 +164,10 @@ def get_usage_summary(client_id):
             }
             for row in category_rows
         ]
-        plan = PLANS.get(client.plan_id if client else "trial", PLANS["trial"])
+        plan = PLANS.get(client.plan_id if client else "starter", PLANS["starter"])
         return {
             "client_id": str(client_id),
-            "plan_id": client.plan_id if client else "trial",
+            "plan_id": client.plan_id if client else "starter",
             "monthly_limit": monthly_limit,
             "tickets_processed": record.tickets_processed,
             "overage": record.overage,
@@ -188,7 +188,7 @@ def get_usage_summary(client_id):
             "peak_day_count": peak_day_count,
             "history": history,
             "category_breakdown": category_breakdown,
-            "overage_rate": plan.get("overage_price", 0),
+            "overage_rate": plan.get("overage_rate", plan.get("overage_price", 0)),
         }
     finally:
         db.close()

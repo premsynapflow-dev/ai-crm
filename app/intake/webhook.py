@@ -6,6 +6,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.billing.usage import can_process_ticket, track_ticket_usage
+from app.billing.plans import PLANS
 from app.dependencies.auth import require_api_key
 from app.db.models import Client, Complaint
 from app.db.session import get_db
@@ -18,6 +19,7 @@ from app.services.action_executor import execute_action
 from app.services.assignment import assign_team
 from app.services.customer_history import get_customer_memory
 from app.services.event_logger import log_event
+from app.services.sentiment import analyze_sentiment
 from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
 from app.utils.sanitize import sanitize_email, sanitize_message, sanitize_phone
@@ -27,6 +29,19 @@ from app.workflow.rule_engine import decide_action
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 logger = get_logger(__name__)
+
+
+def _fallback_sentiment_details(raw_score: float | int | None) -> dict:
+    score = float(raw_score or 0.0)
+    if score <= -0.6:
+        return {"score": 5, "label": "furious", "indicators": []}
+    if score <= -0.25:
+        return {"score": 4, "label": "angry", "indicators": []}
+    if score < 0.15:
+        return {"score": 3, "label": "frustrated", "indicators": []}
+    if score < 0.45:
+        return {"score": 2, "label": "upset", "indicators": []}
+    return {"score": 1, "label": "calm", "indicators": []}
 
 
 class ComplaintRequest(BaseModel):
@@ -73,6 +88,13 @@ def _process_complaint_for_client(
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
     assigned_team = assign_team(category, intent)
+    plan = PLANS.get(client.plan_id, PLANS["starter"])
+    sentiment_details = _fallback_sentiment_details(sentiment_score)
+    if plan.get("feature_flags", {}).get("sentiment_analysis"):
+        sentiment_details = {
+            **sentiment_details,
+            **analyze_sentiment(summary or message),
+        }
 
     # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
     _ACTION_MAP = {
@@ -102,8 +124,12 @@ def _process_complaint_for_client(
         priority=priority,
         category=category,
         sentiment=sentiment_score,
+        sentiment_score=sentiment_details.get("score"),
+        sentiment_label=sentiment_details.get("label"),
+        sentiment_indicators=sentiment_details.get("indicators"),
         urgency_score=urgency,
         assigned_team=assigned_team,
+        assigned_to=assigned_team,
         ticket_id=ticket_id,
         thread_id=thread_id,
         status=action,

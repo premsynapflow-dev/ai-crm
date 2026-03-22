@@ -70,9 +70,9 @@ class PublicSignupTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def _trial_plan(self, client):
-        client.plan_id = "trial"
-        client.plan = "trial"
-        client.monthly_ticket_limit = 50
+        client.plan_id = "starter"
+        client.plan = "starter"
+        client.monthly_ticket_limit = 500
         return client
 
     def test_signup_accepts_json(self):

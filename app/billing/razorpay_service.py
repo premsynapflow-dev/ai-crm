@@ -21,15 +21,29 @@ def _get_razorpay_client():
     return razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
 
 
-def create_subscription(client_id, plan_id):
+def create_subscription(client_id, plan_id, billing_cycle="monthly"):
     plan_catalog = {
-        "trial": {"period": "weekly", "interval": 1, "item": {"name": "Trial", "amount": 0, "currency": "INR"}},
-        "pro": {"period": "monthly", "interval": 1, "item": {"name": "Pro", "amount": 499900, "currency": "INR"}},
-        "business": {"period": "monthly", "interval": 1, "item": {"name": "Business", "amount": 1499900, "currency": "INR"}},
+        "starter": {
+            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Starter", "amount": 299900, "currency": "INR"}},
+            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Starter Annual", "amount": 2999000, "currency": "INR"}},
+        },
+        "pro": {
+            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Pro", "amount": 499900, "currency": "INR"}},
+            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Pro Annual", "amount": 4999000, "currency": "INR"}},
+        },
+        "max": {
+            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Max", "amount": 999900, "currency": "INR"}},
+            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Max Annual", "amount": 9999000, "currency": "INR"}},
+        },
+        "scale": {
+            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Scale", "amount": 9999900, "currency": "INR"}},
+            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Scale Annual", "amount": 99999000, "currency": "INR"}},
+        },
     }
     client = _get_razorpay_client()
-    payload = plan_catalog.get(plan_id, plan_catalog["trial"]).copy()
-    payload["notes"] = {"client_id": str(client_id), "plan_id": plan_id}
+    catalog_entry = plan_catalog.get(plan_id, plan_catalog["starter"])
+    payload = catalog_entry.get(billing_cycle, catalog_entry["monthly"]).copy()
+    payload["notes"] = {"client_id": str(client_id), "plan_id": plan_id, "billing_cycle": billing_cycle}
     subscription = client.subscription.create(payload)
 
     db = SessionLocal()

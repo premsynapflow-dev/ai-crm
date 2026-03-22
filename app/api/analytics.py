@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.auth import resolve_current_client
 from app.db.models import Client, Complaint
 from app.db.session import get_db
+from app.middleware.feature_gate import ensure_feature_access
 from app.services.analytics import (
     analytics_customers,
     analytics_overview,
@@ -46,6 +47,38 @@ def _serialize_sentiment_distribution(db: Session, client_id):
     return [{"sentiment": key, "count": value} for key, value in buckets.items()]
 
 
+def _ticket_metrics(db: Session, client_id) -> dict[str, int]:
+    total_leads = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == client_id,
+            Complaint.intent == "sales_lead",
+        )
+        .count()
+    )
+    open_tickets = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == client_id,
+            Complaint.resolution_status == "open",
+        )
+        .count()
+    )
+    resolved_tickets = (
+        db.query(Complaint)
+        .filter(
+            Complaint.client_id == client_id,
+            Complaint.resolution_status == "resolved",
+        )
+        .count()
+    )
+    return {
+        "total_leads": total_leads,
+        "open_tickets": open_tickets,
+        "resolved_tickets": resolved_tickets,
+    }
+
+
 @router.get("/overview")
 def analytics_overview_endpoint(
     request: Request,
@@ -77,6 +110,7 @@ def analytics_overview_endpoint(
         "category_breakdown": _serialize_category_breakdown(db, client.id),
         "sentiment_distribution": _serialize_sentiment_distribution(db, client.id),
         "days": days,
+        **_ticket_metrics(db, client.id),
         **overview,
     }
 
@@ -123,7 +157,51 @@ def analytics_sentiment_distribution_endpoint(
     db: Session = Depends(get_db),
 ):
     client = _resolve_client(request, db, x_api_key)
-    return _serialize_sentiment_distribution(db, client.id)
+    ensure_feature_access(client, "sentiment_analysis")
+    from app.services.sentiment import get_sentiment_distribution
+
+    return get_sentiment_distribution(db, client.id)
+
+
+@router.get("/churn-risk")
+def analytics_churn_risk_endpoint(
+    request: Request,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    ensure_feature_access(client, "churn_risk_scoring")
+    from app.services.churn_risk import get_high_risk_customers
+
+    return get_high_risk_customers(db, client.id)
+
+
+@router.get("/root-cause-analysis")
+def analytics_root_cause_endpoint(
+    request: Request,
+    period_days: int = 30,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    ensure_feature_access(client, "root_cause_analysis")
+    from app.services.root_cause import generate_root_cause_report
+
+    return generate_root_cause_report(db, client.id, period_days=max(7, min(period_days, 180)))
+
+
+@router.get("/team-performance")
+def analytics_team_performance_endpoint(
+    request: Request,
+    period_days: int = 30,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    ensure_feature_access(client, "team_performance")
+    from app.services.team_performance import get_team_performance
+
+    return get_team_performance(db, client.id, period_days=max(7, min(period_days, 180)))
 
 
 @router.get("/customers")
