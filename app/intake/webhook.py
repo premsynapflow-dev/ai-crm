@@ -11,14 +11,16 @@ from app.dependencies.auth import require_api_key
 from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
-from app.intelligence.reply_decision import decide_reply_action
-from app.intelligence.reply_engine import generate_ai_reply
 from app.queue.simple_queue import queue_job
-from app.replies.send_reply import send_complaint_reply
+from app.middleware.feature_gate import has_feature_access
 from app.services.action_executor import execute_action
+from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.assignment import assign_team
-from app.services.customer_history import get_customer_memory
+from app.services.customer_profile import CustomerProfileService
 from app.services.event_logger import log_event
+from app.services.rbi_compliance import RBIComplianceService
+from app.services.sla_manager import SLAManager
+from app.services.ticket_state_machine import TicketStateMachine
 from app.services.sentiment import analyze_sentiment
 from app.services.rules_engine import get_matching_rules
 from app.utils.logging import get_logger
@@ -45,7 +47,7 @@ def _fallback_sentiment_details(raw_score: float | int | None) -> dict:
 
 
 class ComplaintRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=10000)
+    message: str = Field(..., max_length=10000)
     source: str = Field(default="api", min_length=1, max_length=50)
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
@@ -133,40 +135,55 @@ def _process_complaint_for_client(
         ticket_id=ticket_id,
         thread_id=thread_id,
         status=action,
+        state="new",
     )
     db.add(complaint)
     db.flush()
+    CustomerProfileService(db).sync_customer_for_complaint(
+        complaint,
+        interaction_type="ticket",
+        interaction_channel=source or "api",
+        commit=False,
+    )
+    TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
+    SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=client.name,
+        reason="Initial ticket classification",
+        metadata={"source": source or "api"},
+        commit=False,
+    )
 
     rules = get_matching_rules(db, client.id, classification)
 
     for rule in rules:
         execute_action(rule, complaint, client)
 
-    customer_history = get_customer_memory(db, customer_email, limit=5)
-    reply_payload = generate_ai_reply(complaint, customer_history)
-    complaint.ai_reply = reply_payload["reply_text"]
-    complaint.ai_reply_confidence = reply_payload["confidence_score"]
-    reply_action = decide_reply_action(complaint.ai_reply_confidence)
-    if reply_action == "auto_send_reply":
-        send_result = send_complaint_reply(
-            db=db,
-            complaint=complaint,
-            client=client,
-            reply_text=complaint.ai_reply,
-        )
-        if not send_result["sent"]:
-            complaint.ai_reply_status = "agent_review"
-    else:
-        complaint.ai_reply_status = "agent_review"
+    SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=client.name,
+        reason="Complaint ingestion workflow",
+        metadata={"source": source or "api"},
+        commit=False,
+    )
+
+    if has_feature_access(client, "rbi_compliance", db=db):
+        RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
+
+    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(complaint, commit=False)
+    if queue_entry.status in {"pending", "rejected"}:
         log_event(
             db,
             client.id,
-            "ai_reply_suggested",
+            "ai_reply_queued_for_review" if queue_entry.status == "pending" else "ai_reply_rejected",
             {
                 "ticket_id": complaint.ticket_id,
                 "complaint_id": str(complaint.id),
                 "summary": complaint.ai_reply,
                 "confidence": complaint.ai_reply_confidence,
+                "queue_status": queue_entry.status,
             },
         )
 
@@ -233,8 +250,18 @@ def process_complaint(
             sentiment=0.0,
             urgency_score=0.3,
             priority=2,
+            state="new",
         )
         db.add(complaint)
+        db.flush()
+        CustomerProfileService(db).sync_customer_for_complaint(
+            complaint,
+            interaction_type="ticket",
+            interaction_channel=payload.source or "api",
+            commit=False,
+        )
+        TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
+        SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
         db.commit()
 
         # Queue AI processing in background

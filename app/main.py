@@ -29,8 +29,12 @@ from app.api.settings import router as settings_router
 from app.api.session_auth import router as session_auth_router
 from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
+from app.api.v1.customers import router as customers_v1_router
 from app.api.v1.me import router as me_router
+from app.api.v1.rbi_compliance import router as rbi_compliance_v1_router
+from app.api.v1.reply_queue import router as reply_queue_v1_router
 from app.api.v1.security_test import router as security_test_router
+from app.api.v1.tickets import router as tickets_v1_router
 from app.api.admin_prompts import router as admin_prompts_router
 from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
@@ -39,8 +43,10 @@ from app.dashboard import router as dashboard_router
 from app.db.schema_guard import ensure_schema
 from app.intake.webhook import router as webhook_router
 from app.middleware.security import SecurityHeadersMiddleware
+from app.middleware.rls_context import RLSContextMiddleware
 from app.middleware.rate_limiter import DatabaseRateLimitMiddleware
 from app.middleware.audit import RequestAuditMiddleware
+from app.middleware.feature_gate import FeatureGateMiddleware
 from app.monitoring.health import router as health_router
 from app.monitoring.metrics import record_metric, router as metrics_router
 from app.queue.worker import start_worker_thread
@@ -86,6 +92,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+app.add_middleware(RLSContextMiddleware)
+app.add_middleware(FeatureGateMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(DatabaseRateLimitMiddleware)
 app.add_middleware(RequestAuditMiddleware)
@@ -173,13 +181,16 @@ def widget_js() -> RedirectResponse:
 @app.on_event("startup")
 def on_startup() -> None:
     global worker_thread
-    try:
-        ensure_schema()
-        logger.info("Database schema ensured.")
-    except SQLAlchemyError as exc:
-        logger.error("Database unavailable during startup. Error: %s", exc)
+    disable_schema_guard = os.getenv("DISABLE_SCHEMA_GUARD", "").strip().lower() in {"1", "true", "yes"}
+    if not disable_schema_guard:
+        try:
+            ensure_schema()
+            logger.info("Database schema ensured.")
+        except SQLAlchemyError as exc:
+            logger.error("Database unavailable during startup. Error: %s", exc)
 
-    if worker_thread is None:
+    disable_workers = os.getenv("DISABLE_BACKGROUND_WORKERS", "").strip().lower() in {"1", "true", "yes"}
+    if worker_thread is None and not disable_workers:
         worker_thread = start_worker_thread(interval_seconds=30)
 
 
@@ -194,8 +205,12 @@ app.include_router(session_auth_router)
 app.include_router(public_api_router)
 app.include_router(auth_v1_router)
 app.include_router(complaints_v1_router)
+app.include_router(customers_v1_router)
 app.include_router(me_router)
+app.include_router(reply_queue_v1_router)
+app.include_router(rbi_compliance_v1_router)
 app.include_router(security_test_router)
+app.include_router(tickets_v1_router)
 app.include_router(plans_router)
 app.include_router(invoices_router)
 app.include_router(settings_router)

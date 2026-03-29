@@ -1,5 +1,5 @@
 import pytest
-from app.db.models import Complaint, JobQueue
+from app.db.models import Complaint, Customer, JobQueue
 
 
 def test_complaint_submission_success(client, test_client_record):
@@ -74,8 +74,36 @@ def test_complaint_creates_job(client, test_client_record, test_db):
     assert job.status == "queued"
 
 
+def test_complaint_links_customer_profile(client, test_client_record, test_db):
+    response = client.post(
+        "/webhook/complaint",
+        headers={"x-api-key": test_client_record.api_key},
+        json={
+            "message": "My invoice was charged twice",
+            "source": "api",
+            "customer_email": "linked@example.com",
+            "customer_phone": "+1 (555) 111-2222",
+        },
+    )
+
+    assert response.status_code == 200
+
+    complaint = test_db.query(Complaint).order_by(Complaint.created_at.desc()).first()
+    assert complaint is not None
+    assert complaint.customer_id is not None
+
+    customer = test_db.query(Customer).filter(Customer.id == complaint.customer_id).first()
+    assert customer is not None
+    assert customer.primary_email == "linked@example.com"
+    assert customer.total_tickets == 1
+
+
 def test_usage_limit_enforcement(client, test_client_record, test_db):
     """Test that usage limits are enforced"""
+    test_client_record.monthly_ticket_limit = 50
+    test_db.commit()
+    test_db.refresh(test_client_record)
+
     # Submit 50 complaints (the limit)
     for i in range(50):
         response = client.post(

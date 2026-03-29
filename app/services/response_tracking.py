@@ -29,7 +29,13 @@ def mark_first_response(
 
     complaint.first_response_at = now
     complaint.response_time_seconds = max(0, int((now - created_at).total_seconds()))
-    db.flush()
+    from app.services.sla_manager import SLAManager
+
+    if hasattr(db, "query"):
+        SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+
+    if hasattr(db, "flush"):
+        db.flush()
     return True
 
 

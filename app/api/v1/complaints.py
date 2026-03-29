@@ -27,7 +27,11 @@ from app.middleware.feature_gate import ensure_feature_access
 from app.intake.webhook import _process_complaint_for_client
 from app.replies.send_reply import send_complaint_reply
 from app.services.ai import suggest_response
+from app.services.auto_reply_hardened import HardenedAutoReplyService
+from app.services.customer_profile import CustomerProfileService
 from app.services.event_logger import log_event
+from app.services.rbi_compliance import RBIComplianceService
+from app.services.ticket_state_machine import TicketStateMachine
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints-v1"])
 settings = get_settings()
@@ -110,6 +114,16 @@ def _serialize_complaint(complaint: Complaint) -> dict[str, object]:
         "ai_confidence": round(confidence, 2),
         "ai_reply": complaint.ai_reply,
         "ticket_id": complaint.ticket_id,
+        "ticket_number": complaint.ticket_number or complaint.ticket_id,
+        "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
+        "state": complaint.state,
+        "state_changed_at": complaint.state_changed_at.isoformat() if complaint.state_changed_at else None,
+        "sla_due_at": complaint.sla_due_at.isoformat() if complaint.sla_due_at else None,
+        "sla_status": complaint.sla_status,
+        "escalation_level": complaint.escalation_level,
+        "escalated_at": complaint.escalated_at.isoformat() if complaint.escalated_at else None,
+        "escalated_to": complaint.escalated_to,
+        "reopened_count": complaint.reopened_count,
         "resolution_status": complaint.resolution_status,
         "sentiment_score": complaint.sentiment_score,
         "sentiment_label": complaint.sentiment_label,
@@ -302,12 +316,43 @@ def update_complaint(
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
+    was_resolved = complaint.resolution_status == "resolved"
     update_data = payload.model_dump(exclude_none=True)
+    changed_fields = set(update_data)
     status_value = update_data.pop("status", None)
     if status_value is not None:
         _apply_status_update(complaint, status_value)
+        changed_fields.add("status")
     for field, value in update_data.items():
         setattr(complaint, field, value)
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=user.email,
+        reason="Complaint updated via v1 API",
+        metadata={"fields": sorted(changed_fields)},
+        commit=False,
+    )
+    CustomerProfileService(db).sync_customer_for_complaint(
+        complaint,
+        interaction_type="ticket",
+        interaction_channel=complaint.source,
+        commit=False,
+    )
+    normalized_status = (status_value or "").strip().lower()
+    if normalized_status == "escalated":
+        HardenedAutoReplyService(db).record_feedback(
+            complaint,
+            escalated_after_reply=True,
+            commit=False,
+        )
+    elif was_resolved and complaint.resolution_status != "resolved":
+        HardenedAutoReplyService(db).record_feedback(
+            complaint,
+            ticket_reopened=True,
+            commit=False,
+        )
+    if complaint.rbi_complaint:
+        RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
     db.commit()
     db.refresh(complaint)
     return _serialize_complaint(complaint)
@@ -330,12 +375,24 @@ def reply_to_complaint(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    result = send_complaint_reply(
-        db=db,
-        complaint=complaint,
-        client=client,
-        reply_text=payload.reply_text,
-    )
+    queue_entry = complaint.reply_queue
+    if queue_entry and queue_entry.status == "pending":
+        approved = HardenedAutoReplyService(db).approve_reply(
+            str(queue_entry.id),
+            reviewer_email=user.email,
+            edited_reply=payload.reply_text,
+            commit=False,
+        )
+        if not approved:
+            raise HTTPException(status_code=400, detail="Queue item could not be approved")
+        result = {"sent": complaint.ai_reply_status == "sent", "channels": []}
+    else:
+        result = send_complaint_reply(
+            db=db,
+            complaint=complaint,
+            client=client,
+            reply_text=payload.reply_text,
+        )
     db.commit()
     db.refresh(complaint)
     return {"complaint": _serialize_complaint(complaint), **result}
@@ -400,6 +457,35 @@ def escalate_complaint(
     complaint.ai_reply_status = "agent_review"
     complaint.status = "ESCALATE_HIGH"
     complaint.resolution_status = "open"
+    complaint.escalation_level = max(int(complaint.escalation_level or 0), 1)
+    queue_entry = complaint.reply_queue
+    if queue_entry and queue_entry.status == "pending":
+        HardenedAutoReplyService(db).reject_reply(
+            str(queue_entry.id),
+            reviewer_email=user.email,
+            reason="Escalated to agent via v1 API",
+            commit=False,
+        )
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=user.email,
+        reason="Manual escalation via v1 API",
+        metadata={"source": "api_v1_complaints"},
+        commit=False,
+    )
+    CustomerProfileService(db).sync_customer_for_complaint(
+        complaint,
+        interaction_type="ticket",
+        interaction_channel=complaint.source,
+        commit=False,
+    )
+    HardenedAutoReplyService(db).record_feedback(
+        complaint,
+        escalated_after_reply=True,
+        commit=False,
+    )
+    if complaint.rbi_complaint:
+        RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
     log_event(
         db,
         complaint.client_id,

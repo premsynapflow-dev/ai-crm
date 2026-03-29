@@ -5,6 +5,15 @@ from sqlalchemy import func
 from app.billing.plans import PLANS
 from app.db.models import Client, Complaint, UsageRecord
 from app.db.session import SessionLocal
+from app.middleware.quota_enforcer import QuotaEnforcer
+
+
+def _as_utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _current_period_bounds():
@@ -55,6 +64,7 @@ def track_ticket_usage(client_id):
         record.included_in_plan = limit
         record.overage = max(record.tickets_processed - limit, 0)
         record.overage_cost = calculate_overage(client_id, db=db)
+        QuotaEnforcer.increment_usage(client_id, "tickets", db=db)
         db.commit()
         db.refresh(record)
         return record
@@ -70,17 +80,17 @@ def can_process_ticket(client_id):
     try:
         record, client = _get_or_create_usage(db, client_id)
         if client and client.plan_id == "starter":
-            if client.trial_ends_at and client.trial_ends_at <= datetime.now(timezone.utc):
+            trial_ends_at = _as_utc(client.trial_ends_at)
+            if trial_ends_at and trial_ends_at <= datetime.now(timezone.utc):
                 return False
             limit = client.monthly_ticket_limit if client else 0
             if limit <= 0:
-                return True
-            return record.tickets_processed < limit
-
-        limit = client.monthly_ticket_limit if client else 0
-        if limit <= 0:
+                return _check_db_quota_if_supported(db, client)
+            if record.tickets_processed >= limit:
+                return False
+        if client is None:
             return True
-        return True
+        return _check_db_quota_if_supported(db, client)
     finally:
         db.close()
 
@@ -101,13 +111,19 @@ def calculate_overage(client_id, db=None):
             db.close()
 
 
+def _check_db_quota_if_supported(db, client) -> bool:
+    if not hasattr(db, "query"):
+        return True
+    return QuotaEnforcer.check_ticket_quota(client, db=db)
+
+
 def get_usage_summary(client_id):
     db = SessionLocal()
     try:
         record, client = _get_or_create_usage(db, client_id)
         trial_active = False
         if client and client.trial_ends_at:
-            trial_active = client.trial_ends_at > datetime.now(timezone.utc)
+            trial_active = _as_utc(client.trial_ends_at) > datetime.now(timezone.utc)
         now = datetime.now(timezone.utc)
         current_usage = int(record.tickets_processed or 0)
         monthly_limit = int(client.monthly_ticket_limit if client else 0)
@@ -172,7 +188,7 @@ def get_usage_summary(client_id):
             "tickets_processed": record.tickets_processed,
             "overage": record.overage,
             "overage_cost": record.overage_cost,
-            "trial_ends_at": client.trial_ends_at.isoformat() if client and client.trial_ends_at else None,
+            "trial_ends_at": _as_utc(client.trial_ends_at).isoformat() if client and client.trial_ends_at else None,
             "trial_active": trial_active,
             "period_start": record.period_start.isoformat(),
             "period_end": record.period_end.isoformat(),

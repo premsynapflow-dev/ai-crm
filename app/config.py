@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     app_base_url: str = Field(default="http://127.0.0.1:8000", alias="APP_BASE_URL")
     sqlite_queue_path: str = Field(default="data/jobs.db", alias="SQLITE_QUEUE_PATH")
     request_log_retention_days: int = Field(default=30, alias="REQUEST_LOG_RETENTION_DAYS")
+    default_timezone: str = Field(default="UTC", alias="DEFAULT_TIMEZONE")
+    sla_monitor_interval_minutes: int = Field(default=10, alias="SLA_MONITOR_INTERVAL_MINUTES")
+    reply_auto_approve_threshold: float = Field(default=0.85, alias="REPLY_AUTO_APPROVE_THRESHOLD")
+    reply_human_review_threshold: float = Field(default=0.60, alias="REPLY_HUMAN_REVIEW_THRESHOLD")
+    rbi_tat_default_days: int = Field(default=30, alias="RBI_TAT_DEFAULT_DAYS")
+    rbi_mis_report_day: int = Field(default=1, alias="RBI_MIS_REPORT_DAY")
+    enable_rls: bool = Field(default=False, alias="ENABLE_RLS")
 
     razorpay_key_id: str = Field(default="", alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: str = Field(default="", alias="RAZORPAY_KEY_SECRET")
@@ -137,6 +144,13 @@ def _manual_settings_data() -> dict:
         "APP_BASE_URL": os.getenv("APP_BASE_URL", "http://127.0.0.1:8000"),
         "SQLITE_QUEUE_PATH": os.getenv("SQLITE_QUEUE_PATH", "data/jobs.db"),
         "REQUEST_LOG_RETENTION_DAYS": os.getenv("REQUEST_LOG_RETENTION_DAYS", "30"),
+        "DEFAULT_TIMEZONE": os.getenv("DEFAULT_TIMEZONE", "UTC"),
+        "SLA_MONITOR_INTERVAL_MINUTES": os.getenv("SLA_MONITOR_INTERVAL_MINUTES", "10"),
+        "REPLY_AUTO_APPROVE_THRESHOLD": os.getenv("REPLY_AUTO_APPROVE_THRESHOLD", "0.85"),
+        "REPLY_HUMAN_REVIEW_THRESHOLD": os.getenv("REPLY_HUMAN_REVIEW_THRESHOLD", "0.60"),
+        "RBI_TAT_DEFAULT_DAYS": os.getenv("RBI_TAT_DEFAULT_DAYS", "30"),
+        "RBI_MIS_REPORT_DAY": os.getenv("RBI_MIS_REPORT_DAY", "1"),
+        "ENABLE_RLS": os.getenv("ENABLE_RLS", "false"),
         "RAZORPAY_KEY_ID": os.getenv("RAZORPAY_KEY_ID", ""),
         "RAZORPAY_KEY_SECRET": os.getenv("RAZORPAY_KEY_SECRET", ""),
         "RAZORPAY_WEBHOOK_SECRET": os.getenv("RAZORPAY_WEBHOOK_SECRET", ""),

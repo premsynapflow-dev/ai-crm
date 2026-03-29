@@ -10,11 +10,12 @@ from app.billing.plans import PLANS
 from app.billing.usage import get_usage_summary
 from app.db.models import Client, ClientUser, Complaint, Invoice
 from app.db.session import get_db
-from app.intelligence.reply_engine import generate_ai_reply
 from app.integrations.slack import send_slack_alert
 from app.replies.send_reply import send_complaint_reply
-from app.services.customer_history import get_customer_memory
+from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.event_logger import log_event
+from app.services.rbi_compliance import RBIComplianceService
+from app.services.ticket_state_machine import TicketStateMachine
 from app.security.passwords import hash_password, verify_password
 from app.security.session import BadSignature, create_session, decode_session
 from app.services.timeline import build_ticket_timeline
@@ -527,11 +528,11 @@ async def suggest_ai_reply(
     if not complaint:
         return JSONResponse(status_code=404, content={"error": "Complaint not found"})
 
-    customer_history = get_customer_memory(db, complaint.customer_email, limit=5)
-    suggestion = generate_ai_reply(complaint, customer_history)
-    complaint.ai_reply = suggestion["reply_text"]
-    complaint.ai_reply_confidence = suggestion["confidence_score"]
-    complaint.ai_reply_status = "pending"
+    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(
+        complaint,
+        force_human_review=True,
+        commit=False,
+    )
     log_event(
         db,
         complaint.client_id,
@@ -541,10 +542,16 @@ async def suggest_ai_reply(
             "complaint_id": str(complaint.id),
             "summary": complaint.ai_reply,
             "confidence": complaint.ai_reply_confidence,
+            "queue_status": queue_entry.status,
         },
     )
     db.commit()
-    return suggestion
+    return {
+        "reply_text": complaint.ai_reply,
+        "confidence_score": complaint.ai_reply_confidence,
+        "status": queue_entry.status,
+        "queue_id": str(queue_entry.id),
+    }
 
 
 @router.post("/client/reply/approve")
@@ -566,12 +573,20 @@ def approve_ai_reply(
     if not complaint or not client:
         return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
 
-    send_complaint_reply(
-        db=db,
-        complaint=complaint,
-        client=client,
-        reply_text=complaint.ai_reply,
-    )
+    queue_entry = complaint.reply_queue
+    if queue_entry and queue_entry.status == "pending":
+        HardenedAutoReplyService(db).approve_reply(
+            str(queue_entry.id),
+            reviewer_email=user.email,
+            commit=False,
+        )
+    else:
+        send_complaint_reply(
+            db=db,
+            complaint=complaint,
+            client=client,
+            reply_text=complaint.ai_reply,
+        )
     db.commit()
     return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
 
@@ -597,12 +612,21 @@ def edit_ai_reply(
         return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
 
     complaint.ai_reply = reply_text.strip()
-    send_complaint_reply(
-        db=db,
-        complaint=complaint,
-        client=client,
-        reply_text=complaint.ai_reply,
-    )
+    queue_entry = complaint.reply_queue
+    if queue_entry and queue_entry.status == "pending":
+        HardenedAutoReplyService(db).approve_reply(
+            str(queue_entry.id),
+            reviewer_email=user.email,
+            edited_reply=complaint.ai_reply,
+            commit=False,
+        )
+    else:
+        send_complaint_reply(
+            db=db,
+            complaint=complaint,
+            client=client,
+            reply_text=complaint.ai_reply,
+        )
     db.commit()
     return RedirectResponse(url=f"/portal/ticket/{ticket_id}", status_code=303)
 
@@ -623,8 +647,31 @@ def escalate_ai_reply(
         Complaint.client_id == user.client_id,
     ).first()
     if complaint:
+        queue_entry = complaint.reply_queue
+        if queue_entry and queue_entry.status == "pending":
+            HardenedAutoReplyService(db).reject_reply(
+                str(queue_entry.id),
+                reviewer_email=user.email,
+                reason="Escalated to agent via client portal",
+                commit=False,
+            )
         complaint.ai_reply_status = "agent_review"
         complaint.status = "ESCALATE_HIGH"
+        complaint.escalation_level = max(int(complaint.escalation_level or 0), 1)
+        TicketStateMachine(db).sync_from_legacy(
+            complaint,
+            transitioned_by=user.email,
+            reason="Manual escalation via client portal",
+            metadata={"source": "client_portal"},
+            commit=False,
+        )
+        HardenedAutoReplyService(db).record_feedback(
+            complaint,
+            escalated_after_reply=True,
+            commit=False,
+        )
+        if complaint.rbi_complaint:
+            RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
         log_event(
             db,
             complaint.client_id,
@@ -757,8 +804,30 @@ def resolve_complaint(id: str, request: Request, db: Session = Depends(get_db)):
 
     if complaint.resolution_status == "open":
         complaint.resolution_status = "resolved"
+        complaint.status = "RESOLVED"
+        if complaint.resolved_at is None:
+            from datetime import datetime, timezone
+
+            complaint.resolved_at = datetime.now(timezone.utc)
     else:
         complaint.resolution_status = "open"
+        complaint.status = "IN_PROGRESS"
+        complaint.resolved_at = None
+        HardenedAutoReplyService(db).record_feedback(
+            complaint,
+            ticket_reopened=True,
+            commit=False,
+        )
+
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=user.email,
+        reason="Resolution toggled via client portal",
+        metadata={"source": "client_portal"},
+        commit=False,
+    )
+    if complaint.rbi_complaint:
+        RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
 
     db.commit()
 

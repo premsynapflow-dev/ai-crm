@@ -1,10 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import threading
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 
+from app.db.session import SessionLocal
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +20,7 @@ class InMemoryRateLimiter:
     
     def is_allowed(self, key: str, limit: int, window_seconds: int = 3600) -> bool:
         with self.lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             cutoff = now - timedelta(seconds=window_seconds)
             
             # Remove expired entries
@@ -39,7 +40,7 @@ class InMemoryRateLimiter:
     def cleanup_old_entries(self):
         """Periodically clean up old data"""
         with self.lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             cutoff = now - timedelta(hours=2)
             
             keys_to_delete = []

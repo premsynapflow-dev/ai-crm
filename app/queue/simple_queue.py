@@ -9,11 +9,14 @@ from app.integrations.slack import send_slack_alert
 from app.billing.plans import PLANS
 from app.intelligence.classifier import classify_message_async
 from app.intelligence.prompt_builder import get_prompt_config_for_client
-from app.intelligence.reply_engine import generate_ai_reply_async
+from app.middleware.feature_gate import has_feature_access
 from app.services.assignment import assign_team
-from app.services.customer_history import get_customer_memory
+from app.services.auto_reply_hardened import HardenedAutoReplyService
+from app.services.customer_profile import CustomerProfileService
+from app.services.rbi_compliance import RBIComplianceService
+from app.services.sla_manager import SLAManager
 from app.services.sentiment import analyze_sentiment
-from app.replies.send_reply import send_complaint_reply
+from app.services.ticket_state_machine import TicketStateMachine
 from app.services.response_tracking import mark_first_response_by_id
 from app.utils.logging import get_logger
 
@@ -125,6 +128,7 @@ async def process_complaint_ai_job(payload: Dict):
         classification = await classify_message_async(message, custom_config)
         
         # Update complaint
+        TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
         complaint.intent = classification["intent"]
         complaint.category = classification["category"]
         complaint.sentiment = classification["sentiment"]
@@ -146,36 +150,31 @@ async def process_complaint_ai_job(payload: Dict):
         complaint.sentiment_indicators = sentiment_details.get("indicators")
         
         # Generate AI reply
-        customer_history = get_customer_memory(
-            db, 
-            complaint.customer_email, 
-            limit=5
+        CustomerProfileService(db).sync_customer_for_complaint(
+            complaint,
+            interaction_type="ticket",
+            interaction_channel=complaint.source,
+            commit=False,
         )
-        reply_payload = await generate_ai_reply_async(
-            complaint, 
-            customer_history,
-            custom_config  # Pass custom config
+
+        if has_feature_access(client, "rbi_compliance", db=db):
+            RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
+
+        await HardenedAutoReplyService(db).generate_and_queue_reply_async(
+            complaint,
+            custom_config=custom_config,
+            commit=False,
         )
-        
-        complaint.ai_reply = reply_payload["reply_text"]
-        complaint.ai_reply_confidence = reply_payload["confidence_score"]
-        
-        # Auto-send if confidence high
-        if reply_payload["confidence_score"] > 0.75:
-            send_result = send_complaint_reply(
-                db=db,
-                complaint=complaint,
-                client=client,
-                reply_text=complaint.ai_reply,
-            )
-            if send_result.get("sent"):
-                complaint.ai_reply_status = "sent"
-            else:
-                complaint.ai_reply_status = "agent_review"
-        else:
-            complaint.ai_reply_status = "agent_review"
-        
+
         complaint.status = "PROCESSED"
+        SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+        TicketStateMachine(db).sync_from_legacy(
+            complaint,
+            transitioned_by=client.name,
+            reason="Background AI processing completed",
+            metadata={"job_type": "process_complaint_ai"},
+            commit=False,
+        )
         db.commit()
         
         logger.info(f"Processed complaint {complaint_id} in background (custom_prompt={custom_config is not None})")
