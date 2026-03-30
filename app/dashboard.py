@@ -16,7 +16,7 @@ def _is_admin_authenticated(request: Request) -> bool:
     return bool(request.session.get("admin"))
 
 
-@router.get("/login", response_class=HTMLResponse)
+@router.get("/legacy-admin/login", response_class=HTMLResponse)
 def login_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
@@ -25,11 +25,11 @@ def login_page(request: Request) -> HTMLResponse:
     )
 
 
-@router.post("/login", response_class=HTMLResponse)
+@router.post("/legacy-admin/login", response_class=HTMLResponse)
 def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == settings.admin_username and password == settings.admin_password:
         request.session["admin"] = True
-        return RedirectResponse(url="/dashboard", status_code=303)
+        return RedirectResponse(url="/legacy-admin/dashboard", status_code=303)
 
     return templates.TemplateResponse(
         request=request,
@@ -39,16 +39,16 @@ def login_submit(request: Request, username: str = Form(...), password: str = Fo
     )
 
 
-@router.get("/logout")
+@router.get("/legacy-admin/logout")
 def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=303)
+    return RedirectResponse(url="/legacy-admin/login", status_code=303)
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/legacy-admin/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     if not _is_admin_authenticated(request):
-        return RedirectResponse(url="/login", status_code=303)
+        return RedirectResponse(url="/legacy-admin/login", status_code=303)
 
     complaints = db.query(Complaint).order_by(Complaint.created_at.desc()).all()
     return templates.TemplateResponse(
@@ -58,10 +58,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     )
 
 
-@router.get("/dashboard/clients", response_class=HTMLResponse)
+@router.get("/legacy-admin/dashboard/clients", response_class=HTMLResponse)
 def clients_dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     if not _is_admin_authenticated(request):
-        return RedirectResponse(url="/login", status_code=303)
+        return RedirectResponse(url="/legacy-admin/login", status_code=303)
 
     clients = db.query(Client).order_by(Client.created_at.desc()).all()
     return templates.TemplateResponse(
@@ -71,7 +71,7 @@ def clients_dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLRe
     )
 
 
-@router.post("/admin/create-client")
+@router.post("/legacy-admin/create-client")
 def create_client(name: str, db: Session = Depends(get_db)):
     import secrets
 
