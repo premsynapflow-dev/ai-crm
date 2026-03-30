@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -48,6 +49,9 @@ export function SettingsContent() {
   const [summary, setSummary] = useState<SettingsSummary | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [isSavingWebhook, setIsSavingWebhook] = useState(false)
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -56,6 +60,7 @@ export function SettingsContent() {
       .then((response) => {
         if (active) {
           setSummary(response)
+          setWebhookUrl(response.webhooks[0]?.url ?? '')
         }
       })
       .catch(() => {
@@ -77,6 +82,35 @@ export function SettingsContent() {
   const handleCopy = (value: string, label: string) => {
     navigator.clipboard.writeText(value)
     toast.success(`${label} copied to clipboard`)
+  }
+
+  const handleSaveWebhook = async () => {
+    setIsSavingWebhook(true)
+    try {
+      const response = await settingsAPI.updateSlackWebhook(webhookUrl)
+      setSummary((current) => current ? {
+        ...current,
+        webhooks: response.webhook ? [response.webhook] : [],
+      } : current)
+      setWebhookUrl(response.webhook?.url ?? '')
+      toast.success('Slack webhook saved')
+    } catch {
+      toast.error('Failed to save Slack webhook')
+    } finally {
+      setIsSavingWebhook(false)
+    }
+  }
+
+  const handleTestWebhook = async () => {
+    setIsTestingWebhook(true)
+    try {
+      await settingsAPI.testSlackWebhook(webhookUrl)
+      toast.success('Test alert sent to Slack')
+    } catch {
+      toast.error('Failed to send test alert')
+    } finally {
+      setIsTestingWebhook(false)
+    }
   }
 
   if (isLoading) {
@@ -247,9 +281,32 @@ export function SettingsContent() {
           <Card>
             <CardHeader>
               <CardTitle>Webhooks</CardTitle>
-              <CardDescription>Active integration endpoints currently stored for this client</CardDescription>
+              <CardDescription>Manage the live Slack webhook used for escalations and complaint alerts.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <p className="font-medium">Slack webhook endpoint</p>
+                  <p className="text-sm text-muted-foreground">
+                    Use an incoming Slack webhook to receive complaint-created, escalated, and resolved events.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <Input
+                    value={webhookUrl}
+                    onChange={(event) => setWebhookUrl(event.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
+                    className="font-mono text-sm"
+                  />
+                  <Button onClick={() => void handleSaveWebhook()} disabled={isSavingWebhook}>
+                    {isSavingWebhook ? 'Saving...' : 'Save webhook'}
+                  </Button>
+                  <Button variant="outline" onClick={() => void handleTestWebhook()} disabled={isTestingWebhook || !webhookUrl.trim()}>
+                    {isTestingWebhook ? 'Testing...' : 'Send test'}
+                  </Button>
+                </div>
+              </div>
+
               {summary.webhooks.length === 0 ? (
                 <div className="rounded-lg bg-muted/50 p-8 text-center text-muted-foreground">
                   No webhooks are configured in the database yet.

@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/lib/auth-context'
-import { billingAPI, type Plan } from '@/lib/api/billing'
+import { billingAPI, type Invoice, type Plan } from '@/lib/api/billing'
 import { PLAN_ORDER } from '@/lib/plan-features'
 
 const planIcons = {
@@ -45,6 +45,7 @@ export function PricingContentImpl() {
   const { user } = useAuth()
   const [plans, setPlans] = useState<Record<string, Plan>>({})
   const [currentPlanId, setCurrentPlanId] = useState<string>(user?.plan_id ?? 'starter')
+  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isAnnual, setIsAnnual] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isUpgrading, setIsUpgrading] = useState<string | null>(null)
@@ -54,15 +55,17 @@ export function PricingContentImpl() {
 
     async function loadBilling() {
       try {
-        const [plansResponse, usageResponse] = await Promise.all([
+        const [plansResponse, usageResponse, invoicesResponse] = await Promise.all([
           billingAPI.getPlans(),
           billingAPI.getUsage(),
+          billingAPI.getInvoices(),
         ])
         if (!active) {
           return
         }
         setPlans(plansResponse)
         setCurrentPlanId(usageResponse.plan_id ?? user?.plan_id ?? 'starter')
+        setInvoices(invoicesResponse)
       } catch {
         if (active) {
           toast.error('Failed to load pricing plans')
@@ -267,6 +270,49 @@ export function PricingContentImpl() {
                 </TableBody>
               </Table>
             </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card className="border-white/70 bg-white/90 shadow-[0_22px_80px_-54px_rgba(15,23,42,0.55)]">
+          <CardHeader>
+            <CardTitle>Invoices</CardTitle>
+            <CardDescription>Billing records currently stored for this client account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Issued</TableHead>
+                  <TableHead>Paid</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      No invoices have been generated yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  invoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{invoice.status}</Badge>
+                      </TableCell>
+                      <TableCell>INR {invoice.total.toLocaleString('en-IN')}</TableCell>
+                      <TableCell>{invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString('en-IN') : '-'}</TableCell>
+                      <TableCell>{invoice.paid_at ? new Date(invoice.paid_at).toLocaleDateString('en-IN') : '-'}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </section>

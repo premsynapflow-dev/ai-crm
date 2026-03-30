@@ -45,4 +45,21 @@ export const settingsAPI = {
     const response = await api.get('/api/settings')
     return response.data
   },
+
+  updateSlackWebhook: async (slackWebhookUrl: string) => {
+    const response = await api.put('/api/settings/webhooks/slack', {
+      slack_webhook_url: slackWebhookUrl,
+    })
+    return response.data as {
+      success: boolean
+      webhook: SettingsWebhook | null
+    }
+  },
+
+  testSlackWebhook: async (slackWebhookUrl?: string) => {
+    const response = await api.post('/api/settings/webhooks/slack/test', {
+      slack_webhook_url: slackWebhookUrl,
+    })
+    return response.data as { success: boolean }
+  },
 }

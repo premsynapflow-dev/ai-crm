@@ -36,13 +36,19 @@ import {
   Search,
   Menu,
   ChevronLeft,
-  User
+  User,
+  Users,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
+  { href: '/customers', icon: Users, label: 'Customer 360' },
+  { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
+  { href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' },
   { href: '/analytics', icon: BarChart3, label: 'Analytics' },
   { href: '/pricing', icon: CreditCard, label: 'Billing & Plans' },
   { href: '/usage', icon: Activity, label: 'Usage & Limits' },
