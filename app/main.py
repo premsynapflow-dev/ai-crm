@@ -203,7 +203,7 @@ async def internal_exception_handler(request: Request, exc: Exception):
     )
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def landing_page():
     frontend_index = Path("frontend/out/index.html")
     if frontend_index.exists():
@@ -263,7 +263,7 @@ if (frontend_dir / "_next").exists():
 
 
 if frontend_dir.exists():
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_frontend(full_path: str):
         reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "metrics", "docs", "redoc", "openapi.json"}
         first_segment = full_path.split("/", 1)[0]

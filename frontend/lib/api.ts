@@ -2,6 +2,14 @@ import axios from 'axios'
 
 const AUTH_REDIRECT_EXEMPT_PATHS = new Set(['/', '/login', '/signup', '/admin/login'])
 
+function normalizePathname(pathname: string): string {
+  if (!pathname || pathname === '/') {
+    return '/'
+  }
+
+  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
+}
+
 const api = axios.create({
   baseURL: '',
   headers: {
@@ -16,7 +24,7 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       typeof window !== 'undefined' &&
-      !AUTH_REDIRECT_EXEMPT_PATHS.has(window.location.pathname)
+      !AUTH_REDIRECT_EXEMPT_PATHS.has(normalizePathname(window.location.pathname))
     ) {
       window.location.href = '/'
     }
