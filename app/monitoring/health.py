@@ -13,7 +13,7 @@ router = APIRouter(tags=["health"])
 logger = get_logger(__name__)
 
 
-@router.get("/health")
+@router.get("/health/basic")
 def health_check():
     """Basic health check"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}

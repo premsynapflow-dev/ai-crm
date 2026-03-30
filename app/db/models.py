@@ -19,6 +19,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -407,7 +408,7 @@ class RBIComplaintCategory(Base):
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     category_code = Column(String(20), nullable=False, index=True)
     category_name = Column(String(100), nullable=False)
-    subcategory_code = Column(String(20), nullable=True, index=True)
+    subcategory_code = Column(String(20), nullable=False, index=True)
     subcategory_name = Column(String(100), nullable=True)
     tat_days = Column(Integer, nullable=False, default=30)
     description = Column(Text, nullable=True)
@@ -492,8 +493,8 @@ class PlanFeature(Base):
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     plan_name = Column(String(50), nullable=False, unique=True, index=True)
-    features = Column(JSON, nullable=False, default=dict)
-    limits = Column(JSON, nullable=False, default=dict)
+    features = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    limits = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

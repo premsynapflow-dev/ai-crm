@@ -1,6 +1,7 @@
 import os
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -16,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -41,6 +43,7 @@ from app.client_portal import router as client_portal_router
 from app.config import get_settings
 from app.dashboard import router as dashboard_router
 from app.db.schema_guard import ensure_schema
+from app.db.session import SessionLocal
 from app.intake.webhook import router as webhook_router
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.rls_context import RLSContextMiddleware
@@ -83,6 +86,39 @@ if _HAS_SENTRY and settings.environment != "dev":
 worker_thread = None
 
 app = FastAPI(title="AI Complaint Intelligence API", version="2.0.0")
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for Railway monitoring.
+    Returns database connection status.
+    """
+    db = None
+    timestamp = datetime.utcnow().isoformat()
+
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": timestamp,
+        }
+    except Exception as exc:
+        logger.error("Health check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": str(exc),
+                "timestamp": timestamp,
+            },
+        )
+    finally:
+        if db is not None:
+            db.close()
 
 app.add_middleware(
     CORSMiddleware,
