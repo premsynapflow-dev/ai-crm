@@ -52,7 +52,7 @@ const features = [
 const pricing = [
   {
     name: 'Starter',
-    price: 'INR 2,999',
+    price: 'INR 1,499',
     cadence: '/month',
     href: '/signup',
     cta: 'Start free trial',
@@ -133,15 +133,15 @@ export default function LandingPage() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/admin/login">
+              <a href="#pricing">
                 <Button
                   size="lg"
                   variant="outline"
                   className="w-full border-slate-300 bg-white/80 text-slate-900 hover:bg-slate-50 sm:w-auto"
                 >
-                  Platform admin access
+                  View pricing
                 </Button>
-              </Link>
+              </a>
             </div>
             <div className="mt-8 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:gap-6">
               <span className="flex items-center gap-2">
@@ -280,29 +280,29 @@ export default function LandingPage() {
                 key={plan.name}
                 className={`rounded-[1.8rem] border ${
                   plan.featured
-                    ? 'border-amber-300 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))]'
+                    ? 'border-amber-300 bg-[linear-gradient(180deg,#fffdf8_0%,#fff3cf_100%)] text-slate-950'
                     : 'border-white/10 bg-white/5'
-                } text-white shadow-none`}
+                } ${plan.featured ? '' : 'text-white'} shadow-none`}
               >
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-2xl">{plan.name}</CardTitle>
                     {plan.featured ? (
                       <Badge className="rounded-full border-0 bg-amber-300 text-slate-950 hover:bg-amber-300">
-                        Most popular
+                        Most recommended
                       </Badge>
                     ) : null}
                   </div>
                   <div className="pt-6">
                     <div className="text-4xl font-semibold">{plan.price}</div>
-                    <p className="mt-2 text-sm text-slate-300">{plan.cadence}</p>
+                    <p className={`mt-2 text-sm ${plan.featured ? 'text-slate-600' : 'text-slate-300'}`}>{plan.cadence}</p>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <ul className="space-y-3 text-sm text-slate-200">
+                  <ul className={`space-y-3 text-sm ${plan.featured ? 'text-slate-700' : 'text-slate-200'}`}>
                     {plan.points.map((point) => (
                       <li key={point} className="flex items-start gap-3">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                        <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${plan.featured ? 'text-emerald-600' : 'text-emerald-300'}`} />
                         <span>{point}</span>
                       </li>
                     ))}
@@ -342,15 +342,15 @@ export default function LandingPage() {
                 Start free trial
               </Button>
             </Link>
-            <Link href="/admin/login">
+            <a href="#pricing">
               <Button
                 size="lg"
                 variant="outline"
                 className="w-full border-white/40 bg-transparent text-white hover:bg-white/10 sm:w-auto"
               >
-                Admin dashboard
+                Compare plans
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>
