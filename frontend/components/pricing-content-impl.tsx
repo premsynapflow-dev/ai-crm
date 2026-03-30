@@ -168,7 +168,7 @@ export function PricingContentImpl() {
             >
               {isFeatured && (
                 <div className="absolute right-4 top-4 rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white">
-                  Popular
+                  Most recommended
                 </div>
               )}
               <CardHeader>
@@ -204,15 +204,12 @@ export function PricingContentImpl() {
                 </div>
 
                 <div className="space-y-3">
-                  {plan.features.slice(0, 5).map((feature) => (
+                  {plan.features.map((feature) => (
                     <div key={feature} className="flex gap-2 text-sm">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                       <span>{feature}</span>
                     </div>
                   ))}
-                  {plan.features.length > 5 ? (
-                    <p className="text-sm text-muted-foreground">+{plan.features.length - 5} more features</p>
-                  ) : null}
                 </div>
               </CardContent>
               <CardFooter>

@@ -1,20 +1,27 @@
 "use client"
 
+import { useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowRight,
   Bot,
+  Building2,
   CheckCircle2,
   Clock3,
+  Crown,
   LineChart,
   ShieldCheck,
+  Sparkles,
   Users,
+  Zap,
 } from 'lucide-react'
 
 import { Logo } from '@/components/logo'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 
 const features = [
   {
@@ -49,37 +56,123 @@ const features = [
   },
 ]
 
-const pricing = [
+const pricingPlans = [
   {
     name: 'Starter',
-    price: 'INR 1,499',
-    cadence: '/month',
+    icon: Zap,
+    monthlyPrice: 1499,
+    annualPrice: 14990,
     href: '/signup',
     cta: 'Start free trial',
     featured: false,
-    points: ['50 tickets per month', 'AI auto-reply drafts', 'Basic queue management', 'Up to 2 team members'],
+    seats: '3 seats',
+    volume: '500 tickets / month',
+    points: [
+      'AI complaint classification',
+      'Basic analytics dashboard',
+      'Email ingestion',
+      'Customer complaint history',
+      'Email support',
+      '2 integrations',
+    ],
   },
   {
-    name: 'Growth',
-    price: 'INR 9,999',
-    cadence: '/month',
+    name: 'Pro',
+    icon: LineChart,
+    monthlyPrice: 4999,
+    annualPrice: 49990,
     href: '/signup',
-    cta: 'Start with Growth',
+    cta: 'Start with Pro',
+    featured: false,
+    seats: '10 seats',
+    volume: '2,000 tickets / month',
+    points: [
+      'Everything in Starter',
+      'Sentiment analysis',
+      'Pattern detection',
+      'SLA tracking and alerts',
+      'AI-suggested responses',
+      'WhatsApp ingestion',
+      'Advanced analytics',
+      'Full customer history',
+      '5 integrations',
+    ],
+  },
+  {
+    name: 'Max',
+    icon: Sparkles,
+    monthlyPrice: 9999,
+    annualPrice: 99990,
+    href: '/signup',
+    cta: 'Start with Max',
     featured: true,
-    points: ['500 tickets per month', 'SLA workflows', 'RBI compliance support', 'Customer 360 and analytics'],
+    seats: '25 seats',
+    volume: '10,000 tickets / month',
+    points: [
+      'Everything in Pro',
+      'AI auto-reply',
+      'Churn risk scoring',
+      'Root cause analysis',
+      'Team performance dashboard',
+      'Audit log and compliance export',
+      'API access',
+      'Zapier integration',
+      'Priority support',
+    ],
+  },
+  {
+    name: 'Scale',
+    icon: Building2,
+    monthlyPrice: 99999,
+    annualPrice: 999990,
+    href: '/signup',
+    cta: 'Talk to Scale team',
+    featured: false,
+    seats: '100 seats',
+    volume: '100,000 tickets / month',
+    points: [
+      'Everything in Max',
+      'Custom branding',
+      'Webhook access',
+      'Custom channel ingestion',
+      'Dedicated CSM',
+      'Enterprise-ready rollout support',
+    ],
   },
   {
     name: 'Enterprise',
-    price: 'Custom',
-    cadence: 'Tailored rollout',
+    icon: Crown,
+    monthlyPrice: null,
+    annualPrice: null,
     href: '/signup',
     cta: 'Schedule a demo',
     featured: false,
-    points: ['Unlimited volume', 'Custom integrations', 'Dedicated onboarding', 'Priority support'],
+    seats: 'Unlimited seats',
+    volume: 'Unlimited volume',
+    points: [
+      'Everything in Scale',
+      'White-glove onboarding',
+      'Custom AI model training',
+      'Contracted SLA guarantees',
+      'Custom integrations',
+      'Dedicated infrastructure',
+      'Manual invoicing',
+      'Unlimited everything',
+    ],
   },
 ]
 
+function formatLandingPrice(price: number | null) {
+  if (price == null) {
+    return 'Custom'
+  }
+
+  return `INR ${price.toLocaleString('en-IN')}`
+}
+
 export default function LandingPage() {
+  const [isAnnual, setIsAnnual] = useState(false)
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f7f4ed_0%,#fffdf8_28%,#ffffff_100%)] text-slate-900">
       <div className="pointer-events-none fixed inset-x-0 top-0 h-[32rem] bg-[radial-gradient(circle_at_top_left,rgba(9,105,218,0.14),transparent_38%),radial-gradient(circle_at_top_right,rgba(180,83,9,0.14),transparent_34%)]" />
@@ -274,19 +367,40 @@ export default function LandingPage() {
               Transparent pricing for teams that want AI acceleration and compliance guardrails from day one.
             </p>
           </div>
-          <div className="mt-12 grid gap-6 lg:grid-cols-3">
-            {pricing.map((plan) => (
+          <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 shadow-sm">
+            <Label htmlFor="landing-billing-toggle" className={!isAnnual ? 'font-semibold text-white' : 'text-slate-400'}>
+              Monthly
+            </Label>
+            <Switch id="landing-billing-toggle" checked={isAnnual} onCheckedChange={setIsAnnual} />
+            <Label htmlFor="landing-billing-toggle" className={isAnnual ? 'font-semibold text-white' : 'text-slate-400'}>
+              Annual
+            </Label>
+            <Badge className="border-0 bg-emerald-400/15 text-emerald-200 hover:bg-emerald-400/15">
+              Save 2 months
+            </Badge>
+          </div>
+          <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-5">
+            {pricingPlans.map((plan) => {
+              const Icon = plan.icon
+              const displayedPrice = isAnnual ? plan.annualPrice : plan.monthlyPrice
+
+              return (
               <Card
                 key={plan.name}
                 className={`rounded-[1.8rem] border ${
                   plan.featured
                     ? 'border-amber-300 bg-[linear-gradient(180deg,#fffdf8_0%,#fff3cf_100%)] text-slate-950'
-                    : 'border-white/10 bg-white/5'
-                } ${plan.featured ? '' : 'text-white'} shadow-none`}
+                    : 'border-white/10 bg-white/5 text-white'
+                } shadow-none`}
               >
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-2xl">{plan.name}</CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${plan.featured ? 'bg-slate-950 text-white' : 'bg-white/10 text-white'}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <CardTitle className="text-2xl">{plan.name}</CardTitle>
+                    </div>
                     {plan.featured ? (
                       <Badge className="rounded-full border-0 bg-amber-300 text-slate-950 hover:bg-amber-300">
                         Most recommended
@@ -294,8 +408,14 @@ export default function LandingPage() {
                     ) : null}
                   </div>
                   <div className="pt-6">
-                    <div className="text-4xl font-semibold">{plan.price}</div>
-                    <p className={`mt-2 text-sm ${plan.featured ? 'text-slate-600' : 'text-slate-300'}`}>{plan.cadence}</p>
+                    <div className="text-4xl font-semibold">{formatLandingPrice(displayedPrice)}</div>
+                    <p className={`mt-2 text-sm ${plan.featured ? 'text-slate-600' : 'text-slate-300'}`}>
+                      {displayedPrice == null ? 'Tailored rollout' : `/${isAnnual ? 'year' : 'month'}`}
+                    </p>
+                    <div className={`mt-4 grid gap-2 text-sm ${plan.featured ? 'text-slate-700' : 'text-slate-300'}`}>
+                      <p>{plan.volume}</p>
+                      <p>{plan.seats}</p>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -320,7 +440,8 @@ export default function LandingPage() {
                   </Link>
                 </CardContent>
               </Card>
-            ))}
+              )
+            })}
           </div>
         </div>
       </section>
@@ -333,7 +454,7 @@ export default function LandingPage() {
               Give your support and compliance teams a system they can actually trust.
             </h2>
             <p className="mt-4 text-lg text-slate-200">
-              Start a free trial for tenant teams or use the platform admin console to oversee growth across accounts.
+              Start a free trial for tenant teams or compare every plan before you roll SynapFlow out.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
