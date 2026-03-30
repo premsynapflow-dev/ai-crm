@@ -1,9 +1,15 @@
 from typing import Optional
-from fastapi import Header, HTTPException, Depends
+
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.models import Client
 from app.db.session import get_db
+
+security = HTTPBearer()
+settings = get_settings()
 
 
 async def get_client_from_api_key(
@@ -40,6 +46,21 @@ async def require_api_key(
         raise HTTPException(
             status_code=401,
             detail="Invalid API key"
-        )
+    )
     
     return client
+
+
+async def get_current_admin_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Validate the simple admin bearer token configured in the environment."""
+    token = credentials.credentials.strip()
+
+    if not settings.admin_password or token != settings.admin_password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin credentials",
+        )
+
+    return {"username": settings.admin_username, "role": "admin"}

@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.analytics import router as analytics_api_router
+from app.api.admin.overview import router as admin_overview_router
 from app.api.billing import router as billing_api_router
 from app.api.chatbot import router as chatbot_api_router
 from app.api.invoices import router as invoices_router
@@ -237,6 +238,7 @@ app.include_router(billing_router)
 app.include_router(billing_api_router)
 app.include_router(chatbot_api_router)
 app.include_router(analytics_api_router)
+app.include_router(admin_overview_router, prefix="/api")
 app.include_router(session_auth_router)
 app.include_router(public_api_router)
 app.include_router(auth_v1_router)
