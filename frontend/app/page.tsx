@@ -34,7 +34,7 @@ const features = [
     icon: ShieldCheck,
     title: 'Compliance-first workflows',
     description:
-      'Track RBI and SLA obligations with audit-ready timelines, escalations, and oversight across every tenant.',
+      'Track SLA obligations for every team, with RBI compliance workflows enabled for eligible RBI-regulated financial institutions identified during signup.',
   },
   {
     icon: Users,
@@ -95,6 +95,7 @@ const pricingPlans = [
       'WhatsApp ingestion',
       'Advanced analytics',
       'Full customer history',
+      'RBI compliance workspace for eligible RBI-regulated institutions',
       '5 integrations',
     ],
   },
@@ -247,7 +248,7 @@ export default function LandingPage() {
               </span>
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                Built for RBI-aware workflows
+                RBI workflows for eligible regulated institutions
               </span>
             </div>
           </div>
@@ -365,6 +366,9 @@ export default function LandingPage() {
             </h2>
             <p className="mt-5 text-lg text-slate-300">
               Transparent pricing for teams that want AI acceleration and compliance guardrails from day one.
+            </p>
+            <p className="mt-3 text-sm text-slate-400">
+              RBI compliance tooling is shown only for companies identified during signup as RBI-regulated financial institutions.
             </p>
           </div>
           <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 shadow-sm">

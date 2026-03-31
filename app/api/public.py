@@ -5,11 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, ValidationError
 
 from app.billing.plans import PLANS
+from app.company_profile import RBI_REGULATED_SECTORS, is_rbi_regulated_sector
 from app.db.models import Client, ClientUser, DemoRequest, WaitlistEntry
 from app.db.session import SessionLocal
 from app.onboarding.flows import apply_trial_plan, enqueue_welcome_sequence
 from app.utils.security import generate_api_key, hash_password
 from app.utils.request_parser import parse_request
+from app.utils.sanitize import sanitize_phone
 
 router = APIRouter(prefix="/api", tags=["public"])
 
@@ -18,6 +20,8 @@ class SignupRequest(BaseModel):
     company_name: str = Field(..., min_length=2)
     email: str
     password: str = Field(..., min_length=8)
+    phone_number: str = Field(..., min_length=10)
+    business_sector: str = Field(..., min_length=3)
 
 
 class WaitlistRequest(BaseModel):
@@ -35,6 +39,13 @@ async def signup(request: Request):
     db = SessionLocal()
     client = None
     try:
+        if payload.business_sector not in RBI_REGULATED_SECTORS:
+            raise HTTPException(status_code=400, detail="Invalid business sector")
+
+        phone_number = sanitize_phone(payload.phone_number)
+        if not phone_number:
+            raise HTTPException(status_code=400, detail="Invalid phone number")
+
         existing_user = db.query(ClientUser).filter(ClientUser.email == payload.email).first()
         if existing_user:
             raise HTTPException(status_code=409, detail="Account already exists")
@@ -44,6 +55,9 @@ async def signup(request: Request):
             plan="starter",
             plan_id="starter",
             api_key=generate_api_key(32),
+            contact_phone=phone_number,
+            business_sector=payload.business_sector,
+            is_rbi_regulated=is_rbi_regulated_sector(payload.business_sector),
             created_at=datetime.now(timezone.utc),
         )
         apply_trial_plan(client)

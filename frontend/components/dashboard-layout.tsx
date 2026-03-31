@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { isRbiEligibleCompany } from '@/lib/company-profile'
 import { Logo } from '@/components/logo'
 import { notificationsAPI, type NotificationItem } from '@/lib/api/notifications'
 import { Button } from '@/components/ui/button'
@@ -43,18 +44,6 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
-  { href: '/customers', icon: Users, label: 'Customer 360' },
-  { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
-  { href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' },
-  { href: '/analytics', icon: BarChart3, label: 'Analytics' },
-  { href: '/pricing', icon: CreditCard, label: 'Billing & Plans' },
-  { href: '/usage', icon: Activity, label: 'Usage & Limits' },
-  { href: '/settings', icon: Settings, label: 'Settings' },
-]
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -128,6 +117,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [lastReadAt, notifications])
 
   const unreadCount = unreadNotifications.length
+  const canAccessRbiCompliance = isRbiEligibleCompany(user?.business_sector, user?.is_rbi_regulated)
+  const navItems = [
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
+    { href: '/customers', icon: Users, label: 'Customer 360' },
+    { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
+    ...(canAccessRbiCompliance ? [{ href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' }] : []),
+    { href: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { href: '/pricing', icon: CreditCard, label: 'Billing & Plans' },
+    { href: '/usage', icon: Activity, label: 'Usage & Limits' },
+    { href: '/settings', icon: Settings, label: 'Settings' },
+  ]
 
   const handleLogout = () => {
     logout()

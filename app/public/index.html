@@ -79,7 +79,7 @@
             margin-bottom: 16px;
         }
 
-        input {
+        input, select {
             padding: 16px 20px;
             background: rgba(15, 20, 35, 0.7);
             border: 1px solid rgba(0, 150, 255, 0.3);
@@ -90,7 +90,7 @@
             transition: all 0.3s ease;
         }
 
-        input:focus {
+        input:focus, select:focus {
             outline: none;
             border-color: #00d4ff;
             box-shadow: 0 0 0 3px rgba(0, 150, 255, 0.1);
@@ -290,7 +290,7 @@
                 align-items: stretch;
             }
 
-            input, button {
+            input, select, button {
                 width: 100%;
             }
         }
@@ -301,11 +301,19 @@
         <section class="hero">
             <h1>SynapFlow</h1>
             <p class="tagline">
-                AI-powered complaint intelligence for solo teams. Classify, route, and resolve customer issues with lightning-fast automation.
+                AI-powered complaint intelligence for modern teams. Classify, route, and resolve customer issues with lightning-fast automation, with RBI compliance workflows enabled for eligible regulated financial institutions.
             </p>
             <form class="signup-form" id="signup-form">
                 <input type="text" name="company_name" placeholder="Company name" required />
                 <input type="email" name="email" placeholder="Work email" required />
+                <input type="tel" name="phone_number" placeholder="Phone number" required />
+                <select name="business_sector" required>
+                    <option value="not_rbi_regulated">Not RBI-regulated / Non-financial company</option>
+                    <option value="bank">Bank / Co-operative Bank / Small Finance Bank / Payment Bank</option>
+                    <option value="nbfc_hfc">NBFC / HFC</option>
+                    <option value="fintech_payments">Fintech / Payments / PPI / Payment Aggregator / Payment System Operator</option>
+                    <option value="other_rbi_regulated">Other RBI-regulated financial entity</option>
+                </select>
                 <input type="password" name="password" placeholder="Create password" required />
                 <button type="submit">Start Free Trial</button>
             </form>
@@ -316,6 +324,10 @@
             <div class="feature-card">
                 <h3>Auto-classify complaints</h3>
                 <p>Gemini AI instantly categorizes incoming issues with summaries, urgency scores, and intelligent routing rules.</p>
+            </div>
+            <div class="feature-card">
+                <h3>RBI-aware compliance</h3>
+                <p>Eligible RBI-regulated financial institutions can unlock complaint taxonomy tracking, TAT visibility, and audit-ready escalation workflows.</p>
             </div>
             <div class="feature-card">
                 <h3>Multi-channel intake</h3>
@@ -338,7 +350,7 @@
             <div class="pricing-card">
                 <h3>Pro</h3>
                 <div class="price">₹4,999</div>
-                <p>1,000 tickets/month<br/>All channels<br/>Automation rules<br/>Analytics dashboard</p>
+                <p>1,000 tickets/month<br/>All channels<br/>Automation rules<br/>Analytics dashboard<br/>RBI workspace for eligible regulated institutions</p>
             </div>
             <div class="pricing-card">
                 <h3>Business</h3>
@@ -372,6 +384,8 @@
             const payload = {
                 company_name: formData.get("company_name"),
                 email: formData.get("email"),
+                phone_number: formData.get("phone_number"),
+                business_sector: formData.get("business_sector"),
                 password: formData.get("password")
             };
 

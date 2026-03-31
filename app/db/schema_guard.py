@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.sql.sqltypes import Boolean, DateTime, Float, Integer
 
 from app.db.session import SessionLocal
-from app.db.models import Complaint, Customer, CustomerInteraction, EventLog
+from app.db.models import Client, Complaint, Customer, CustomerInteraction, EventLog
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +210,11 @@ def _ensure_required_columns():
                 "ai_reply_status",
                 "ai_reply_sent_at",
             ]
+        client_columns = [
+            "contact_phone",
+            "business_sector",
+            "is_rbi_regulated",
+        ]
         customer_columns = [
             "full_name",
             "company_name",
@@ -249,6 +254,10 @@ def _ensure_required_columns():
             "payload",
             "created_at",
         ]
+
+        added_client_columns = _sync_missing_model_columns("clients", Client, client_columns)
+        if added_client_columns:
+            added_summary["clients"] = added_client_columns
 
         added_complaint_columns = _sync_missing_model_columns(
             "complaints",

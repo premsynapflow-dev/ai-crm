@@ -17,6 +17,9 @@ export interface User {
   plan_id: PlanId
   plan: PlanId
   company: string
+  company_phone?: string | null
+  business_sector?: string | null
+  is_rbi_regulated?: boolean
   created_at?: string | null
 }
 
@@ -31,6 +34,9 @@ function normalizeUser(payload: unknown): User {
     plan_id: plan,
     plan: plan,
     company: String(raw.company ?? raw.client_name ?? 'SynapFlow'),
+    company_phone: raw.company_phone ? String(raw.company_phone) : null,
+    business_sector: raw.business_sector ? String(raw.business_sector) : null,
+    is_rbi_regulated: Boolean(raw.is_rbi_regulated),
     created_at: raw.created_at ? String(raw.created_at) : null,
   }
 }

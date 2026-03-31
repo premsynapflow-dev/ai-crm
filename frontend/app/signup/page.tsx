@@ -3,19 +3,23 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Building2, CheckCircle2, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Building2, CheckCircle2, Mail, Phone, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Logo } from '@/components/logo'
+import { COMPANY_SECTOR_OPTIONS } from '@/lib/company-profile'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export default function SignupPage() {
   const router = useRouter()
   const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [businessSector, setBusinessSector] = useState('not_rbi_regulated')
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -32,6 +36,8 @@ export default function SignupPage() {
         body: JSON.stringify({
           company_name: companyName,
           email,
+          phone_number: phoneNumber,
+          business_sector: businessSector,
           password,
         }),
       })
@@ -67,7 +73,7 @@ export default function SignupPage() {
               Launch a SynapFlow workspace in minutes.
             </h1>
             <p className="mt-4 text-lg leading-8 text-slate-600">
-              Give your support and compliance teams a shared complaint command center with AI assistance, SLA tracking, and clear plan limits.
+              Give your support and compliance teams a shared complaint command center with AI assistance, SLA tracking, and clear plan limits. RBI compliance tools are enabled for eligible RBI-regulated financial institutions.
             </p>
           </div>
           <div className="grid gap-4">
@@ -125,6 +131,41 @@ export default function SignupPage() {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="phoneNumber">Phone number</Label>
+                <div className="relative">
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="phoneNumber"
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="+91 98765 43210"
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="businessSector">Company category</Label>
+                <Select value={businessSector} onValueChange={setBusinessSector}>
+                  <SelectTrigger id="businessSector" className="w-full">
+                    <SelectValue placeholder="Select your company category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPANY_SECTOR_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  We use this to determine whether RBI compliance workflows should be enabled in your workspace.
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
@@ -137,11 +178,20 @@ export default function SignupPage() {
                 />
               </div>
 
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="hidden rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-900" />
                   <p>
                     By signing up, you’ll create a tenant workspace on the Starter plan and can upgrade later from inside the app.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-900" />
+                  <p>
+                    By signing up, you&apos;ll create a tenant workspace on the Starter plan. If you select an RBI-regulated financial company category, the RBI compliance workspace will be available after signup.
                   </p>
                 </div>
               </div>

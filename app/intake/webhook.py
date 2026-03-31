@@ -184,7 +184,7 @@ def _process_complaint_for_client(
         },
     )
 
-    if has_feature_access(client, "rbi_compliance", db=db):
+    if client.is_rbi_regulated and has_feature_access(client, "rbi_compliance", db=db):
         RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
 
     queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(complaint, commit=False)

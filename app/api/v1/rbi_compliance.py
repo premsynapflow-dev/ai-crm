@@ -21,12 +21,21 @@ def _parse_complaint_id(complaint_id: str) -> uuid.UUID:
         raise HTTPException(status_code=400, detail="Invalid complaint id") from exc
 
 
+def _ensure_rbi_workspace(current_client) -> None:
+    if not getattr(current_client, "is_rbi_regulated", False):
+        raise HTTPException(
+            status_code=403,
+            detail="RBI compliance is only available for RBI-regulated financial institutions",
+        )
+
+
 @router.get("/categories")
 def list_rbi_categories(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
     ensure_feature_access(current_client, "rbi_compliance", db=db)
+    _ensure_rbi_workspace(current_client)
     categories = (
         db.query(RBIComplaintCategory)
         .filter(RBIComplaintCategory.is_active == True)
@@ -55,6 +64,7 @@ def get_rbi_complaint(
     current_client=Depends(require_api_key),
 ):
     ensure_feature_access(current_client, "rbi_compliance", db=db)
+    _ensure_rbi_workspace(current_client)
     parsed_id = _parse_complaint_id(complaint_id)
     complaint = db.query(Complaint).filter(Complaint.id == parsed_id, Complaint.client_id == current_client.id).first()
     if not complaint:
@@ -103,6 +113,7 @@ def get_mis_report(
     current_client=Depends(require_api_key),
 ):
     ensure_feature_access(current_client, "rbi_compliance", db=db)
+    _ensure_rbi_workspace(current_client)
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Invalid month")
     report_date = datetime(year, month, 1)
@@ -117,6 +128,7 @@ def escalate_to_rbi(
     current_client=Depends(require_api_key),
 ):
     ensure_feature_access(current_client, "rbi_compliance", db=db)
+    _ensure_rbi_workspace(current_client)
     parsed_id = _parse_complaint_id(complaint_id)
     complaint = db.query(Complaint).filter(Complaint.id == parsed_id, Complaint.client_id == current_client.id).first()
     if not complaint:

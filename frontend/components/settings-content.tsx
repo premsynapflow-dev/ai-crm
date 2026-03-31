@@ -28,6 +28,7 @@ import {
   Check,
   Loader2,
 } from 'lucide-react'
+import { getCompanySectorLabel, isRbiEligibleCompany } from '@/lib/company-profile'
 import { settingsAPI, type SettingsSummary } from '@/lib/api/settings'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
@@ -122,6 +123,7 @@ export function SettingsContent() {
   }
 
   const isBusinessPlan = new Set(['max', 'scale', 'enterprise']).has(summary.profile.plan_id ?? user?.plan ?? 'starter')
+  const isRbiEligible = isRbiEligibleCompany(summary.company.business_sector, summary.company.is_rbi_regulated)
   const initials = summary.profile.name
     .split(' ')
     .map((part) => part[0])
@@ -199,6 +201,18 @@ export function SettingsContent() {
                     <p className="mt-1 font-medium capitalize">{summary.profile.plan_id}</p>
                   </CardContent>
                 </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-sm text-muted-foreground">Primary contact phone</p>
+                    <p className="mt-1 font-medium">{summary.profile.company_phone || 'Not available'}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <p className="text-sm text-muted-foreground">Company category</p>
+                    <p className="mt-1 font-medium">{getCompanySectorLabel(summary.profile.business_sector)}</p>
+                  </CardContent>
+                </Card>
               </div>
             </CardContent>
           </Card>
@@ -233,6 +247,31 @@ export function SettingsContent() {
                 <CardContent className="p-4">
                   <p className="text-sm text-muted-foreground">Account Created</p>
                   <p className="mt-1 font-medium">{formatDate(summary.company.created_at)}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">Company contact phone</p>
+                  <p className="mt-1 font-medium">{summary.company.contact_phone || 'Not available'}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">Company category</p>
+                  <p className="mt-1 font-medium">{getCompanySectorLabel(summary.company.business_sector)}</p>
+                </CardContent>
+              </Card>
+              <Card className="md:col-span-2">
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">RBI compliance eligibility</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <Badge className={isRbiEligible ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}>
+                      {isRbiEligible ? 'Eligible' : 'Not eligible'}
+                    </Badge>
+                    <p className="text-sm text-muted-foreground">
+                      RBI compliance tooling is shown only for companies identified as RBI-regulated financial institutions.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </CardContent>

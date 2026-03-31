@@ -13,12 +13,15 @@ def _display_name_from_email(email: str, fallback: str) -> str:
     return fallback
 
 
-def serialize_client_user(user: ClientUser, client: Client) -> dict[str, str | None]:
+def serialize_client_user(user: ClientUser, client: Client) -> dict[str, str | bool | None]:
     return {
         "id": str(user.id),
         "email": user.email,
         "name": _display_name_from_email(user.email, client.name),
         "company": client.name,
+        "company_phone": client.contact_phone,
+        "business_sector": client.business_sector,
+        "is_rbi_regulated": bool(client.is_rbi_regulated),
         "plan": client.plan_id,
         "plan_id": client.plan_id,
         "created_at": user.created_at.isoformat() if user.created_at else None,

@@ -5,6 +5,9 @@ export interface SettingsProfile {
   email: string
   name: string
   company: string
+  company_phone?: string | null
+  business_sector?: string | null
+  is_rbi_regulated?: boolean
   plan_id: string
   created_at?: string | null
 }
@@ -13,6 +16,9 @@ export interface SettingsCompany {
   name: string
   plan_id: string
   monthly_ticket_limit: number
+  contact_phone?: string | null
+  business_sector?: string | null
+  is_rbi_regulated?: boolean
   created_at?: string | null
 }
 

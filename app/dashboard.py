@@ -80,7 +80,10 @@ def create_client(name: str, db: Session = Depends(get_db)):
     client = Client(
         name=name,
         api_key=api_key,
-        plan="basic",
+        plan="starter",
+        plan_id="starter",
+        business_sector="not_rbi_regulated",
+        is_rbi_regulated=False,
     )
 
     db.add(client)
