@@ -169,6 +169,21 @@ def _process_complaint_for_client(
         commit=False,
     )
 
+    log_event(
+        db,
+        client.id,
+        "complaint_received",
+        {
+            "ticket_id": complaint.ticket_id,
+            "complaint_id": str(complaint.id),
+            "summary": complaint.summary,
+            "category": complaint.category,
+            "priority": complaint.priority,
+            "source": complaint.source,
+            "status": complaint.status,
+        },
+    )
+
     if has_feature_access(client, "rbi_compliance", db=db):
         RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
 
@@ -262,6 +277,20 @@ def process_complaint(
         )
         TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
         SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+        log_event(
+            db,
+            client.id,
+            "complaint_received",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.summary,
+                "category": complaint.category,
+                "priority": complaint.priority,
+                "source": complaint.source,
+                "status": complaint.status,
+            },
+        )
         db.commit()
 
         # Queue AI processing in background

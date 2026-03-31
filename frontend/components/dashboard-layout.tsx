@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { Logo } from '@/components/logo'
+import { notificationsAPI, type NotificationItem } from '@/lib/api/notifications'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -63,11 +64,102 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
-  const [notifications, setNotifications] = useState(3)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [lastReadAt, setLastReadAt] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const notificationStorageKey = useMemo(() => {
+    if (!user?.id) {
+      return null
+    }
+    return `synapflow.notifications.lastRead.${user.id}`
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!notificationStorageKey || typeof window === 'undefined') {
+      setLastReadAt(null)
+      return
+    }
+
+    setLastReadAt(window.localStorage.getItem(notificationStorageKey))
+  }, [notificationStorageKey])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadNotifications = async () => {
+      try {
+        const items = await notificationsAPI.list(12)
+        if (!cancelled) {
+          setNotifications(items)
+        }
+      } catch {
+        if (!cancelled) {
+          setNotifications([])
+        }
+      }
+    }
+
+    void loadNotifications()
+    const intervalId = window.setInterval(() => {
+      void loadNotifications()
+    }, 30000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  const unreadNotifications = useMemo(() => {
+    if (!lastReadAt) {
+      return notifications
+    }
+
+    const lastReadTimestamp = new Date(lastReadAt).getTime()
+    if (Number.isNaN(lastReadTimestamp)) {
+      return notifications
+    }
+
+    return notifications.filter((item) => {
+      const createdAt = item.created_at ? new Date(item.created_at).getTime() : 0
+      return createdAt > lastReadTimestamp
+    })
+  }, [lastReadAt, notifications])
+
+  const unreadCount = unreadNotifications.length
 
   const handleLogout = () => {
     logout()
+  }
+
+  const handleMarkNotificationsRead = () => {
+    const latestTimestamp = notifications[0]?.created_at ?? new Date().toISOString()
+    if (notificationStorageKey && typeof window !== 'undefined') {
+      window.localStorage.setItem(notificationStorageKey, latestTimestamp)
+    }
+    setLastReadAt(latestTimestamp)
+  }
+
+  const formatRelativeTime = (value: string | null): string => {
+    if (!value) {
+      return 'Just now'
+    }
+
+    const deltaMs = Date.now() - new Date(value).getTime()
+    if (Number.isNaN(deltaMs) || deltaMs < 60000) {
+      return 'Just now'
+    }
+    const minutes = Math.floor(deltaMs / 60000)
+    if (minutes < 60) {
+      return `${minutes} min ago`
+    }
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) {
+      return `${hours} hr ago`
+    }
+    const days = Math.floor(hours / 24)
+    return `${days} day${days === 1 ? '' : 's'} ago`
   }
 
   const SidebarContent = () => (
@@ -224,9 +316,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative">
                     <Bell className="h-5 w-5" />
-                    {notifications > 0 && (
+                    {unreadCount > 0 && (
                       <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500">
-                        {notifications}
+                        {Math.min(unreadCount, 99)}
                       </Badge>
                     )}
                   </Button>
@@ -235,21 +327,49 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   <DropdownMenuLabel>Notifications</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <div className="max-h-64 overflow-auto">
-                    {[...Array(Math.min(notifications, 5))].map((_, i) => (
-                      <DropdownMenuItem key={i} className="p-3 cursor-pointer">
-                        <div>
-                          <p className="text-sm font-medium">Complaint queue update</p>
-                          <p className="text-xs text-muted-foreground">
-                            {i === 0 ? 'New complaint waiting for review' : `${i * 5} minutes ago`}
-                          </p>
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
+                    {notifications.length === 0 ? (
+                      <div className="p-3 text-sm text-muted-foreground">
+                        No live complaint notifications yet.
+                      </div>
+                    ) : (
+                      notifications.map((item) => {
+                        const isUnread = unreadNotifications.some((entry) => entry.id === item.id)
+                        return (
+                          <DropdownMenuItem key={item.id} asChild className="cursor-pointer p-0">
+                            <Link href={item.href} className="flex w-full gap-3 p-3">
+                              <div className={cn(
+                                "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
+                                item.severity === 'success' && "bg-emerald-500",
+                                item.severity === 'high' && "bg-red-500",
+                                item.severity === 'medium' && "bg-amber-500",
+                                item.severity === 'info' && "bg-blue-500",
+                              )} />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className={cn("text-sm", isUnread ? "font-semibold" : "font-medium")}>
+                                    {item.title}
+                                  </p>
+                                  {isUnread && (
+                                    <span className="mt-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                                  )}
+                                </div>
+                                <p className="line-clamp-2 text-xs text-muted-foreground">
+                                  {item.message}
+                                </p>
+                                <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                                  {item.ticket_id ? `${item.ticket_id} • ` : ''}{formatRelativeTime(item.created_at)}
+                                </p>
+                              </div>
+                            </Link>
+                          </DropdownMenuItem>
+                        )
+                      })
+                    )}
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-center text-sm text-primary cursor-pointer justify-center"
-                    onClick={() => setNotifications(0)}
+                    onClick={handleMarkNotificationsRead}
                   >
                     Mark all as read
                   </DropdownMenuItem>

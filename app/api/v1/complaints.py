@@ -345,11 +345,43 @@ def update_complaint(
             escalated_after_reply=True,
             commit=False,
         )
+        log_event(
+            db,
+            complaint.client_id,
+            "complaint_escalated",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.summary,
+                "source": "patch_update",
+            },
+        )
+    elif normalized_status == "resolved" and complaint.resolution_status == "resolved":
+        log_event(
+            db,
+            complaint.client_id,
+            "complaint_resolved",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.summary,
+            },
+        )
     elif was_resolved and complaint.resolution_status != "resolved":
         HardenedAutoReplyService(db).record_feedback(
             complaint,
             ticket_reopened=True,
             commit=False,
+        )
+        log_event(
+            db,
+            complaint.client_id,
+            "complaint_reopened",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.summary,
+            },
         )
     if complaint.rbi_complaint:
         RBIComplianceService(db).sync_from_complaint(complaint, commit=False)

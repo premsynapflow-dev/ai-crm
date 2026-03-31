@@ -6,14 +6,17 @@ Fixed version with proper transaction handling
 import logging
 
 from sqlalchemy import text
+from sqlalchemy.sql.sqltypes import Boolean, DateTime, Float, Integer
 
 from app.db.session import SessionLocal
+from app.db.models import Complaint, Customer, CustomerInteraction, EventLog
 
 logger = logging.getLogger(__name__)
 
 REQUIRED_TABLES = [
     "clients",
     "complaints",
+    "event_logs",
     "sla_policies",
     "business_hours",
     "ticket_state_transitions",
@@ -57,6 +60,7 @@ def ensure_schema():
 
         logger.info("Schema guard: All required tables exist")
 
+        _ensure_required_columns()
         _seed_rbi_categories()
         _seed_plan_features()
         _create_indexes()
@@ -87,6 +91,199 @@ def _find_missing_tables() -> list[str]:
                 missing_tables.append(table_name)
 
     return missing_tables
+
+
+def _format_server_default(default_arg) -> str | None:
+    if default_arg is None:
+        return None
+    if hasattr(default_arg, "compile"):
+        return str(default_arg.compile(compile_kwargs={"literal_binds": True}))
+    return str(default_arg)
+
+
+def _format_python_default(value) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return f"'{value}'"
+    return None
+
+
+def _column_definition(column, dialect) -> str:
+    parts = [f"ADD COLUMN {column.name} {column.type.compile(dialect=dialect)}"]
+
+    default_sql = None
+    if column.server_default is not None:
+        default_sql = _format_server_default(getattr(column.server_default, "arg", None))
+    elif column.default is not None and getattr(column.default, "is_scalar", False):
+        default_sql = _format_python_default(column.default.arg)
+
+    if default_sql:
+        parts.append(f"DEFAULT {default_sql}")
+
+    should_be_nullable = column.nullable or default_sql is None
+    if not should_be_nullable:
+        parts.append("NOT NULL")
+
+    return " ".join(parts)
+
+
+def _sync_missing_model_columns(table_name: str, model, critical_columns: list[str], extra_sql: list[str] | None = None) -> list[str]:
+    with SessionLocal() as db:
+        existing_columns = {
+            row[0]
+            for row in db.execute(
+                text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = :table_name
+                    """
+                ),
+                {"table_name": table_name},
+            ).all()
+        }
+
+        model_columns = {column.name: column for column in model.__table__.columns}
+        added_columns: list[str] = []
+        dialect = db.get_bind().dialect
+
+        for column_name in critical_columns:
+            if column_name in existing_columns:
+                continue
+            column = model_columns.get(column_name)
+            if column is None:
+                continue
+            alter_sql = f"ALTER TABLE {table_name} {_column_definition(column, dialect)}"
+            db.execute(text(alter_sql))
+            added_columns.append(column_name)
+
+        for statement in extra_sql or []:
+            db.execute(text(statement))
+
+        if added_columns:
+            db.commit()
+        else:
+            db.rollback()
+
+        return added_columns
+
+
+def _ensure_required_columns():
+    """
+    Add critical columns that may be missing on older deployed schemas.
+
+    We intentionally add missing columns in an additive way so older databases
+    can keep serving traffic without waiting for a separate migration step.
+    """
+
+    try:
+        added_summary: dict[str, list[str]] = {}
+
+        complaint_columns = [
+                "customer_id",
+                "sentiment_score",
+                "sentiment_label",
+                "sentiment_indicators",
+                "assigned_to",
+                "state",
+                "state_changed_at",
+                "ticket_number",
+                "reopened_count",
+                "last_reopened_at",
+                "sla_due_at",
+                "sla_status",
+                "escalation_level",
+                "escalated_at",
+                "escalated_to",
+                "response_time_seconds",
+                "first_response_at",
+                "resolved_at",
+                "customer_satisfaction_score",
+                "satisfaction_score",
+                "ai_reply_confidence",
+                "ai_reply_status",
+                "ai_reply_sent_at",
+            ]
+        customer_columns = [
+            "full_name",
+            "company_name",
+            "emails",
+            "phones",
+            "customer_type",
+            "status",
+            "tags",
+            "total_tickets",
+            "total_interactions",
+            "first_interaction_at",
+            "last_interaction_at",
+            "avg_satisfaction_score",
+            "churn_risk_score",
+            "lifetime_value",
+            "enrichment_data",
+            "custom_fields",
+            "is_master",
+            "merged_into",
+            "confidence_score",
+            "updated_at",
+        ]
+        interaction_columns = [
+            "client_id",
+            "interaction_type",
+            "interaction_channel",
+            "complaint_id",
+            "summary",
+            "sentiment_score",
+            "duration_seconds",
+            "metadata",
+            "created_at",
+        ]
+        event_log_columns = [
+            "client_id",
+            "event_type",
+            "payload",
+            "created_at",
+        ]
+
+        added_complaint_columns = _sync_missing_model_columns(
+            "complaints",
+            Complaint,
+            complaint_columns,
+            extra_sql=["CREATE INDEX IF NOT EXISTS ix_complaints_customer_id ON complaints(customer_id)"],
+        )
+        if added_complaint_columns:
+            added_summary["complaints"] = added_complaint_columns
+
+        added_customer_columns = _sync_missing_model_columns("customers", Customer, customer_columns)
+        if added_customer_columns:
+            added_summary["customers"] = added_customer_columns
+
+        added_interaction_columns = _sync_missing_model_columns(
+            "customer_interactions",
+            CustomerInteraction,
+            interaction_columns,
+        )
+        if added_interaction_columns:
+            added_summary["customer_interactions"] = added_interaction_columns
+
+        added_event_log_columns = _sync_missing_model_columns("event_logs", EventLog, event_log_columns)
+        if added_event_log_columns:
+            added_summary["event_logs"] = added_event_log_columns
+
+        if added_summary:
+            for table_name, added_columns in added_summary.items():
+                logger.info(
+                    "Schema guard: Added missing %s columns: %s",
+                    table_name,
+                    ", ".join(sorted(added_columns)),
+                )
+    except Exception as exc:
+        logger.warning("Schema guard: Column sync skipped: %s", exc)
 
 
 def _seed_rbi_categories():
