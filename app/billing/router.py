@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.billing.plans import PLANS
+from app.billing.plans import PLANS, ALLOWED_UPGRADES, is_upgrade_allowed
 from app.billing.razorpay_service import create_payment_link, create_subscription, handle_webhook
 from app.billing.usage import get_usage_summary
 from app.config import get_settings
@@ -81,6 +81,13 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
 
     if payload.plan_id == "enterprise":
         raise HTTPException(status_code=400, detail="Enterprise requires sales contact")
+
+    current_plan = client.plan_id or "free"
+    allowed = is_upgrade_allowed(current_plan, payload.plan_id)
+    logger.debug("billing_upgrade path check current_plan=%s target_plan=%s allowed=%s", current_plan, payload.plan_id, allowed)
+    if not allowed:
+        logger.warning("billing_upgrade not allowed current_plan=%s target_plan=%s", current_plan, payload.plan_id)
+        raise HTTPException(status_code=400, detail="Upgrade not allowed")
 
     price = plan.get("annual_price") if payload.billing_cycle == "annual" else plan.get("monthly_price")
     if price is None:

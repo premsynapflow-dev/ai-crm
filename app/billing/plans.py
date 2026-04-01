@@ -1,5 +1,14 @@
 PLAN_ORDER = ["free", "starter", "pro", "max", "scale", "enterprise"]
 
+ALLOWED_UPGRADES = {
+    "free": ["starter", "pro", "max", "scale", "enterprise"],
+    "starter": ["pro", "max", "scale"],
+    "pro": ["max", "scale"],
+    "max": ["scale"],
+    "scale": [],
+    "enterprise": [],
+}
+
 
 def _with_compat_aliases(plan_id: str, data: dict) -> dict:
     plan = dict(data)
@@ -20,6 +29,15 @@ def _with_compat_aliases(plan_id: str, data: dict) -> dict:
         "annual": f"synapflow_{plan_id}_annual",
     } if plan_id in {"starter", "pro", "max", "scale"} else {}
     return plan
+
+
+def is_upgrade_allowed(current_plan: str | None, target_plan: str) -> bool:
+    if not current_plan:
+        return False
+    allowed = ALLOWED_UPGRADES.get(current_plan)
+    if allowed is None:
+        return False
+    return target_plan in allowed
 
 
 PLANS = {
