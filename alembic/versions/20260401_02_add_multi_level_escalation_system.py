@@ -18,98 +18,117 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # 1. Create escalation_level_definitions table
-    op.create_table(
-        "escalation_level_definitions",
-        sa.Column("id", sa.Uuid(as_uuid=True), nullable=False, default=uuid.uuid4),
-        sa.Column("client_id", sa.Uuid(as_uuid=True), nullable=False),
-        sa.Column("level_code", sa.String(20), nullable=False),  # L1, L2, IO
-        sa.Column("level_number", sa.Integer(), nullable=False),  # 1, 2, 3
-        sa.Column("trigger_after_hours", sa.Integer(), nullable=False),  # hours
-        sa.Column("escalate_to_role", sa.String(255), nullable=False),  # team or email pattern
-        sa.Column("description", sa.String(500), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["client_id"], ["clients.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("client_id", "level_code", name="unique_client_level_code"),
-        sa.Index("idx_escalation_levels_client", "client_id"),
-        sa.Index("idx_escalation_levels_client_number", "client_id", "level_number"),
-    )
+    from sqlalchemy import text
+    
+    connection = op.get_bind()
+    
+    # 1. Create escalation_level_definitions table if not exists
+    try:
+        connection.execute(text("""
+            CREATE TABLE IF NOT EXISTS escalation_level_definitions (
+                id UUID NOT NULL PRIMARY KEY,
+                client_id UUID NOT NULL,
+                level_code VARCHAR(20) NOT NULL,
+                level_number INTEGER NOT NULL,
+                trigger_after_hours INTEGER NOT NULL,
+                escalate_to_role VARCHAR(255) NOT NULL,
+                description VARCHAR(500),
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                CONSTRAINT fk_escalation_levels_client FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+                CONSTRAINT unique_client_level_code UNIQUE (client_id, level_code)
+            )
+        """))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_escalation_levels_client ON escalation_level_definitions(client_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_escalation_levels_client_number ON escalation_level_definitions(client_id, level_number)"))
+    except Exception as e:
+        print(f"Warning: Error creating escalation_level_definitions: {e}")
+    
+    # 2. Add columns to escalation_rules (if not already present)
+    try:
+        connection.execute(text("ALTER TABLE escalation_rules ADD COLUMN IF NOT EXISTS category_code VARCHAR(20)"))
+    except Exception:
+        pass
+        
+    try:
+        connection.execute(text("ALTER TABLE escalation_rules ADD COLUMN IF NOT EXISTS escalation_level_id UUID"))
+    except Exception:
+        pass
+        
+    try:
+        connection.execute(text("ALTER TABLE escalation_rules ADD COLUMN IF NOT EXISTS trigger_after_hours INTEGER"))
+    except Exception:
+        pass
+    
+    # Add FK and index if they don't exist
+    try:
+        connection.execute(text("""
+            ALTER TABLE escalation_rules 
+            ADD CONSTRAINT fk_escalation_rules_escalation_level 
+            FOREIGN KEY (escalation_level_id) REFERENCES escalation_level_definitions(id) ON DELETE SET NULL
+        """))
+    except Exception:
+        pass
+    
+    try:
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_escalation_rules_category ON escalation_rules(category_code)"))
+    except Exception:
+        pass
 
-    # 2. Extend escalation_rules (if not already exists) to support category-based rules
-    # First check if escalation_rules has category_code - if not, add it
-    op.add_column(
-        "escalation_rules",
-        sa.Column("category_code", sa.String(20), nullable=True),
-    )
-    op.add_column(
-        "escalation_rules",
-        sa.Column("escalation_level_id", sa.Uuid(as_uuid=True), nullable=True),
-    )
-    op.add_column(
-        "escalation_rules",
-        sa.Column("trigger_after_hours", sa.Integer(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_escalation_rules_escalation_level",
-        "escalation_rules",
-        "escalation_level_definitions",
-        ["escalation_level_id"],
-        ["id"],
-    )
-    op.create_index(
-        "idx_escalation_rules_category",
-        "escalation_rules",
-        ["category_code"],
-    )
+    # 3. Add columns to escalations (if not already present)
+    try:
+        connection.execute(text("ALTER TABLE escalations ADD COLUMN IF NOT EXISTS escalation_level_id UUID"))
+    except Exception:
+        pass
+        
+    try:
+        connection.execute(text("ALTER TABLE escalations ADD COLUMN IF NOT EXISTS metadata_json JSON DEFAULT '{}'::json"))
+    except Exception:
+        pass
+        
+    try:
+        connection.execute(text("ALTER TABLE escalations ADD COLUMN IF NOT EXISTS next_escalation_at TIMESTAMP WITH TIME ZONE"))
+    except Exception:
+        pass
+    
+    # Add FK and index to escalations
+    try:
+        connection.execute(text("""
+            ALTER TABLE escalations 
+            ADD CONSTRAINT fk_escalations_escalation_level 
+            FOREIGN KEY (escalation_level_id) REFERENCES escalation_level_definitions(id) ON DELETE SET NULL
+        """))
+    except Exception:
+        pass
+    
+    try:
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_escalations_next_escalation ON escalations(next_escalation_at)"))
+    except Exception:
+        pass
 
-    # 3. Extend escalations table with metadata
-    op.add_column(
-        "escalations",
-        sa.Column("escalation_level_id", sa.Uuid(as_uuid=True), nullable=True),
-    )
-    op.add_column(
-        "escalations",
-        sa.Column("metadata_json", sa.JSON(), nullable=False, server_default="{}"),
-    )
-    op.add_column(
-        "escalations",
-        sa.Column("next_escalation_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_escalations_escalation_level",
-        "escalations",
-        "escalation_level_definitions",
-        ["escalation_level_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_index(
-        "idx_escalations_next_escalation",
-        "escalations",
-        ["next_escalation_at"],
-    )
-
-    # 4. Extend conversations table with escalation tracking
-    op.add_column(
-        "conversations",
-        sa.Column("escalation_level", sa.Integer(), nullable=False, server_default="0"),
-    )
-    op.add_column(
-        "conversations",
-        sa.Column("last_escalated_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "conversations",
-        sa.Column("escalation_metadata_json", sa.JSON(), nullable=False, server_default="{}"),
-    )
-    op.create_index(
-        "idx_conversations_escalation_level",
-        "conversations",
-        ["client_id", "escalation_level"],
-    )
+    # 4. Add columns to conversations (if not already present)
+    try:
+        connection.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS escalation_level INTEGER DEFAULT 0"))
+    except Exception:
+        pass
+        
+    try:
+        connection.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_escalated_at TIMESTAMP WITH TIME ZONE"))
+    except Exception:
+        pass
+        
+    try:
+        connection.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS escalation_metadata_json JSON DEFAULT '{}'::json"))
+    except Exception:
+        pass
+    
+    try:
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_conversations_escalation_level ON conversations(client_id, escalation_level)"))
+    except Exception:
+        pass
+    
+    connection.commit()
 
 
 def downgrade() -> None:

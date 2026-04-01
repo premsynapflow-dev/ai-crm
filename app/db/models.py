@@ -307,6 +307,9 @@ class Escalation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     ticket = relationship("Complaint", back_populates="escalations")
+
+
+class TicketStateTransition(Base):
     __tablename__ = "ticket_state_transitions"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -575,22 +578,6 @@ class RBITATRule(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="rbi_tat_rules")
-
-
-class Escalation(Base):
-    __tablename__ = "escalations"
-    __table_args__ = (
-        Index("idx_escalations_ticket_created", "ticket_id", "created_at"),
-    )
-
-    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=False, index=True)
-    level = Column(Integer, nullable=False, default=1)
-    escalated_to = Column(String(255), nullable=False)
-    reason = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-    ticket = relationship("Complaint", back_populates="escalations")
 
 
 class AuditLog(Base):
