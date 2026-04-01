@@ -6,14 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_client
 from app.billing.plans import PLANS
-from app.billing.razorpay_service import create_payment_link
+from app.billing.razorpay_service import create_payment_link, create_subscription
 from app.billing.usage import get_usage_summary
 from app.config import get_settings
 from app.db.models import Client
 from app.db.session import get_db
+from app.utils.logging import get_logger
 
 router = APIRouter(prefix="/api", tags=["billing-api"])
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 class UpgradePlanRequest(BaseModel):
@@ -32,53 +34,107 @@ def upgrade_plan(
     db: Session = Depends(get_db),
     client: Client = Depends(get_current_client),
 ):
-    if payload.plan_id not in PLANS:
+    if not payload.plan_id:
+        logger.warning("upgrade_plan called without plan_id for client %s", client.id)
+        raise HTTPException(status_code=400, detail="plan_id is required")
+
+    plan = PLANS.get(payload.plan_id)
+    if not plan:
+        logger.warning("upgrade_plan unknown plan_id=%s for client %s", payload.plan_id, client.id)
         raise HTTPException(status_code=400, detail="Unknown plan")
+
     if payload.plan_id == "enterprise":
         raise HTTPException(status_code=400, detail="Enterprise requires sales contact")
 
-    plan = PLANS[payload.plan_id]
-    price = plan["annual_price"] if payload.billing_cycle == "annual" else plan["monthly_price"]
+    price = plan.get("annual_price") if payload.billing_cycle == "annual" else plan.get("monthly_price")
+    if price is None:
+        logger.warning("upgrade_plan plan_id=%s has no price for cycle=%s", payload.plan_id, payload.billing_cycle)
+        raise HTTPException(status_code=400, detail="Selected plan does not have a fixed price; please contact sales")
+
+    logger.info(
+        "upgrade_plan request client=%s current_plan=%s target_plan=%s billing_cycle=%s price=%s",
+        client.id,
+        client.plan_id,
+        payload.plan_id,
+        payload.billing_cycle,
+        price,
+    )
+    logger.debug("target plan metadata: %s", plan)
+
     payment_url = None
+    razorpay_subscription_id = None
     plan_applied = False
 
-    if price:
+    # Primary Razorpay workflow: create a subscription for paid plans
+    if price > 0:
         if not settings.razorpay_key_id or not settings.razorpay_key_secret:
+            logger.error("Razorpay is not configured for upgrade_plan, client=%s", client.id)
             raise HTTPException(status_code=503, detail="Razorpay is not configured")
-        try:
-            payment_link = create_payment_link(
-                client.id,
-                amount=int(price) * 100,
-                plan_id=payload.plan_id,
-                billing_cycle=payload.billing_cycle,
-                description=f"SynapFlow {plan['name']} ({payload.billing_cycle}) plan payment",
-            )
-            payment_url = payment_link.get("short_url")
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
 
-        if not payment_url:
-            raise HTTPException(status_code=502, detail="Razorpay payment link was not created")
+        try:
+            subscription = create_subscription(client.id, payload.plan_id, payload.billing_cycle)
+            razorpay_subscription_id = subscription.get("id")
+            logger.info(
+                "Razorpay subscription created client=%s plan=%s subscription_id=%s",
+                client.id,
+                payload.plan_id,
+                razorpay_subscription_id,
+            )
+
+            client.plan_id = payload.plan_id
+            client.plan = payload.plan_id
+            client.monthly_ticket_limit = plan.get("tickets_per_month", client.monthly_ticket_limit)
+            if payload.plan_id == "starter" and plan.get("trial_days"):
+                client.trial_ends_at = client.trial_ends_at or (datetime.now(timezone.utc) + timedelta(days=plan["trial_days"]))
+            else:
+                client.trial_ends_at = None
+            db.commit()
+            db.refresh(client)
+            plan_applied = True
+        except Exception:
+            logger.exception(
+                "Razorpay subscription creation failed for client=%s target_plan=%s, attempting payment link fallback",
+                client.id,
+                payload.plan_id,
+            )
+
+            try:
+                payment_link = create_payment_link(
+                    client.id,
+                    amount=int(price) * 100,
+                    plan_id=payload.plan_id,
+                    billing_cycle=payload.billing_cycle,
+                    description=f"SynapFlow {plan['name']} ({payload.billing_cycle}) plan payment",
+                )
+                payment_url = payment_link.get("short_url")
+                if not payment_url:
+                    raise ValueError("Razorpay payment link response missing short_url")
+                logger.info(
+                    "Razorpay payment link created for upgrade client=%s plan=%s url=%s",
+                    client.id,
+                    payload.plan_id,
+                    payment_url,
+                )
+            except Exception as exc:
+                logger.exception("Unable to initiate Razorpay payment link for client=%s", client.id)
+                raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
     else:
+        # Free or zero-cost plan: apply directly
         client.plan_id = payload.plan_id
         client.plan = payload.plan_id
-        client.monthly_ticket_limit = plan["tickets_per_month"]
-        if payload.plan_id == "starter" and plan.get("trial_days"):
-            client.trial_ends_at = client.trial_ends_at or (
-                datetime.now(timezone.utc) + timedelta(days=plan["trial_days"])
-            )
-        else:
-            client.trial_ends_at = None
+        client.monthly_ticket_limit = plan.get("tickets_per_month", client.monthly_ticket_limit)
+        client.trial_ends_at = None
         db.commit()
         db.refresh(client)
         plan_applied = True
 
     return {
         "ok": True,
-        "plan_id": payload.plan_id if payment_url else client.plan_id,
-        "monthly_ticket_limit": plan["tickets_per_month"] if payment_url else client.monthly_ticket_limit,
+        "plan_id": payload.plan_id,
+        "monthly_ticket_limit": plan.get("tickets_per_month", client.monthly_ticket_limit),
         "billing_cycle": payload.billing_cycle,
         "razorpay_plan_id": plan.get("razorpay_plan_ids", {}).get(payload.billing_cycle),
+        "razorpay_subscription_id": razorpay_subscription_id,
         "payment_url": payment_url,
         "plan_applied": plan_applied,
     }

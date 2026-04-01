@@ -318,3 +318,19 @@ PLANS = {
         },
     ),
 }
+
+# Sanity checks to prevent missing premium paths at startup
+EXPECTED_PLANS = ["free", "starter", "pro", "max", "scale", "enterprise"]
+for expected in EXPECTED_PLANS:
+    if expected not in PLANS:
+        raise AssertionError(f"Missing expected plan configuration: {expected}")
+
+scale_plan = PLANS.get("scale")
+if not scale_plan:
+    raise AssertionError("Scale plan is not configured")
+
+if scale_plan.get("monthly_price") is None or scale_plan.get("annual_price") is None:
+    raise AssertionError("Scale plan must include monthly_price and annual_price")
+
+if not scale_plan.get("razorpay_plan_ids") or "monthly" not in scale_plan.get("razorpay_plan_ids", {}):
+    raise AssertionError("Scale plan must include razorpay_plan_ids for monthly and annual")
