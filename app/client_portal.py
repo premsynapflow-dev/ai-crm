@@ -160,7 +160,7 @@ def portal_home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse
             "complaints": complaints,
             "user": user,
             "client": client,
-            "plan": PLANS.get(client.plan_id if client else "starter", PLANS["starter"]),
+            "plan": PLANS.get(client.plan_id if client else "free", PLANS["free"]),
             "usage_summary": usage_summary,
             "invoices": invoices,
             "upgrade_recommended": upgrade_recommended,
@@ -316,7 +316,7 @@ def portal_billing(request: Request, db: Session = Depends(get_db)):
         context={
             "user": user,
             "client": client,
-            "plan": PLANS.get(client.plan_id if client else "starter", PLANS["starter"]),
+            "plan": PLANS.get(client.plan_id if client else "free", PLANS["free"]),
             "invoices": invoices,
         },
     )

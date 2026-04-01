@@ -15,6 +15,7 @@ import { billingAPI, type Invoice, type Plan } from '@/lib/api/billing'
 import { PLAN_ORDER } from '@/lib/plan-features'
 
 const planIcons = {
+  free: Sparkles,
   starter: Zap,
   pro: TrendingUp,
   max: Sparkles,
@@ -23,6 +24,7 @@ const planIcons = {
 } as const
 
 const planColors = {
+  free: 'from-slate-700 via-slate-600 to-slate-400',
   starter: 'from-sky-500 via-cyan-500 to-emerald-400',
   pro: 'from-violet-500 via-fuchsia-500 to-rose-400',
   max: 'from-orange-500 via-amber-500 to-yellow-400',
@@ -31,10 +33,13 @@ const planColors = {
 } as const
 
 function formatPrice(price: number | null, cycle: 'monthly' | 'annual') {
+  if (price === 0) {
+    return 'Free forever'
+  }
   if (!price) {
     return 'Custom quote'
   }
-  return `₹${price.toLocaleString('en-IN')}/${cycle === 'annual' ? 'yr' : 'mo'}`
+  return `INR ${price.toLocaleString('en-IN')}/${cycle === 'annual' ? 'yr' : 'mo'}`
 }
 
 function formatLimit(value: number) {
@@ -44,7 +49,7 @@ function formatLimit(value: number) {
 export function PricingContentImpl() {
   const { user } = useAuth()
   const [plans, setPlans] = useState<Record<string, Plan>>({})
-  const [currentPlanId, setCurrentPlanId] = useState<string>(user?.plan_id ?? 'starter')
+  const [currentPlanId, setCurrentPlanId] = useState<string>(user?.plan_id ?? 'free')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [isAnnual, setIsAnnual] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -64,7 +69,7 @@ export function PricingContentImpl() {
           return
         }
         setPlans(plansResponse)
-        setCurrentPlanId(usageResponse.plan_id ?? user?.plan_id ?? 'starter')
+        setCurrentPlanId(usageResponse.plan_id ?? user?.plan_id ?? 'free')
         setInvoices(invoicesResponse)
       } catch {
         if (active) {
@@ -106,11 +111,12 @@ export function PricingContentImpl() {
     setIsUpgrading(planId)
     try {
       const result = await billingAPI.upgradePlan(planId, isAnnual ? 'annual' : 'monthly')
-      setCurrentPlanId(planId)
       if (result.payment_url) {
+        toast.success('Redirecting to Razorpay checkout...')
         window.location.href = result.payment_url
         return
       }
+      setCurrentPlanId(planId)
       toast.success(`Plan updated to ${plans[planId]?.name ?? planId}`)
     } catch {
       toast.error('Unable to start upgrade flow')
@@ -150,7 +156,7 @@ export function PricingContentImpl() {
         </div>
       </section>
 
-      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-6">
         {PLAN_ORDER.map((planId) => {
           const plan = plans[planId]
           if (!plan) {
@@ -180,7 +186,11 @@ export function PricingContentImpl() {
                 </div>
                 <CardTitle>{plan.name}</CardTitle>
                 <CardDescription>
-                  {plan.trial_days ? `${plan.trial_days} day trial${plan.trial_requires_card ? ', card required' : ', no card required'}` : 'Sales-assisted onboarding'}
+                  {planId === 'free'
+                    ? 'Free forever for solo teams getting started'
+                    : plan.trial_days
+                      ? `${plan.trial_days} day trial${plan.trial_requires_card ? ', card required' : ', no card required'}`
+                      : 'Sales-assisted onboarding'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -245,7 +255,7 @@ export function PricingContentImpl() {
         <Card className="border-white/70 bg-white/90 shadow-[0_22px_80px_-54px_rgba(15,23,42,0.55)]">
           <CardHeader>
             <CardTitle>Feature comparison</CardTitle>
-            <CardDescription>Compare the core capability unlocks across all five SynapFlow plans.</CardDescription>
+            <CardDescription>Compare the core capability unlocks across all six SynapFlow plans.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">

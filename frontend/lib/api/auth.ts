@@ -25,7 +25,7 @@ export interface User {
 
 function normalizeUser(payload: unknown): User {
   const raw = (payload ?? {}) as Record<string, unknown>
-  const plan = String(raw.plan_id ?? raw.plan ?? 'starter') as PlanId
+  const plan = String(raw.plan_id ?? raw.plan ?? 'free') as PlanId
 
   return {
     id: String(raw.id ?? ''),

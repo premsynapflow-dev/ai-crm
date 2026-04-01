@@ -1,4 +1,4 @@
-export const PLAN_ORDER = ['starter', 'pro', 'max', 'scale', 'enterprise'] as const
+export const PLAN_ORDER = ['free', 'starter', 'pro', 'max', 'scale', 'enterprise'] as const
 
 export type PlanId = (typeof PLAN_ORDER)[number]
 
@@ -11,7 +11,6 @@ export type FeatureKey =
   | 'api_access'
   | 'custom_branding'
   | 'webhooks'
-  | 'zapier'
 
 const FEATURE_MINIMUM_PLAN: Record<FeatureKey, PlanId> = {
   sentiment_analysis: 'pro',
@@ -22,7 +21,6 @@ const FEATURE_MINIMUM_PLAN: Record<FeatureKey, PlanId> = {
   api_access: 'max',
   custom_branding: 'scale',
   webhooks: 'scale',
-  zapier: 'max',
 }
 
 export function isPlanId(value: string | undefined | null): value is PlanId {
@@ -30,7 +28,7 @@ export function isPlanId(value: string | undefined | null): value is PlanId {
 }
 
 export function getPlanRank(planId: string | undefined | null): number {
-  const normalized = isPlanId(planId) ? planId : 'starter'
+  const normalized = isPlanId(planId) ? planId : 'free'
   return PLAN_ORDER.indexOf(normalized)
 }
 

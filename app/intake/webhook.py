@@ -77,7 +77,8 @@ def _process_complaint_for_client(
     customer_email: Optional[str],
     customer_phone: Optional[str],
     incoming_ticket_id: Optional[str] = None,
-) -> str:
+    return_complaint: bool = False,
+) -> str | Complaint:
     # Single unified AI classification call (Gemini - free tier)
     classification = classify_message(message)
     summary = summarize_if_needed(message, classification)
@@ -217,6 +218,8 @@ def _process_complaint_for_client(
         customer_phone=customer_phone,
     )
 
+    if return_complaint:
+        return complaint
     return action
 
 

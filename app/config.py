@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     smtp_user: str = Field(default="", alias="SMTP_USER")
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="", alias="SMTP_FROM")
+    inbound_email_domain: str = Field(default="inbound.synapflow.com", alias="INBOUND_EMAIL_DOMAIN")
+    inbound_email_webhook_secret: str = Field(default="", alias="INBOUND_EMAIL_WEBHOOK_SECRET")
 
     app_base_url: str = Field(default="http://127.0.0.1:8000", alias="APP_BASE_URL")
     sqlite_queue_path: str = Field(default="data/jobs.db", alias="SQLITE_QUEUE_PATH")
@@ -55,6 +57,17 @@ class Settings(BaseSettings):
     razorpay_key_id: str = Field(default="", alias="RAZORPAY_KEY_ID")
     razorpay_key_secret: str = Field(default="", alias="RAZORPAY_KEY_SECRET")
     razorpay_webhook_secret: str = Field(default="", alias="RAZORPAY_WEBHOOK_SECRET")
+    channel_crypto_key: str = Field(default="", alias="CHANNEL_CRYPTO_KEY")
+
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
+    google_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_OAUTH_REDIRECT_URI")
+    gmail_pubsub_topic: str = Field(default="", alias="GMAIL_PUBSUB_TOPIC")
+    gmail_watch_label_ids: str = Field(default="", alias="GMAIL_WATCH_LABEL_IDS")
+
+    whatsapp_app_secret: str = Field(default="", alias="WHATSAPP_APP_SECRET")
+    whatsapp_verify_token: str = Field(default="", alias="WHATSAPP_VERIFY_TOKEN")
+    whatsapp_default_api_version: str = Field(default="v22.0", alias="WHATSAPP_DEFAULT_API_VERSION")
 
     jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
     access_token_expire_minutes: int = Field(default=60, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
@@ -141,6 +154,8 @@ def _manual_settings_data() -> dict:
         "SMTP_USER": os.getenv("SMTP_USER", ""),
         "SMTP_PASSWORD": os.getenv("SMTP_PASSWORD", ""),
         "SMTP_FROM": os.getenv("SMTP_FROM", ""),
+        "INBOUND_EMAIL_DOMAIN": os.getenv("INBOUND_EMAIL_DOMAIN", "inbound.synapflow.com"),
+        "INBOUND_EMAIL_WEBHOOK_SECRET": os.getenv("INBOUND_EMAIL_WEBHOOK_SECRET", ""),
         "APP_BASE_URL": os.getenv("APP_BASE_URL", "http://127.0.0.1:8000"),
         "SQLITE_QUEUE_PATH": os.getenv("SQLITE_QUEUE_PATH", "data/jobs.db"),
         "REQUEST_LOG_RETENTION_DAYS": os.getenv("REQUEST_LOG_RETENTION_DAYS", "30"),
@@ -154,6 +169,15 @@ def _manual_settings_data() -> dict:
         "RAZORPAY_KEY_ID": os.getenv("RAZORPAY_KEY_ID", ""),
         "RAZORPAY_KEY_SECRET": os.getenv("RAZORPAY_KEY_SECRET", ""),
         "RAZORPAY_WEBHOOK_SECRET": os.getenv("RAZORPAY_WEBHOOK_SECRET", ""),
+        "CHANNEL_CRYPTO_KEY": os.getenv("CHANNEL_CRYPTO_KEY", ""),
+        "GOOGLE_CLIENT_ID": os.getenv("GOOGLE_CLIENT_ID", ""),
+        "GOOGLE_CLIENT_SECRET": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+        "GOOGLE_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_OAUTH_REDIRECT_URI", ""),
+        "GMAIL_PUBSUB_TOPIC": os.getenv("GMAIL_PUBSUB_TOPIC", ""),
+        "GMAIL_WATCH_LABEL_IDS": os.getenv("GMAIL_WATCH_LABEL_IDS", ""),
+        "WHATSAPP_APP_SECRET": os.getenv("WHATSAPP_APP_SECRET", ""),
+        "WHATSAPP_VERIFY_TOKEN": os.getenv("WHATSAPP_VERIFY_TOKEN", ""),
+        "WHATSAPP_DEFAULT_API_VERSION": os.getenv("WHATSAPP_DEFAULT_API_VERSION", "v22.0"),
         "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY", ""),
         "ACCESS_TOKEN_EXPIRE_MINUTES": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"),
         "REFRESH_TOKEN_EXPIRE_DAYS": os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"),

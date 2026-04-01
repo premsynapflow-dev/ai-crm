@@ -1,12 +1,15 @@
 import hashlib
 import hmac
+import logging
 from datetime import datetime, timezone
 
 from app.config import get_settings
-from app.db.models import EventLog, Invoice, Subscription
+from app.billing.plans import PLANS
+from app.db.models import Client, EventLog, Invoice, Subscription
 from app.db.session import SessionLocal
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def _get_razorpay_client():
@@ -63,15 +66,44 @@ def create_subscription(client_id, plan_id, billing_cycle="monthly"):
     return subscription
 
 
-def create_payment_link(client_id, amount):
+def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, description=None):
     client = _get_razorpay_client()
+    notes = {"client_id": str(client_id)}
+    if plan_id:
+        notes["plan_id"] = str(plan_id)
+    if billing_cycle:
+        notes["billing_cycle"] = str(billing_cycle)
+
     payload = {
         "amount": amount,
         "currency": "INR",
-        "description": f"SynapFlow usage payment for client {client_id}",
-        "notes": {"client_id": str(client_id)},
+        "description": description or f"SynapFlow plan payment for client {client_id}",
+        "notes": notes,
     }
     return client.payment_link.create(payload)
+
+
+def _extract_notes(payload: dict) -> dict:
+    payment_notes = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("notes") or {}
+    payment_link_notes = payload.get("payload", {}).get("payment_link", {}).get("entity", {}).get("notes") or {}
+    order_notes = payload.get("payload", {}).get("order", {}).get("entity", {}).get("notes") or {}
+    subscription_notes = payload.get("payload", {}).get("subscription", {}).get("entity", {}).get("notes") or {}
+    return {**payment_link_notes, **order_notes, **subscription_notes, **payment_notes}
+
+
+def _apply_plan_after_payment(db, client_id, plan_id):
+    if not client_id or plan_id not in PLANS:
+        return
+
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        return
+
+    plan = PLANS[plan_id]
+    client.plan_id = plan_id
+    client.plan = plan_id
+    client.monthly_ticket_limit = plan["tickets_per_month"]
+    client.trial_ends_at = None
 
 
 def verify_payment(payment_id, signature):
@@ -86,16 +118,23 @@ def verify_payment(payment_id, signature):
 def handle_webhook(payload):
     db = SessionLocal()
     try:
+        notes = _extract_notes(payload)
+        client_id = notes.get("client_id") or payload.get("client_id")
+        plan_id = notes.get("plan_id")
         event = EventLog(
-            client_id=payload.get("payload", {}).get("subscription", {}).get("entity", {}).get("notes", {}).get("client_id") or payload.get("client_id"),
+            client_id=client_id,
             event_type=f"razorpay:{payload.get('event', 'unknown')}",
             payload=payload,
         )
         db.add(event)
+
+        if payload.get("event") in {"payment_link.paid", "payment.captured", "subscription.activated", "subscription.charged"}:
+            _apply_plan_after_payment(db, client_id, plan_id)
+
         payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
         if payment.get("id"):
             invoice = Invoice(
-                client_id=payload.get("payload", {}).get("subscription", {}).get("entity", {}).get("notes", {}).get("client_id"),
+                client_id=client_id,
                 invoice_number=f"INV-{payment['id']}",
                 status="paid",
                 subtotal=payment.get("amount", 0),
@@ -110,6 +149,7 @@ def handle_webhook(payload):
         return {"status": "ok"}
     except Exception:
         db.rollback()
+        logger.exception("Failed to process Razorpay webhook")
         raise
     finally:
         db.close()

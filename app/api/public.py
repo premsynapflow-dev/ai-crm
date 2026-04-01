@@ -8,7 +8,7 @@ from app.billing.plans import PLANS
 from app.company_profile import RBI_REGULATED_SECTORS, is_rbi_regulated_sector
 from app.db.models import Client, ClientUser, DemoRequest, WaitlistEntry
 from app.db.session import SessionLocal
-from app.onboarding.flows import apply_trial_plan, enqueue_welcome_sequence
+from app.onboarding.flows import apply_signup_plan, enqueue_welcome_sequence
 from app.utils.security import generate_api_key, hash_password
 from app.utils.request_parser import parse_request
 from app.utils.sanitize import sanitize_phone
@@ -52,15 +52,15 @@ async def signup(request: Request):
 
         client = Client(
             name=payload.company_name,
-            plan="starter",
-            plan_id="starter",
+            plan="free",
+            plan_id="free",
             api_key=generate_api_key(32),
             contact_phone=phone_number,
             business_sector=payload.business_sector,
             is_rbi_regulated=is_rbi_regulated_sector(payload.business_sector),
             created_at=datetime.now(timezone.utc),
         )
-        apply_trial_plan(client)
+        apply_signup_plan(client)
         db.add(client)
         db.commit()
         db.refresh(client)

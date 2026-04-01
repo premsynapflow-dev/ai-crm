@@ -5,7 +5,7 @@ from typing import Any, Optional
 from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
 
-from app.db.models import AIReplyQueue, Client, Complaint, ReplyFeedback, ReplyTemplate
+from app.db.models import AIReplyQueue, AutomationSetting, Client, Complaint, ReplyFeedback, ReplyTemplate
 from app.replies.send_reply import send_complaint_reply
 from app.services.customer_history import get_customer_memory
 from app.services.reply_confidence_scorer import ReplyConfidenceScorer
@@ -77,7 +77,22 @@ class HardenedAutoReplyService:
         ticket.ai_reply = reply_text
         ticket.ai_reply_confidence = scoring_result["confidence_score"]
 
+        automation_setting = (
+            self.db.query(AutomationSetting)
+            .filter(
+                AutomationSetting.client_id == ticket.client_id,
+                AutomationSetting.channel == (ticket.source or "api"),
+            )
+            .first()
+        )
+        auto_reply_enabled = bool(automation_setting and automation_setting.auto_reply_enabled)
+        confidence_threshold = float(automation_setting.confidence_threshold) if automation_setting else 0.8
+
         recommendation = "human_review" if force_human_review else scoring_result["recommendation"]
+        if not auto_reply_enabled:
+            recommendation = "human_review"
+        elif scoring_result["confidence_score"] < confidence_threshold:
+            recommendation = "human_review"
         client = self.db.query(Client).filter(Client.id == ticket.client_id).first()
 
         if recommendation == "auto_approve":

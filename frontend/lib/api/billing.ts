@@ -18,7 +18,6 @@ export interface PlanFeatureFlags {
   multi_channel: string[]
   integrations_count: number
   webhooks: boolean
-  zapier: boolean
 }
 
 export interface Plan {

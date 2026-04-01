@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from app.config import get_settings
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
+from app.services.channel_router import send_reply_via_original_channel
 from app.services.event_logger import log_event
 from app.services.response_tracking import mark_first_response
 from app.utils.logging import get_logger
@@ -27,13 +28,25 @@ def send_complaint_reply(
         db.flush()
         return {"sent": False, "channels": channels_sent}
 
-    if complaint.customer_email:
+    native_send_result = send_reply_via_original_channel(
+        db=db,
+        complaint=complaint,
+        client=client,
+        reply_text=text_to_send,
+    )
+    if native_send_result["sent"]:
+        channels_sent.extend(native_send_result["channels"])
+        delivered_to_customer = True
+
+    legacy_fallback_allowed = complaint.source not in {"gmail", "whatsapp", "email"}
+
+    if complaint.customer_email and not delivered_to_customer and legacy_fallback_allowed:
         email_sent = send_email(
             to_email=complaint.customer_email,
             subject=f"Support Ticket {complaint.ticket_id}",
             body=text_to_send,
         )
-        if email_sent:
+        if email_sent and "email" not in channels_sent:
             channels_sent.append("email")
             delivered_to_customer = True
 
@@ -41,7 +54,7 @@ def send_complaint_reply(
     if client is not None:
         slack_webhook = client.slack_webhook_url
 
-    if complaint.source == "whatsapp" and complaint.customer_phone:
+    if complaint.source == "whatsapp" and complaint.customer_phone and not delivered_to_customer and legacy_fallback_allowed:
         slack_sent = send_slack_alert(
             (
                 "*WhatsApp AI Reply*\n"
@@ -53,7 +66,7 @@ def send_complaint_reply(
         )
         if slack_sent:
             channels_sent.append("slack")
-    elif not channels_sent and (slack_webhook or settings.slack_webhook_url):
+    elif not channels_sent and legacy_fallback_allowed and (slack_webhook or settings.slack_webhook_url):
         slack_sent = send_slack_alert(
             (
                 "*AI Reply Sent*\n"

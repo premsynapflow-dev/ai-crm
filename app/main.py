@@ -46,6 +46,9 @@ from app.config import get_settings
 from app.dashboard import router as dashboard_router
 from app.db.schema_guard import ensure_schema
 from app.db.session import SessionLocal
+from app.integrations.email import router as email_integration_router
+from app.integrations.gmail import router as gmail_integration_router
+from app.integrations.whatsapp import router as whatsapp_integration_router
 from app.intake.webhook import router as webhook_router
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.rls_context import RLSContextMiddleware
@@ -233,6 +236,9 @@ def on_startup() -> None:
 
 
 app.include_router(webhook_router)
+app.include_router(email_integration_router)
+app.include_router(gmail_integration_router)
+app.include_router(whatsapp_integration_router)
 app.include_router(dashboard_router)
 app.include_router(client_portal_router)
 app.include_router(billing_router)
@@ -267,7 +273,7 @@ if (frontend_dir / "_next").exists():
 if frontend_dir.exists():
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_frontend(full_path: str):
-        reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "metrics", "docs", "redoc", "openapi.json"}
+        reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "webhooks", "integrations", "metrics", "docs", "redoc", "openapi.json"}
         first_segment = full_path.split("/", 1)[0]
 
         if first_segment in reserved_prefixes:

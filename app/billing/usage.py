@@ -103,7 +103,7 @@ def calculate_overage(client_id, db=None):
     try:
         record, client = _get_or_create_usage(db, client_id)
         overage = max(record.tickets_processed - (client.monthly_ticket_limit if client else 0), 0)
-        plan = PLANS.get(client.plan_id if client else "starter", PLANS["starter"])
+        plan = PLANS.get(client.plan_id if client else "free", PLANS["free"])
         overage_price = plan.get("overage_rate", plan.get("overage_price", 0))
         return overage * overage_price
     finally:
@@ -180,10 +180,10 @@ def get_usage_summary(client_id):
             }
             for row in category_rows
         ]
-        plan = PLANS.get(client.plan_id if client else "starter", PLANS["starter"])
+        plan = PLANS.get(client.plan_id if client else "free", PLANS["free"])
         return {
             "client_id": str(client_id),
-            "plan_id": client.plan_id if client else "starter",
+            "plan_id": client.plan_id if client else "free",
             "monthly_limit": monthly_limit,
             "tickets_processed": record.tickets_processed,
             "overage": record.overage,

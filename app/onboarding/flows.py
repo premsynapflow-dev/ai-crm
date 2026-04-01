@@ -11,7 +11,7 @@ def enqueue_welcome_sequence(client, user_email):
         {
             "to_email": user_email,
             "subject": "Welcome to SynapFlow",
-            "body": "Welcome to SynapFlow. Start by connecting your channels and Slack workspace.",
+            "body": "Welcome to SynapFlow. Start by connecting your channels and setting up your workspace.",
         },
     )
     enqueue_job(
@@ -27,8 +27,8 @@ def enqueue_welcome_sequence(client, user_email):
         "send_email",
         {
             "to_email": user_email,
-            "subject": "Your trial is ending soon",
-            "body": "Your SynapFlow Starter trial is almost over. Upgrade any time from the billing section.",
+            "subject": "Ready to unlock more automation?",
+            "body": "Upgrade to Starter, Pro, Max, or Scale any time from the billing section when you need more volume and automation.",
         },
         scheduled_for=now + timedelta(days=6),
     )
@@ -36,17 +36,17 @@ def enqueue_welcome_sequence(client, user_email):
         "send_email",
         {
             "to_email": user_email,
-            "subject": "Your trial has ended",
-            "body": "Your trial has ended. Upgrade to Pro, Max, or Scale to keep processing tickets.",
+            "subject": "Need more capacity?",
+            "body": "If you are approaching your Free plan limits, upgrade to unlock more tickets, more seats, and advanced automation features.",
         },
         scheduled_for=now + timedelta(days=8),
     )
 
 
-def apply_trial_plan(client):
-    plan = PLANS["starter"]
-    client.plan_id = "starter"
-    client.plan = "starter"
+def apply_signup_plan(client):
+    plan = PLANS["free"]
+    client.plan_id = "free"
+    client.plan = "free"
     client.monthly_ticket_limit = plan["monthly_tickets"]
-    client.trial_ends_at = datetime.now(timezone.utc) + timedelta(days=plan["trial_days"])
+    client.trial_ends_at = None
     return client

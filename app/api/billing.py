@@ -38,32 +38,47 @@ def upgrade_plan(
         raise HTTPException(status_code=400, detail="Enterprise requires sales contact")
 
     plan = PLANS[payload.plan_id]
-    client.plan_id = payload.plan_id
-    client.plan = payload.plan_id
-    client.monthly_ticket_limit = plan["tickets_per_month"]
-    if payload.plan_id == "starter" and plan.get("trial_days"):
-        client.trial_ends_at = client.trial_ends_at or (
-            datetime.now(timezone.utc) + timedelta(days=plan["trial_days"])
-        )
-    else:
-        client.trial_ends_at = None
-    db.commit()
-    db.refresh(client)
-
     price = plan["annual_price"] if payload.billing_cycle == "annual" else plan["monthly_price"]
     payment_url = None
-    if price and settings.razorpay_key_id and settings.razorpay_key_secret:
+    plan_applied = False
+
+    if price:
+        if not settings.razorpay_key_id or not settings.razorpay_key_secret:
+            raise HTTPException(status_code=503, detail="Razorpay is not configured")
         try:
-            payment_link = create_payment_link(client.id, amount=int(price) * 100)
+            payment_link = create_payment_link(
+                client.id,
+                amount=int(price) * 100,
+                plan_id=payload.plan_id,
+                billing_cycle=payload.billing_cycle,
+                description=f"SynapFlow {plan['name']} ({payload.billing_cycle}) plan payment",
+            )
             payment_url = payment_link.get("short_url")
-        except Exception:
-            payment_url = None
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
+
+        if not payment_url:
+            raise HTTPException(status_code=502, detail="Razorpay payment link was not created")
+    else:
+        client.plan_id = payload.plan_id
+        client.plan = payload.plan_id
+        client.monthly_ticket_limit = plan["tickets_per_month"]
+        if payload.plan_id == "starter" and plan.get("trial_days"):
+            client.trial_ends_at = client.trial_ends_at or (
+                datetime.now(timezone.utc) + timedelta(days=plan["trial_days"])
+            )
+        else:
+            client.trial_ends_at = None
+        db.commit()
+        db.refresh(client)
+        plan_applied = True
 
     return {
         "ok": True,
-        "plan_id": client.plan_id,
-        "monthly_ticket_limit": client.monthly_ticket_limit,
+        "plan_id": payload.plan_id if payment_url else client.plan_id,
+        "monthly_ticket_limit": plan["tickets_per_month"] if payment_url else client.monthly_ticket_limit,
         "billing_cycle": payload.billing_cycle,
         "razorpay_plan_id": plan.get("razorpay_plan_ids", {}).get(payload.billing_cycle),
         "payment_url": payment_url,
+        "plan_applied": plan_applied,
     }

@@ -122,7 +122,7 @@ export function SettingsContent() {
     return <div className="flex h-96 items-center justify-center">Unable to load settings.</div>
   }
 
-  const isBusinessPlan = new Set(['max', 'scale', 'enterprise']).has(summary.profile.plan_id ?? user?.plan ?? 'starter')
+  const isBusinessPlan = new Set(['max', 'scale', 'enterprise']).has(summary.profile.plan_id ?? user?.plan ?? 'free')
   const isRbiEligible = isRbiEligibleCompany(summary.company.business_sector, summary.company.is_rbi_regulated)
   const initials = summary.profile.name
     .split(' ')

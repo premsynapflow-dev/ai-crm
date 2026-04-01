@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 
-from app.db.models import JobQueue, Complaint, Client
+from app.db.models import ChannelConnection, JobQueue, Complaint, Client
 from app.db.session import SessionLocal
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
@@ -12,6 +12,7 @@ from app.intelligence.prompt_builder import get_prompt_config_for_client
 from app.middleware.feature_gate import has_feature_access
 from app.services.assignment import assign_team
 from app.services.auto_reply_hardened import HardenedAutoReplyService
+from app.services.channel_router import process_outbound_retry
 from app.services.customer_profile import CustomerProfileService
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
@@ -94,8 +95,33 @@ def process_send_slack_job(payload: Dict):
 
 
 def process_sync_integration_job(payload: Dict):
-    # Placeholder for integration sync job
-    return
+    db = SessionLocal()
+    try:
+        connection = db.query(ChannelConnection).filter(ChannelConnection.id == payload.get("connection_id")).first()
+        if connection is None:
+            logger.warning("Integration sync skipped; connection %s not found", payload.get("connection_id"))
+            return
+        if connection.channel_type == "email":
+            from app.integrations.email import poll_imap_connection
+            from app.services.unified_ingestion import process_incoming_message
+
+            for message in poll_imap_connection(connection):
+                process_incoming_message(db, message)
+            db.commit()
+        elif connection.channel_type == "gmail":
+            from app.integrations.gmail import sync_gmail_history
+
+            sync_gmail_history(db, connection)
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def process_send_channel_message_job(payload: Dict):
+    process_outbound_retry(payload)
 
 
 async def process_complaint_ai_job(payload: Dict):
@@ -190,6 +216,7 @@ async def process_complaint_ai_job(payload: Dict):
 JOB_HANDLERS = {
     "send_email": process_send_email_job,
     "send_slack": process_send_slack_job,
+    "send_channel_message": process_send_channel_message_job,
     "sync_integration": process_sync_integration_job,
     "process_complaint_ai": lambda p: asyncio.run(process_complaint_ai_job(p)),
 }

@@ -58,12 +58,31 @@ const features = [
 
 const pricingPlans = [
   {
+    name: 'Free',
+    icon: Sparkles,
+    monthlyPrice: 0,
+    annualPrice: 0,
+    href: '/signup',
+    cta: 'Start for free',
+    featured: false,
+    seats: '1 seat',
+    volume: '50 tickets / month',
+    points: [
+      'AI complaint classification',
+      'Basic analytics dashboard',
+      'Email ingestion',
+      'Customer complaint history',
+      'Email support',
+      'Perfect for trying out SynapFlow',
+    ],
+  },
+  {
     name: 'Starter',
     icon: Zap,
     monthlyPrice: 1499,
     annualPrice: 14990,
     href: '/signup',
-    cta: 'Start free trial',
+    cta: 'Get started',
     featured: false,
     seats: '3 seats',
     volume: '500 tickets / month',
@@ -116,8 +135,8 @@ const pricingPlans = [
       'Root cause analysis',
       'Team performance dashboard',
       'Audit log and compliance export',
+      'RBI compliance (for eligible institutions)',
       'API access',
-      'Zapier integration',
       'Priority support',
     ],
   },
@@ -133,6 +152,7 @@ const pricingPlans = [
     volume: '100,000 tickets / month',
     points: [
       'Everything in Max',
+      'RBI compliance (for eligible institutions)',
       'Custom branding',
       'Webhook access',
       'Custom channel ingestion',
@@ -152,6 +172,7 @@ const pricingPlans = [
     volume: 'Unlimited volume',
     points: [
       'Everything in Scale',
+      'RBI compliance (for eligible institutions)',
       'White-glove onboarding',
       'Custom AI model training',
       'Contracted SLA guarantees',
@@ -164,6 +185,9 @@ const pricingPlans = [
 ]
 
 function formatLandingPrice(price: number | null) {
+  if (price === 0) {
+    return 'Free'
+  }
   if (price == null) {
     return 'Custom'
   }
@@ -200,7 +224,7 @@ export default function LandingPage() {
             </Link>
             <Link href="/signup">
               <Button className="bg-slate-900 text-white hover:bg-slate-800">
-                Start free trial
+                Start free
               </Button>
             </Link>
           </div>
@@ -223,7 +247,7 @@ export default function LandingPage() {
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <Link href="/signup">
                 <Button size="lg" className="w-full bg-slate-900 text-white hover:bg-slate-800 sm:w-auto">
-                  Start free trial
+                  Start free
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
@@ -240,7 +264,7 @@ export default function LandingPage() {
             <div className="mt-8 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:gap-6">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                14-day free trial
+                Free plan available
               </span>
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -383,7 +407,7 @@ export default function LandingPage() {
               Save 2 months
             </Badge>
           </div>
-          <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-6">
             {pricingPlans.map((plan) => {
               const Icon = plan.icon
               const displayedPrice = isAnnual ? plan.annualPrice : plan.monthlyPrice
@@ -458,13 +482,13 @@ export default function LandingPage() {
               Give your support and compliance teams a system they can actually trust.
             </h2>
             <p className="mt-4 text-lg text-slate-200">
-              Start a free trial for tenant teams or compare every plan before you roll SynapFlow out.
+              Start with the free plan or compare every option before you roll SynapFlow out.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link href="/signup">
               <Button size="lg" className="w-full bg-white text-slate-950 hover:bg-slate-100 sm:w-auto">
-                Start free trial
+                Start free
               </Button>
             </Link>
             <a href="#pricing">

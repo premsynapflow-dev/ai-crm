@@ -31,8 +31,8 @@ class Client(Base):
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     api_key = Column(String(255), nullable=False, unique=True, index=True)
-    plan = Column(String(50), nullable=False, default="starter")
-    plan_id = Column(String(50), nullable=False, default="starter")
+    plan = Column(String(50), nullable=False, default="free")
+    plan_id = Column(String(50), nullable=False, default="free")
     monthly_ticket_limit = Column(Integer, nullable=False, default=50)
     contact_phone = Column(String(50), nullable=True)
     business_sector = Column(String(50), nullable=False, default="not_rbi_regulated")
@@ -687,4 +687,94 @@ class DemoRequest(Base):
     name = Column(String(255), nullable=True)
     company = Column(String(255), nullable=True)
     details = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ChannelConnection(Base):
+    __tablename__ = "channel_connections"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    channel_type = Column(String(50), nullable=False, index=True)
+    account_identifier = Column(String(255), nullable=True)
+    access_token = Column(Text, nullable=True)
+    refresh_token = Column(Text, nullable=True)
+    token_expiry = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column("metadata", JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class UnifiedMessage(Base):
+    __tablename__ = "unified_messages"
+    __table_args__ = (
+        UniqueConstraint("channel", "external_message_id", name="uq_unified_messages_channel_external_message"),
+        Index("idx_unified_messages_client_channel", "client_id", "channel"),
+        Index("idx_unified_messages_external_message_id", "external_message_id"),
+        Index("idx_unified_messages_status", "status"),
+        Index("idx_unified_messages_next_retry_at", "next_retry_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    channel = Column(String(50), nullable=False)
+    external_message_id = Column(String(255), nullable=False)
+    external_thread_id = Column(String(255), nullable=True)
+    sender_id = Column(String(255), nullable=True)
+    sender_name = Column(String(255), nullable=True)
+    message_text = Column(Text, nullable=True)
+    attachments = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    direction = Column(String(20), nullable=False)
+    status = Column(String(50), nullable=False)
+    raw_payload = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    retry_count = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (
+        Index("idx_conversations_client_external_thread", "client_id", "external_thread_id"),
+        Index("idx_conversations_last_message_at", "last_message_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    channel = Column(String(50), nullable=False)
+    external_thread_id = Column(String(255), nullable=False)
+    customer_id = Column(String(255), nullable=True)
+    last_message_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(50), nullable=False, default="open")
+    assigned_to = Column(Uuid(as_uuid=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AutomationSetting(Base):
+    __tablename__ = "automation_settings"
+    __table_args__ = (
+        UniqueConstraint("client_id", "channel", name="uq_automation_settings_client_channel"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    channel = Column(String(50), nullable=False)
+    auto_reply_enabled = Column(Boolean, nullable=False, default=False)
+    confidence_threshold = Column(Float, nullable=False, default=0.8)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MessageEvent(Base):
+    __tablename__ = "message_events"
+    __table_args__ = (
+        Index("idx_message_events_message_id", "message_id"),
+        Index("idx_message_events_event_type", "event_type"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_id = Column(Uuid(as_uuid=True), nullable=True, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    payload = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

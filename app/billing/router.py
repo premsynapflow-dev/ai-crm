@@ -76,32 +76,49 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
         plan = PLANS[payload.plan_id]
         if payload.plan_id == "enterprise":
             raise HTTPException(status_code=400, detail="Enterprise requires sales contact")
-        db_client.plan_id = payload.plan_id
-        db_client.plan = payload.plan_id
-        db_client.monthly_ticket_limit = plan["tickets_per_month"]
-        subscription = (
-            db.query(Subscription)
-            .filter(Subscription.client_id == client.id)
-            .order_by(Subscription.created_at.desc())
-            .first()
-        )
-        if subscription:
-            subscription.plan = payload.plan_id
-            subscription.status = "active"
-        db.commit()
-        payment_url = None
         price = plan["annual_price"] if payload.billing_cycle == "annual" else plan["monthly_price"]
+        payment_url = None
+        plan_applied = False
+
         if price:
+            if not settings.razorpay_key_id or not settings.razorpay_key_secret:
+                raise HTTPException(status_code=503, detail="Razorpay is not configured")
             try:
-                payment_link = create_payment_link(client.id, int(price) * 100)
+                payment_link = create_payment_link(
+                    client.id,
+                    int(price) * 100,
+                    plan_id=payload.plan_id,
+                    billing_cycle=payload.billing_cycle,
+                    description=f"SynapFlow {plan['name']} ({payload.billing_cycle}) plan payment",
+                )
                 payment_url = payment_link.get("short_url")
-            except Exception:
-                payment_url = None
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
+
+            if not payment_url:
+                raise HTTPException(status_code=502, detail="Razorpay payment link was not created")
+        else:
+            db_client.plan_id = payload.plan_id
+            db_client.plan = payload.plan_id
+            db_client.monthly_ticket_limit = plan["tickets_per_month"]
+            subscription = (
+                db.query(Subscription)
+                .filter(Subscription.client_id == client.id)
+                .order_by(Subscription.created_at.desc())
+                .first()
+            )
+            if subscription:
+                subscription.plan = payload.plan_id
+                subscription.status = "active"
+            db.commit()
+            plan_applied = True
+
         return {
-            "status": "upgraded",
+            "status": "payment_pending" if payment_url else "upgraded",
             "plan_id": payload.plan_id,
             "billing_cycle": payload.billing_cycle,
             "payment_url": payment_url,
+            "plan_applied": plan_applied,
         }
     except Exception:
         db.rollback()

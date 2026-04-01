@@ -8,6 +8,7 @@ from app.db.session import SessionLocal
 from app.analytics.customer_pulse import detect_complaint_spikes
 from app.queue.simple_queue import process_jobs
 from app.replies.send_reply import send_complaint_reply
+from app.services.retry_service import process_retry_queue
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
 from app.services.ticket_state_machine import TicketStateMachine
@@ -218,6 +219,9 @@ def worker_loop(interval_seconds=30):
             processed = process_jobs()
             if processed:
                 logger.info("Processed %s queued jobs", processed)
+            retried = process_retry_queue()
+            if retried:
+                logger.info("Retried %s failed channel messages", retried)
             follow_up_actions = process_follow_up_automation()
             if follow_up_actions:
                 logger.info("Processed %s follow-up automation actions", follow_up_actions)

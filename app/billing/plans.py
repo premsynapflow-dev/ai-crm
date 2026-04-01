@@ -1,4 +1,4 @@
-PLAN_ORDER = ["starter", "pro", "max", "scale", "enterprise"]
+PLAN_ORDER = ["free", "starter", "pro", "max", "scale", "enterprise"]
 
 
 def _with_compat_aliases(plan_id: str, data: dict) -> dict:
@@ -15,6 +15,54 @@ def _with_compat_aliases(plan_id: str, data: dict) -> dict:
 
 
 PLANS = {
+    "free": _with_compat_aliases(
+        "free",
+        {
+            "name": "Free",
+            "monthly_price": 0,
+            "annual_price": 0,
+            "annual_savings": 0,
+            "tickets_per_month": 50,
+            "team_seats": 1,
+            "overage_rate": 0,
+            "trial_days": None,
+            "trial_requires_card": False,
+            "features": [
+                "AI Complaint Classification",
+                "Basic Analytics Dashboard",
+                "Email Ingestion",
+                "Customer Complaint History (Basic)",
+                "Email Support",
+                "50 Tickets / Month",
+                "1 Team Seat",
+            ],
+            "feature_flags": {
+                "ai_classification": True,
+                "ai_auto_reply": False,
+                "sentiment_analysis": False,
+                "pattern_detection": False,
+                "churn_risk_scoring": False,
+                "analytics_level": "basic",
+                "sla_tracking": False,
+                "api_access": False,
+                "custom_branding": False,
+                "root_cause_analysis": False,
+                "team_performance": False,
+                "audit_log": False,
+                "ai_suggested_responses": False,
+                "ticketing_state_machine": True,
+                "sla_management": False,
+                "customer_360": False,
+                "auto_reply_approval_queue": True,
+                "rbi_compliance": False,
+                "auto_escalation": False,
+                "multi_channel": ["email"],
+                "integrations_count": 0,
+                "webhooks": False,
+                "zapier": False,
+            },
+        },
+    ),
     "starter": _with_compat_aliases(
         "starter",
         {
@@ -84,6 +132,7 @@ PLANS = {
                 "Advanced Analytics",
                 "Resolution Time Reports",
                 "Full Customer History + Sentiment Timeline",
+                "RBI Compliance (Eligible Institutions)",
                 "5 Integrations",
             ],
             "feature_flags": {
@@ -132,9 +181,9 @@ PLANS = {
                 "Root Cause Analysis Reports (Weekly + Monthly)",
                 "Team Performance Dashboard",
                 "Audit Log + Compliance Export",
+                "RBI Compliance (Eligible Institutions)",
                 "API Access",
                 "Instagram + Google Reviews Ingestion",
-                "Zapier Integration",
                 "Unlimited Integrations",
                 "Priority Support",
             ],
@@ -161,7 +210,7 @@ PLANS = {
                 "multi_channel": ["email", "whatsapp", "instagram", "google_reviews"],
                 "integrations_count": 999,
                 "webhooks": False,
-                "zapier": True,
+                "zapier": False,
             },
         },
     ),
@@ -179,6 +228,7 @@ PLANS = {
             "trial_requires_card": True,
             "features": [
                 "Everything in Max",
+                "RBI Compliance (Eligible Institutions)",
                 "Custom Branding",
                 "Webhook Access",
                 "Custom Channel Ingestion",
@@ -209,7 +259,7 @@ PLANS = {
                 "multi_channel": ["email", "whatsapp", "instagram", "google_reviews", "custom"],
                 "integrations_count": 999,
                 "webhooks": True,
-                "zapier": True,
+                "zapier": False,
             },
         },
     ),
@@ -227,6 +277,7 @@ PLANS = {
             "trial_requires_card": False,
             "features": [
                 "Everything in Scale",
+                "RBI Compliance (Eligible Institutions)",
                 "White-glove Onboarding",
                 "Custom AI Model Training",
                 "SLA Guarantees in Contract",
@@ -258,7 +309,7 @@ PLANS = {
                 "multi_channel": ["all"],
                 "integrations_count": 999,
                 "webhooks": True,
-                "zapier": True,
+                "zapier": False,
             },
         },
     ),

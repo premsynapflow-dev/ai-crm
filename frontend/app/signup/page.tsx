@@ -47,7 +47,7 @@ export default function SignupPage() {
         throw new Error(payload.detail || 'Failed to create account')
       }
 
-      toast.success('Trial workspace created', {
+      toast.success('Free workspace created', {
         description: 'You can now sign in with your new SynapFlow account.',
       })
       router.push('/login')
@@ -68,7 +68,7 @@ export default function SignupPage() {
             <Logo />
           </Link>
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">Start your trial</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">Start for free</p>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
               Launch a SynapFlow workspace in minutes.
             </h1>
@@ -78,9 +78,9 @@ export default function SignupPage() {
           </div>
           <div className="grid gap-4">
             {[
-              'Provisioned with a Starter trial plan',
+              'Provisioned with the Free plan',
               'No credit card required to begin',
-              'Fast upgrade path to Growth or Enterprise',
+              'Fast upgrade path to Starter, Pro, Max, Scale, or Enterprise',
             ].map((item) => (
               <div key={item} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
@@ -191,7 +191,7 @@ export default function SignupPage() {
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-900" />
                   <p>
-                    By signing up, you&apos;ll create a tenant workspace on the Starter plan. If you select an RBI-regulated financial company category, the RBI compliance workspace will be available after signup.
+                    By signing up, you'll create a tenant workspace on the Free plan. If you select an RBI-regulated financial company category, the RBI compliance workspace will be available after signup.
                   </p>
                 </div>
               </div>

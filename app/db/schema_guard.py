@@ -39,6 +39,11 @@ REQUIRED_TABLES = [
     "rbi_mis_reports",
     "plan_features",
     "tenant_usage_tracking",
+    "channel_connections",
+    "unified_messages",
+    "conversations",
+    "automation_settings",
+    "message_events",
 ]
 
 
