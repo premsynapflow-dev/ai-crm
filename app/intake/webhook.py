@@ -14,6 +14,7 @@ from app.intelligence.classifier import classify_message, summarize_if_needed
 from app.queue.simple_queue import queue_job
 from app.middleware.feature_gate import has_feature_access
 from app.services.action_executor import execute_action
+from app.services.audit_logs import append_audit_log
 from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.assignment import assign_team
 from app.services.customer_profile import CustomerProfileService
@@ -140,6 +141,22 @@ def _process_complaint_for_client(
     )
     db.add(complaint)
     db.flush()
+    append_audit_log(
+        db,
+        entity_type="ticket",
+        entity_id=complaint.id,
+        action="ticket_created",
+        performed_by=client.name,
+        old_value=None,
+        new_value={
+            "ticket_id": complaint.ticket_id,
+            "status": complaint.status,
+            "resolution_status": complaint.resolution_status,
+            "source": complaint.source,
+            "rbi_category_code": complaint.rbi_category_code,
+            "tat_status": complaint.tat_status,
+        },
+    )
     CustomerProfileService(db).sync_customer_for_complaint(
         complaint,
         interaction_type="ticket",

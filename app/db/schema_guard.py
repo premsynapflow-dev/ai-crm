@@ -33,10 +33,13 @@ REQUIRED_TABLES = [
     "reply_feedback",
     "reply_ab_tests",
     "reply_quality_metrics",
+    "rbi_categories",
     "rbi_complaint_categories",
     "rbi_complaints",
     "rbi_escalation_log",
     "rbi_mis_reports",
+    "escalations",
+    "audit_logs",
     "plan_features",
     "tenant_usage_tracking",
     "channel_connections",
@@ -206,6 +209,10 @@ def _ensure_required_columns():
                 "escalation_level",
                 "escalated_at",
                 "escalated_to",
+                "rbi_category_code",
+                "tat_due_at",
+                "tat_status",
+                "tat_breached_at",
                 "response_time_seconds",
                 "first_response_at",
                 "resolved_at",
@@ -307,31 +314,49 @@ def _seed_rbi_categories():
             count = db.execute(text("SELECT COUNT(*) FROM rbi_complaint_categories")).scalar() or 0
             if count >= 12:
                 logger.info("Schema guard: RBI categories already seeded (%s records)", count)
-                return
+            else:
+                logger.info("Schema guard: Seeding RBI complaint categories...")
+                db.execute(
+                    text(
+                        """
+                        INSERT INTO rbi_complaint_categories (category_code, category_name, subcategory_code, subcategory_name, tat_days) VALUES
+                        ('ATM', 'ATM / Debit Card', 'ATM_FAIL', 'Failed Transaction', 30),
+                        ('ATM', 'ATM / Debit Card', 'ATM_CASH', 'Cash Not Dispensed', 30),
+                        ('CC', 'Credit Card', 'CC_UNAUTHORIZED', 'Unauthorized Transaction', 30),
+                        ('CC', 'Credit Card', 'CC_BILLING', 'Billing Dispute', 30),
+                        ('LOAN', 'Loans', 'LOAN_DISBURSEMENT', 'Delayed Disbursement', 30),
+                        ('LOAN', 'Loans', 'LOAN_INTEREST', 'Interest Rate Issue', 30),
+                        ('DEP', 'Deposits', 'DEP_INTEREST', 'Interest Not Credited', 30),
+                        ('NB', 'Net Banking', 'NB_ACCESS', 'Login Issue', 30),
+                        ('NB', 'Net Banking', 'NB_TXN', 'Transaction Failure', 30),
+                        ('MOBILE', 'Mobile Banking', 'MOBILE_APP', 'App Not Working', 30),
+                        ('BRANCH', 'Branch Banking', 'BRANCH_SERVICE', 'Poor Service', 30),
+                        ('OTHER', 'Others', 'OTHER', 'Other Complaints', 30)
+                        ON CONFLICT DO NOTHING
+                        """
+                    )
+                )
+                logger.info("Schema guard: RBI categories seeded successfully")
 
-            logger.info("Schema guard: Seeding RBI complaint categories...")
             db.execute(
                 text(
                     """
-                    INSERT INTO rbi_complaint_categories (category_code, category_name, subcategory_code, subcategory_name, tat_days) VALUES
-                    ('ATM', 'ATM / Debit Card', 'ATM_FAIL', 'Failed Transaction', 30),
-                    ('ATM', 'ATM / Debit Card', 'ATM_CASH', 'Cash Not Dispensed', 30),
-                    ('CC', 'Credit Card', 'CC_UNAUTHORIZED', 'Unauthorized Transaction', 30),
-                    ('CC', 'Credit Card', 'CC_BILLING', 'Billing Dispute', 30),
-                    ('LOAN', 'Loans', 'LOAN_DISBURSEMENT', 'Delayed Disbursement', 30),
-                    ('LOAN', 'Loans', 'LOAN_INTEREST', 'Interest Rate Issue', 30),
-                    ('DEP', 'Deposits', 'DEP_INTEREST', 'Interest Not Credited', 30),
-                    ('NB', 'Net Banking', 'NB_ACCESS', 'Login Issue', 30),
-                    ('NB', 'Net Banking', 'NB_TXN', 'Transaction Failure', 30),
-                    ('MOBILE', 'Mobile Banking', 'MOBILE_APP', 'App Not Working', 30),
-                    ('BRANCH', 'Branch Banking', 'BRANCH_SERVICE', 'Poor Service', 30),
-                    ('OTHER', 'Others', 'OTHER', 'Other Complaints', 30)
+                    INSERT INTO rbi_categories (category_code, category_name, subcategory_code, subcategory_name, tat_days, description, is_active)
+                    SELECT
+                        category_code,
+                        category_name,
+                        subcategory_code,
+                        subcategory_name,
+                        tat_days,
+                        description,
+                        is_active
+                    FROM rbi_complaint_categories
                     ON CONFLICT DO NOTHING
                     """
                 )
             )
             db.commit()
-            logger.info("Schema guard: RBI categories seeded successfully")
+            logger.info("Schema guard: RBI category compatibility seed verified")
         except Exception as exc:
             db.rollback()
             logger.warning("Schema guard: RBI category seed skipped: %s", exc)
@@ -399,6 +424,8 @@ def _create_indexes():
         "CREATE INDEX IF NOT EXISTS idx_customers_churn ON customers(client_id, churn_risk_score DESC) WHERE is_master = true",
         "CREATE INDEX IF NOT EXISTS idx_reply_queue_pending ON ai_reply_queue(client_id, created_at DESC) WHERE status = 'pending'",
         "CREATE INDEX IF NOT EXISTS idx_rbi_tat ON rbi_complaints(tat_due_date) WHERE resolution_date IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_complaints_rbi_tat_due ON complaints(tat_due_at) WHERE tat_due_at IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_complaints_rbi_category ON complaints(client_id, rbi_category_code) WHERE rbi_category_code IS NOT NULL",
     ]
 
     for index_sql in indexes:

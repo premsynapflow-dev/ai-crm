@@ -52,6 +52,8 @@ class Client(Base):
     invoices = relationship("Invoice", back_populates="client", cascade="all, delete-orphan")
     usage_records = relationship("UsageRecord", back_populates="client", cascade="all, delete-orphan")
     automation_rules = relationship("AutomationRule", back_populates="client", cascade="all, delete-orphan")
+    rbi_tat_rules = relationship("RBITATRule", back_populates="client", cascade="all, delete-orphan")
+    escalation_level_definitions = relationship("EscalationLevelDefinition", back_populates="client", cascade="all, delete-orphan")
 
 
 class Complaint(Base):
@@ -92,6 +94,10 @@ class Complaint(Base):
     escalation_level = Column(Integer, nullable=False, default=0)
     escalated_at = Column(DateTime(timezone=True), nullable=True)
     escalated_to = Column(String(255), nullable=True)
+    rbi_category_code = Column(String(20), nullable=True, index=True)
+    tat_due_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    tat_status = Column(String(30), nullable=False, default="not_applicable")
+    tat_breached_at = Column(DateTime(timezone=True), nullable=True)
     response_time_seconds = Column(Integer, nullable=True)
     first_response_at = Column(DateTime(timezone=True), nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
@@ -107,6 +113,7 @@ class Complaint(Base):
     customer = relationship("Customer", back_populates="complaints")
     reply_queue = relationship("AIReplyQueue", back_populates="complaint", uselist=False)
     rbi_complaint = relationship("RBIComplaint", back_populates="complaint", uselist=False)
+    escalations = relationship("Escalation", back_populates="ticket", cascade="all, delete-orphan")
 
 
 class Customer(Base):
@@ -253,11 +260,53 @@ class EscalationRule(Base):
     escalate_to_team = Column(String(100), nullable=True)
     escalate_to_email = Column(String(255), nullable=True)
     notification_template = Column(Text, nullable=True)
+    category_code = Column(String(20), nullable=True, index=True)
+    escalation_level_id = Column(Uuid(as_uuid=True), ForeignKey("escalation_level_definitions.id"), nullable=True)
+    trigger_after_hours = Column(Integer, nullable=True)
     enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class TicketStateTransition(Base):
+class EscalationLevelDefinition(Base):
+    __tablename__ = "escalation_level_definitions"
+    __table_args__ = (
+        UniqueConstraint("client_id", "level_code", name="unique_client_level_code"),
+        Index("idx_escalation_levels_client", "client_id"),
+        Index("idx_escalation_levels_client_number", "client_id", "level_number"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    level_code = Column(String(20), nullable=False)  # L1, L2, IO
+    level_number = Column(Integer, nullable=False)   # 1, 2, 3
+    trigger_after_hours = Column(Integer, nullable=False)  # hours to escalate
+    escalate_to_role = Column(String(255), nullable=False)  # email or role
+    description = Column(String(500), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    client = relationship("Client", back_populates="escalation_level_definitions")
+
+
+class Escalation(Base):
+    __tablename__ = "escalations"
+    __table_args__ = (
+        Index("idx_escalations_ticket_created", "ticket_id", "created_at"),
+        Index("idx_escalations_next_escalation", "next_escalation_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=False, index=True)
+    level = Column(Integer, nullable=False, default=1)
+    escalated_to = Column(String(255), nullable=False)
+    reason = Column(Text, nullable=True)
+    escalation_level_id = Column(Uuid(as_uuid=True), ForeignKey("escalation_level_definitions.id"), nullable=True)
+    metadata_json = Column(JSON, nullable=False, default=dict)
+    next_escalation_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    ticket = relationship("Complaint", back_populates="escalations")
     __tablename__ = "ticket_state_transitions"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -419,6 +468,23 @@ class RBIComplaintCategory(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class RBICategory(Base):
+    __tablename__ = "rbi_categories"
+    __table_args__ = (
+        UniqueConstraint("category_code", "subcategory_code", name="unique_rbi_categories_category_subcategory"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_code = Column(String(20), nullable=False, index=True)
+    category_name = Column(String(100), nullable=False)
+    subcategory_code = Column(String(20), nullable=False, index=True)
+    subcategory_name = Column(String(100), nullable=True)
+    tat_days = Column(Integer, nullable=False, default=30)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class RBIComplaint(Base):
     __tablename__ = "rbi_complaints"
     __table_args__ = (
@@ -489,6 +555,58 @@ class RBIMISReport(Base):
     satisfaction_rate = Column(Float, nullable=True)
     generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     report_data = Column(JSON, nullable=False, default=dict)
+
+
+class RBITATRule(Base):
+    __tablename__ = "rbi_tat_rules"
+    __table_args__ = (
+        UniqueConstraint("client_id", "category_code", name="unique_client_tat_rule"),
+        Index("idx_tat_rules_client", "client_id"),
+        Index("idx_tat_rules_category", "category_code"),
+        Index("idx_tat_rules_lookup", "client_id", "category_code", "is_active"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    category_code = Column(String(20), nullable=False)
+    tat_days = Column(Integer, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    client = relationship("Client", back_populates="rbi_tat_rules")
+
+
+class Escalation(Base):
+    __tablename__ = "escalations"
+    __table_args__ = (
+        Index("idx_escalations_ticket_created", "ticket_id", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=False, index=True)
+    level = Column(Integer, nullable=False, default=1)
+    escalated_to = Column(String(255), nullable=False)
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    ticket = relationship("Complaint", back_populates="escalations")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("idx_audit_logs_entity", "entity_type", "entity_id", "timestamp"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type = Column(String(50), nullable=False, index=True)
+    entity_id = Column(Uuid(as_uuid=True), nullable=False, index=True)
+    action = Column(String(100), nullable=False, index=True)
+    performed_by = Column(String(255), nullable=True)
+    old_value = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=True)
+    new_value = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
 
 class PlanFeature(Base):
@@ -739,6 +857,7 @@ class Conversation(Base):
     __table_args__ = (
         Index("idx_conversations_client_external_thread", "client_id", "external_thread_id"),
         Index("idx_conversations_last_message_at", "last_message_at"),
+        Index("idx_conversations_escalation_level", "client_id", "escalation_level"),
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -749,6 +868,9 @@ class Conversation(Base):
     last_message_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), nullable=False, default="open")
     assigned_to = Column(Uuid(as_uuid=True), nullable=True)
+    escalation_level = Column(Integer, nullable=False, default=0)
+    last_escalated_at = Column(DateTime(timezone=True), nullable=True)
+    escalation_metadata_json = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

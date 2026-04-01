@@ -12,6 +12,7 @@ from app.services.retry_service import process_retry_queue
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
 from app.services.ticket_state_machine import TicketStateMachine
+from app.services.escalation_engine import EscalationEngine
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +23,7 @@ _last_spike_check_at = None
 _last_sla_check_at = None
 _last_rbi_check_at = None
 _last_rbi_report_check_at = None
+_last_escalation_check_at = None
 FOLLOW_UP_TEXT = "Just checking if your issue has been resolved."
 
 
@@ -152,22 +154,10 @@ def process_rbi_tat_monitor():
     db = SessionLocal()
     try:
         service = RBIComplianceService(db)
-        complaints = (
-            db.query(RBIComplaint)
-            .filter(RBIComplaint.resolution_date.is_(None))
-            .order_by(RBIComplaint.tat_due_date.asc())
-            .limit(500)
-            .all()
-        )
-        updated = 0
-        for complaint in complaints:
-            old_status = complaint.tat_status
-            new_status = service.check_tat_compliance(complaint)
-            if new_status != old_status:
-                updated += 1
+        updated, escalated = service.process_tat_monitor(limit=500)
         db.commit()
         _last_rbi_check_at = now
-        return updated
+        return updated + escalated
     except Exception:
         db.rollback()
         raise
@@ -212,6 +202,40 @@ def process_rbi_monthly_reports():
         db.close()
 
 
+def process_escalations_monitor():
+    global _last_escalation_check_at
+    now = datetime.now(timezone.utc)
+    # Check escalations every 5 minutes
+    if _last_escalation_check_at and (now - _last_escalation_check_at).total_seconds() < 300:
+        return 0
+
+    db = SessionLocal()
+    try:
+        rbi_clients = db.query(Client).filter(Client.is_rbi_regulated == True).all()
+        total_escalated = 0
+
+        for client in rbi_clients:
+            try:
+                engine = EscalationEngine(db)
+                stats = engine.process_pending_escalations(client.id)
+                if stats["escalated"] > 0:
+                    logger.info(
+                        f"Escalations for {client.name}: checked={stats['checked']}, "
+                        f"escalated={stats['escalated']}, errors={stats['errors']}"
+                    )
+                    total_escalated += stats["escalated"]
+            except Exception as e:
+                logger.error(f"Error processing escalations for client {client.id}: {e}", exc_info=True)
+
+        _last_escalation_check_at = now
+        return total_escalated
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def worker_loop(interval_seconds=30):
     logger.info("Simple queue worker started")
     while not _stop_event.is_set():
@@ -234,6 +258,9 @@ def worker_loop(interval_seconds=30):
             mis_reports = process_rbi_monthly_reports()
             if mis_reports:
                 logger.info("Generated %s RBI MIS reports", mis_reports)
+            escalations = process_escalations_monitor()
+            if escalations:
+                logger.info("Processed %s escalations", escalations)
             spikes = process_spike_detection()
             if spikes:
                 logger.info("Detected %s complaint spikes", spikes)

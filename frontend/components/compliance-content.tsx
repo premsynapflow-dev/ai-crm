@@ -147,12 +147,12 @@ export function ComplianceContent() {
     }
     setIsEscalating(true)
     try {
-      await complianceAPI.escalateToRBI(selectedComplaintId)
+      await complianceAPI.escalateInternally(selectedComplaintId)
       const refreshed = await complianceAPI.getComplaint(selectedComplaintId)
       setSelectedComplaint(refreshed)
-      toast.success('Complaint escalated to RBI workflow')
+      toast.success('Complaint escalated to Internal Ombudsman')
     } catch {
-      toast.error('Failed to escalate complaint to RBI')
+      toast.error('Failed to escalate complaint internally')
     } finally {
       setIsEscalating(false)
     }
@@ -181,7 +181,7 @@ export function ComplianceContent() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-5">
             <Card>
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">MIS month</p>
@@ -198,14 +198,20 @@ export function ComplianceContent() {
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Within TAT</p>
+                <p className="text-sm text-muted-foreground">Resolved within TAT</p>
                 <p className="mt-2 text-2xl font-semibold">{report?.resolved_within_tat ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Escalated to ombudsman</p>
-                <p className="mt-2 text-2xl font-semibold">{report?.escalated_to_ombudsman ?? 0}</p>
+                <p className="text-sm text-muted-foreground">Breached complaints</p>
+                <p className="mt-2 text-2xl font-semibold">{report?.breached_complaints ?? report?.tat_breach_count ?? 0}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">Internal escalations</p>
+                <p className="mt-2 text-2xl font-semibold">{report?.escalations_count ?? report?.escalated_to_ombudsman ?? 0}</p>
               </CardContent>
             </Card>
           </div>
@@ -297,11 +303,23 @@ export function ComplianceContent() {
                       </div>
                       <div className="rounded-xl bg-slate-50 p-4">
                         <p className="text-sm text-muted-foreground">Category</p>
-                        <p className="mt-2 font-semibold">{selectedComplaint.category_code} / {selectedComplaint.subcategory_code}</p>
+                        <p className="mt-2 font-semibold">
+                          {selectedComplaint.category_name || selectedComplaint.category_code}
+                          {' / '}
+                          {selectedComplaint.subcategory_name || selectedComplaint.subcategory_code}
+                        </p>
                       </div>
                       <div className="rounded-xl bg-slate-50 p-4">
                         <p className="text-sm text-muted-foreground">TAT due</p>
-                        <p className="mt-2 font-semibold">{formatDate(selectedComplaint.tat_due_date)}</p>
+                        <p className="mt-2 font-semibold">{formatDate(selectedComplaint.tat_due_at ?? selectedComplaint.tat_due_date)}</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">Breach state</p>
+                        <p className="mt-2 font-semibold">{selectedComplaint.breached ? 'Breached' : 'Within TAT'}</p>
+                      </div>
+                      <div className="rounded-xl bg-slate-50 p-4">
+                        <p className="text-sm text-muted-foreground">Breached at</p>
+                        <p className="mt-2 font-semibold">{formatDate(selectedComplaint.tat_breached_at)}</p>
                       </div>
                     </div>
 
@@ -310,11 +328,11 @@ export function ComplianceContent() {
                         <div>
                           <p className="font-medium text-slate-900">Escalation state</p>
                           <p className="text-sm text-muted-foreground">
-                            Level {selectedComplaint.escalation_level ?? 0} · {selectedComplaint.escalated_to_rbi ? 'Already escalated to RBI' : 'Not escalated yet'}
+                            Level {selectedComplaint.escalation_level ?? 0} · {selectedComplaint.escalation_status ?? 'Not escalated'}
                           </p>
                         </div>
-                        <Button onClick={() => void handleEscalate()} disabled={isEscalating || selectedComplaint.escalated_to_rbi}>
-                          {selectedComplaint.escalated_to_rbi ? (
+                        <Button onClick={() => void handleEscalate()} disabled={isEscalating || selectedComplaint.escalation_history.length > 0}>
+                          {selectedComplaint.escalation_history.length > 0 ? (
                             <>
                               <ShieldCheck className="mr-2 h-4 w-4" />
                               Escalated
@@ -322,10 +340,23 @@ export function ComplianceContent() {
                           ) : (
                             <>
                               <AlertTriangle className="mr-2 h-4 w-4" />
-                              {isEscalating ? 'Escalating...' : 'Escalate to RBI'}
+                              {isEscalating ? 'Escalating...' : 'Escalate internally'}
                             </>
                           )}
                         </Button>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {selectedComplaint.escalation_history.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No internal escalation has been triggered yet.</p>
+                        ) : (
+                          selectedComplaint.escalation_history.map((entry) => (
+                            <div key={entry.id} className="rounded-xl bg-slate-50 p-3 text-sm">
+                              <p className="font-medium text-slate-900">Level {entry.level} → {entry.escalated_to}</p>
+                              <p className="mt-1 text-muted-foreground">{entry.reason || 'No reason recorded'}</p>
+                              <p className="mt-1 text-xs text-slate-500">{formatDate(entry.created_at)}</p>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
 

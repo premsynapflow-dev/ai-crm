@@ -27,6 +27,7 @@ from app.middleware.feature_gate import ensure_feature_access
 from app.intake.webhook import _process_complaint_for_client
 from app.replies.send_reply import send_complaint_reply
 from app.services.ai import suggest_response
+from app.services.audit_logs import append_audit_log
 from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.customer_profile import CustomerProfileService
 from app.services.event_logger import log_event
@@ -317,6 +318,14 @@ def update_complaint(
         raise HTTPException(status_code=404, detail="Complaint not found")
 
     was_resolved = complaint.resolution_status == "resolved"
+    old_snapshot = {
+        "status": complaint.status,
+        "resolution_status": complaint.resolution_status,
+        "state": complaint.state,
+        "escalation_level": complaint.escalation_level,
+        "escalated_to": complaint.escalated_to,
+        "tat_status": complaint.tat_status,
+    }
     update_data = payload.model_dump(exclude_none=True)
     changed_fields = set(update_data)
     status_value = update_data.pop("status", None)
@@ -385,6 +394,22 @@ def update_complaint(
         )
     if complaint.rbi_complaint:
         RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
+    append_audit_log(
+        db,
+        entity_type="ticket",
+        entity_id=complaint.id,
+        action="ticket_status_updated",
+        performed_by=user.email,
+        old_value=old_snapshot,
+        new_value={
+            "status": complaint.status,
+            "resolution_status": complaint.resolution_status,
+            "state": complaint.state,
+            "escalation_level": complaint.escalation_level,
+            "escalated_to": complaint.escalated_to,
+            "tat_status": complaint.tat_status,
+        },
+    )
     db.commit()
     db.refresh(complaint)
     return _serialize_complaint(complaint)
@@ -486,6 +511,12 @@ def escalate_complaint(
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
+    old_snapshot = {
+        "status": complaint.status,
+        "resolution_status": complaint.resolution_status,
+        "escalation_level": complaint.escalation_level,
+        "escalated_to": complaint.escalated_to,
+    }
     complaint.ai_reply_status = "agent_review"
     complaint.status = "ESCALATE_HIGH"
     complaint.resolution_status = "open"
@@ -518,6 +549,26 @@ def escalate_complaint(
     )
     if complaint.rbi_complaint:
         RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
+        RBIComplianceService(db).escalate_to_internal_ombudsman(
+            complaint,
+            reason="Manual escalation via v1 API",
+            escalated_by=user.email,
+            commit=False,
+        )
+    append_audit_log(
+        db,
+        entity_type="ticket",
+        entity_id=complaint.id,
+        action="escalation_triggered",
+        performed_by=user.email,
+        old_value=old_snapshot,
+        new_value={
+            "status": complaint.status,
+            "resolution_status": complaint.resolution_status,
+            "escalation_level": complaint.escalation_level,
+            "escalated_to": complaint.escalated_to,
+        },
+    )
     log_event(
         db,
         complaint.client_id,
