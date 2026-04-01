@@ -25,29 +25,62 @@ def _get_razorpay_client():
 
 
 def create_subscription(client_id, plan_id, billing_cycle="monthly"):
-    plan_catalog = {
-        "starter": {
-            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Starter", "amount": 299900, "currency": "INR"}},
-            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Starter Annual", "amount": 2999000, "currency": "INR"}},
-        },
-        "pro": {
-            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Pro", "amount": 499900, "currency": "INR"}},
-            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Pro Annual", "amount": 4999000, "currency": "INR"}},
-        },
-        "max": {
-            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Max", "amount": 999900, "currency": "INR"}},
-            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Max Annual", "amount": 9999000, "currency": "INR"}},
-        },
-        "scale": {
-            "monthly": {"period": "monthly", "interval": 1, "item": {"name": "Scale", "amount": 9999900, "currency": "INR"}},
-            "annual": {"period": "yearly", "interval": 1, "item": {"name": "Scale Annual", "amount": 99999000, "currency": "INR"}},
-        },
-    }
+    plan_config = PLANS.get(plan_id)
+    if plan_config is None:
+        logger.error("create_subscription failed: unknown plan_id=%s", plan_id)
+        raise ValueError(f"Unknown plan_id: {plan_id}")
+
+    plan_rate = plan_config.get("annual_price") if billing_cycle == "annual" else plan_config.get("monthly_price")
+    razorpay_plan_id = plan_config.get("razorpay_plan_ids", {}).get(billing_cycle)
+
+    logger.info(
+        "create_subscription start client_id=%s plan_id=%s plan_rate=%s billing_cycle=%s razorpay_plan_id=%s",
+        client_id,
+        plan_id,
+        plan_rate,
+        billing_cycle,
+        razorpay_plan_id,
+    )
+
+    if not razorpay_plan_id:
+        logger.error("create_subscription failed: missing Razorpay plan_id for plan_id=%s billing_cycle=%s", plan_id, billing_cycle)
+        raise ValueError("invalid Razorpay plan" )
+
+    if not plan_rate:
+        logger.error("create_subscription failed: invalid price for plan_id=%s billing_cycle=%s", plan_id, billing_cycle)
+        raise ValueError("invalid plan price")
+
     client = _get_razorpay_client()
-    catalog_entry = plan_catalog.get(plan_id, plan_catalog["starter"])
-    payload = catalog_entry.get(billing_cycle, catalog_entry["monthly"]).copy()
-    payload["notes"] = {"client_id": str(client_id), "plan_id": plan_id, "billing_cycle": billing_cycle}
+
+    payload = {
+        "plan_id": razorpay_plan_id,
+        "total_count": 12 if billing_cycle == "annual" else None,
+        "quantity": 1,
+        "customer_notify": 1,
+        "notes": {"client_id": str(client_id), "plan_id": plan_id, "billing_cycle": billing_cycle},
+    }
+
+    # Remove None values for API compatibility
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    logger.debug("create_subscription payload=%s", payload)
+
+    # Validate remote Razorpay plan exists and is active
+    try:
+        razorpay_plan = client.plan.fetch(razorpay_plan_id)
+        logger.debug("razorpay_plan details=%s", razorpay_plan)
+        if razorpay_plan.get("status") != "active":
+            logger.error("create_subscription failed: Razorpay plan %s is not active", razorpay_plan_id)
+            raise ValueError("invalid Razorpay plan")
+    except Exception as exc:
+        logger.exception("create_subscription failed: unable to validate Razorpay plan %s", razorpay_plan_id)
+        raise ValueError("invalid Razorpay plan") from exc
+
     subscription = client.subscription.create(payload)
+
+    if not subscription or not subscription.get("id"):
+        logger.error("create_subscription failed: Razorpay returned invalid response for client_id=%s plan_id=%s", client_id, plan_id)
+        raise RuntimeError("invalid Razorpay subscription response")
 
     db = SessionLocal()
     try:
@@ -74,13 +107,29 @@ def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, 
     if billing_cycle:
         notes["billing_cycle"] = str(billing_cycle)
 
+    logger.info(
+        "create_payment_link client_id=%s plan_id=%s billing_cycle=%s amount=%s",
+        client_id,
+        plan_id,
+        billing_cycle,
+        amount,
+    )
+
     payload = {
         "amount": amount,
         "currency": "INR",
         "description": description or f"SynapFlow plan payment for client {client_id}",
         "notes": notes,
     }
-    return client.payment_link.create(payload)
+
+    logger.debug("create_payment_link payload=%s", payload)
+    result = client.payment_link.create(payload)
+
+    if not result or not result.get("short_url"):
+        logger.error("create_payment_link failed: invalid response for client_id=%s plan_id=%s", client_id, plan_id)
+        raise RuntimeError("invalid Razorpay payment link response")
+
+    return result
 
 
 def _extract_notes(payload: dict) -> dict:
