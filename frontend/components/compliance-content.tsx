@@ -12,6 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { getFeatureGateDetail } from '@/lib/api-error'
 import { complaintsAPI, type Complaint } from '@/lib/api/complaints'
 import { complianceAPI, type RBIComplaintCategory, type RBIComplaintDetail, type RBIMisReport } from '@/lib/api/compliance'
+import { useAuth } from '@/lib/auth-context'
+import { planIncludesFeature } from '@/lib/plan-features'
 
 function formatDate(value?: string | null) {
   if (!value) {
@@ -51,6 +53,7 @@ function downloadJson(filename: string, payload: unknown) {
 }
 
 export function ComplianceContent() {
+  const { user } = useAuth()
   const [categories, setCategories] = useState<RBIComplaintCategory[]>([])
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [selectedComplaintId, setSelectedComplaintId] = useState<string | null>(null)
@@ -155,6 +158,9 @@ export function ComplianceContent() {
     }
   }
 
+  const planLocked = !planIncludesFeature(user?.plan_id, 'rbi_compliance')
+  const showUpgradePrompt = featureLocked || planLocked
+
   return (
     <div className="space-y-6">
       <div>
@@ -162,11 +168,11 @@ export function ComplianceContent() {
         <p className="mt-1 text-muted-foreground">Track complaint taxonomy, TAT status, MIS totals, and escalation readiness.</p>
       </div>
 
-      {featureLocked ? (
+      {showUpgradePrompt ? (
         <UpgradePrompt
           title="Unlock RBI compliance"
           description="Classify complaints against RBI taxonomy, monitor TAT status, and generate MIS reporting."
-          requiredPlan="Pro"
+          requiredPlan="Scale"
         />
       ) : loading ? (
         <div className="flex h-64 items-center justify-center gap-3 rounded-2xl border bg-card">

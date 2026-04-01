@@ -358,12 +358,12 @@ def _seed_plan_features():
                     ),
                     (
                         'pro',
-                        '{"ticketing_state_machine": true, "sla_management": true, "customer_360": true, "auto_reply_approval_queue": true, "rbi_compliance": true, "auto_escalation": false}'::jsonb,
+                        '{"ticketing_state_machine": true, "sla_management": true, "customer_360": true, "auto_reply_approval_queue": true, "rbi_compliance": false, "auto_escalation": false}'::jsonb,
                         '{"tickets_per_month": 2000, "api_calls_per_day": 10000, "users": 10}'::jsonb
                     ),
                     (
                         'max',
-                        '{"ticketing_state_machine": true, "sla_management": true, "customer_360": true, "auto_reply_approval_queue": true, "rbi_compliance": true, "auto_escalation": false}'::jsonb,
+                        '{"ticketing_state_machine": true, "sla_management": true, "customer_360": true, "auto_reply_approval_queue": true, "rbi_compliance": false, "auto_escalation": false}'::jsonb,
                         '{"tickets_per_month": 10000, "api_calls_per_day": 50000, "users": 25}'::jsonb
                     ),
                     (

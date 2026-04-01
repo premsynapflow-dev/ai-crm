@@ -225,6 +225,30 @@ def connect_email_integration(
     }
 
 
+@router.get("/integrations/list")
+def list_integrations(
+    client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    connections = (
+        db.query(ChannelConnection)
+        .filter(ChannelConnection.client_id == client.id)
+        .order_by(ChannelConnection.channel_type.asc(), ChannelConnection.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": str(connection.id),
+            "channel": connection.channel_type,
+            "status": connection.status,
+            "account_identifier": connection.account_identifier,
+            "created_at": connection.created_at.isoformat() if connection.created_at else None,
+            "metadata": connection.metadata_json or {},
+        }
+        for connection in connections
+    ]
+
+
 @router.post("/webhooks/email/forwarded")
 async def receive_forwarded_email(
     payload: ForwardedEmailRequest,

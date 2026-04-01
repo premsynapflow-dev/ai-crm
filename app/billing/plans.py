@@ -3,10 +3,18 @@ PLAN_ORDER = ["free", "starter", "pro", "max", "scale", "enterprise"]
 
 def _with_compat_aliases(plan_id: str, data: dict) -> dict:
     plan = dict(data)
+    plan["features"] = [
+        feature
+        for feature in plan.get("features", [])
+        if "zapier" not in str(feature).lower()
+    ]
     plan["id"] = plan_id
     plan["monthly_tickets"] = plan["tickets_per_month"]
     plan["overage_price"] = plan["overage_rate"]
     plan["price"] = plan["monthly_price"] or 0
+    feature_flags = dict(plan.get("feature_flags", {}))
+    feature_flags.pop("zapier", None)
+    plan["feature_flags"] = feature_flags
     plan["razorpay_plan_ids"] = {
         "monthly": f"synapflow_{plan_id}_monthly",
         "annual": f"synapflow_{plan_id}_annual",
@@ -57,9 +65,8 @@ PLANS = {
                 "rbi_compliance": False,
                 "auto_escalation": False,
                 "multi_channel": ["email"],
-                "integrations_count": 0,
+                "integrations_count": 1,
                 "webhooks": False,
-                "zapier": False,
             },
         },
     ),
@@ -81,7 +88,7 @@ PLANS = {
                 "Email Ingestion",
                 "Customer Complaint History (Basic)",
                 "Email Support",
-                "2 Integrations",
+                "1 Integration (Email)",
             ],
             "feature_flags": {
                 "ai_classification": True,
@@ -104,9 +111,8 @@ PLANS = {
                 "rbi_compliance": False,
                 "auto_escalation": False,
                 "multi_channel": ["email"],
-                "integrations_count": 2,
+                "integrations_count": 1,
                 "webhooks": False,
-                "zapier": False,
             },
         },
     ),
@@ -129,11 +135,11 @@ PLANS = {
                 "SLA Tracking + Alerts",
                 "AI-Suggested Responses",
                 "WhatsApp Ingestion",
+                "Website Ingestion",
                 "Advanced Analytics",
                 "Resolution Time Reports",
                 "Full Customer History + Sentiment Timeline",
-                "RBI Compliance (Eligible Institutions)",
-                "5 Integrations",
+                "3 Integrations (Email, WhatsApp, Website)",
             ],
             "feature_flags": {
                 "ai_classification": True,
@@ -153,12 +159,11 @@ PLANS = {
                 "sla_management": True,
                 "customer_360": True,
                 "auto_reply_approval_queue": True,
-                "rbi_compliance": True,
+                "rbi_compliance": False,
                 "auto_escalation": False,
-                "multi_channel": ["email", "whatsapp"],
-                "integrations_count": 5,
+                "multi_channel": ["email", "whatsapp", "website"],
+                "integrations_count": 3,
                 "webhooks": False,
-                "zapier": False,
             },
         },
     ),
@@ -181,10 +186,10 @@ PLANS = {
                 "Root Cause Analysis Reports (Weekly + Monthly)",
                 "Team Performance Dashboard",
                 "Audit Log + Compliance Export",
-                "RBI Compliance (Eligible Institutions)",
                 "API Access",
+                "Website Ingestion",
                 "Instagram + Google Reviews Ingestion",
-                "Unlimited Integrations",
+                "5 Integrations (Email, WhatsApp, Website, Instagram, Google Reviews)",
                 "Priority Support",
             ],
             "feature_flags": {
@@ -205,12 +210,11 @@ PLANS = {
                 "sla_management": True,
                 "customer_360": True,
                 "auto_reply_approval_queue": True,
-                "rbi_compliance": True,
+                "rbi_compliance": False,
                 "auto_escalation": False,
-                "multi_channel": ["email", "whatsapp", "instagram", "google_reviews"],
-                "integrations_count": 999,
+                "multi_channel": ["email", "whatsapp", "website", "instagram", "google_reviews"],
+                "integrations_count": 5,
                 "webhooks": False,
-                "zapier": False,
             },
         },
     ),
@@ -232,6 +236,8 @@ PLANS = {
                 "Custom Branding",
                 "Webhook Access",
                 "Custom Channel Ingestion",
+                "Website Ingestion",
+                "6 Integrations (Email, WhatsApp, Website, Instagram, Google Reviews, Custom)",
                 "1,00,000 tickets/month",
                 "100 team seats",
                 "Dedicated CSM",
@@ -256,10 +262,9 @@ PLANS = {
                 "auto_reply_approval_queue": True,
                 "rbi_compliance": True,
                 "auto_escalation": False,
-                "multi_channel": ["email", "whatsapp", "instagram", "google_reviews", "custom"],
-                "integrations_count": 999,
+                "multi_channel": ["email", "whatsapp", "website", "instagram", "google_reviews", "custom"],
+                "integrations_count": 6,
                 "webhooks": True,
-                "zapier": False,
             },
         },
     ),
@@ -309,7 +314,6 @@ PLANS = {
                 "multi_channel": ["all"],
                 "integrations_count": 999,
                 "webhooks": True,
-                "zapier": False,
             },
         },
     ),

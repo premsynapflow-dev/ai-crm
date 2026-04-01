@@ -10,6 +10,7 @@ export type FeatureKey =
   | 'team_performance'
   | 'api_access'
   | 'custom_branding'
+  | 'rbi_compliance'
   | 'webhooks'
 
 const FEATURE_MINIMUM_PLAN: Record<FeatureKey, PlanId> = {
@@ -20,6 +21,7 @@ const FEATURE_MINIMUM_PLAN: Record<FeatureKey, PlanId> = {
   team_performance: 'max',
   api_access: 'max',
   custom_branding: 'scale',
+  rbi_compliance: 'scale',
   webhooks: 'scale',
 }
 

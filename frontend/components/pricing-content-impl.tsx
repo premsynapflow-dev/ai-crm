@@ -32,6 +32,10 @@ const planColors = {
   enterprise: 'from-slate-900 via-slate-700 to-slate-500',
 } as const
 
+function visibleFeatures(features: string[]) {
+  return features.filter((feature) => !feature.toLowerCase().includes('zapier'))
+}
+
 function formatPrice(price: number | null, cycle: 'monthly' | 'annual') {
   if (price === 0) {
     return 'Free forever'
@@ -217,7 +221,7 @@ export function PricingContentImpl() {
                 </div>
 
                 <div className="space-y-3">
-                  {plan.features.map((feature) => (
+                  {visibleFeatures(plan.features).map((feature) => (
                     <div key={feature} className="flex gap-2 text-sm">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                       <span>{feature}</span>

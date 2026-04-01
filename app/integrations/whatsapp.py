@@ -24,7 +24,7 @@ router = APIRouter(tags=["integrations"])
 
 
 class WhatsAppConnectionRequest(BaseModel):
-    account_identifier: str = Field(..., description="Display phone number")
+    account_identifier: str | None = Field(default=None, description="Display phone number")
     phone_number_id: str
     business_account_id: str | None = None
     access_token: str
@@ -135,10 +135,11 @@ def connect_whatsapp(
         connection = ChannelConnection(
             client_id=client.id,
             channel_type="whatsapp",
-            account_identifier=payload.account_identifier,
+            account_identifier=payload.account_identifier or payload.phone_number_id,
         )
         db.add(connection)
 
+    connection.account_identifier = payload.account_identifier or payload.phone_number_id
     connection.access_token = encrypt_secret(payload.access_token)
     connection.refresh_token = None
     connection.token_expiry = None

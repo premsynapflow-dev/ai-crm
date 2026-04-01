@@ -34,7 +34,7 @@ const features = [
     icon: ShieldCheck,
     title: 'Compliance-first workflows',
     description:
-      'Track SLA obligations for every team, with RBI compliance workflows enabled for eligible RBI-regulated financial institutions identified during signup.',
+      'Track SLA obligations for every team, with RBI compliance workflows available on Scale and Enterprise for eligible RBI-regulated financial institutions identified during signup.',
   },
   {
     icon: Users,
@@ -92,7 +92,7 @@ const pricingPlans = [
       'Email ingestion',
       'Customer complaint history',
       'Email support',
-      '2 integrations',
+      '1 integration (email)',
     ],
   },
   {
@@ -112,10 +112,10 @@ const pricingPlans = [
       'SLA tracking and alerts',
       'AI-suggested responses',
       'WhatsApp ingestion',
+      'Website ingestion',
       'Advanced analytics',
       'Full customer history',
-      'RBI compliance workspace for eligible RBI-regulated institutions',
-      '5 integrations',
+      '3 integrations (email, WhatsApp, website)',
     ],
   },
   {
@@ -135,8 +135,10 @@ const pricingPlans = [
       'Root cause analysis',
       'Team performance dashboard',
       'Audit log and compliance export',
-      'RBI compliance (for eligible institutions)',
       'API access',
+      'Website ingestion',
+      'Instagram and Google Reviews ingestion',
+      '5 integrations (email, WhatsApp, website, Instagram, Google Reviews)',
       'Priority support',
     ],
   },
@@ -156,6 +158,8 @@ const pricingPlans = [
       'Custom branding',
       'Webhook access',
       'Custom channel ingestion',
+      'Website ingestion',
+      '6 integrations (email, WhatsApp, website, Instagram, Google Reviews, custom)',
       'Dedicated CSM',
       'Enterprise-ready rollout support',
     ],
@@ -271,8 +275,8 @@ export default function LandingPage() {
                 No credit card required
               </span>
               <span className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                RBI workflows for eligible regulated institutions
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                RBI workflows on Scale and Enterprise
               </span>
             </div>
           </div>
@@ -392,7 +396,7 @@ export default function LandingPage() {
               Transparent pricing for teams that want AI acceleration and compliance guardrails from day one.
             </p>
             <p className="mt-3 text-sm text-slate-400">
-              RBI compliance tooling is shown only for companies identified during signup as RBI-regulated financial institutions.
+              RBI compliance tooling is available only on Scale and Enterprise for companies identified during signup as RBI-regulated financial institutions.
             </p>
           </div>
           <div className="mt-8 inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-5 py-3 shadow-sm">

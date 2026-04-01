@@ -73,7 +73,7 @@ export default function SignupPage() {
               Launch a SynapFlow workspace in minutes.
             </h1>
             <p className="mt-4 text-lg leading-8 text-slate-600">
-              Give your support and compliance teams a shared complaint command center with AI assistance, SLA tracking, and clear plan limits. RBI compliance tools are enabled for eligible RBI-regulated financial institutions.
+              Give your support and compliance teams a shared complaint command center with AI assistance, SLA tracking, and clear plan limits. RBI compliance tools are available on Scale and Enterprise for eligible RBI-regulated financial institutions.
             </p>
           </div>
           <div className="grid gap-4">
@@ -161,7 +161,7 @@ export default function SignupPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-slate-500">
-                  We use this to determine whether RBI compliance workflows should be enabled in your workspace.
+                  We use this to determine whether RBI compliance workflows can be enabled in your workspace when you're on Scale or Enterprise.
                 </p>
               </div>
 
@@ -191,7 +191,7 @@ export default function SignupPage() {
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-900" />
                   <p>
-                    By signing up, you'll create a tenant workspace on the Free plan. If you select an RBI-regulated financial company category, the RBI compliance workspace will be available after signup.
+                    By signing up, you'll create a tenant workspace on the Free plan. If you select an RBI-regulated financial company category, the RBI compliance workspace can be enabled after you upgrade to Scale or Enterprise.
                   </p>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { isRbiEligibleCompany } from '@/lib/company-profile'
+import { planIncludesFeature } from '@/lib/plan-features'
 import { Logo } from '@/components/logo'
 import { notificationsAPI, type NotificationItem } from '@/lib/api/notifications'
 import { Button } from '@/components/ui/button'
@@ -117,7 +118,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [lastReadAt, notifications])
 
   const unreadCount = unreadNotifications.length
-  const canAccessRbiCompliance = isRbiEligibleCompany(user?.business_sector, user?.is_rbi_regulated)
+  const canAccessRbiCompliance =
+    isRbiEligibleCompany(user?.business_sector, user?.is_rbi_regulated) &&
+    planIncludesFeature(user?.plan_id, 'rbi_compliance')
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
@@ -200,7 +203,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <nav className="flex-1 p-3 space-y-1">
         <TooltipProvider delayDuration={0}>
           {navItems.map((item) => {
-            const isActive = pathname === item.href
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             return (
               <Tooltip key={item.href}>
                 <TooltipTrigger asChild>

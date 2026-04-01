@@ -16,7 +16,7 @@ FEATURES = {
     "sla_management": ["pro", "max", "scale", "enterprise"],
     "customer_360": ["pro", "max", "scale", "enterprise"],
     "auto_reply_approval_queue": ["starter", "pro", "max", "scale", "enterprise"],
-    "rbi_compliance": ["pro", "max", "scale", "enterprise"],
+    "rbi_compliance": ["scale", "enterprise"],
     "auto_escalation": ["enterprise"],
 }
 
