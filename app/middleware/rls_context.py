@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from typing import Optional
 
 from fastapi import Request
@@ -10,6 +12,16 @@ from app.db.session import SessionLocal, reset_current_client_context, set_curre
 from app.security.session import BadSignature, decode_session
 
 settings = get_settings()
+
+
+def _normalize_user_id(value: str | UUID | None) -> UUID | str | None:
+    if value in (None, ""):
+        return None
+
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return value
 
 
 def resolve_client_id_from_request(request: Request) -> Optional[str]:
@@ -37,7 +49,7 @@ def resolve_client_id_from_request(request: Request) -> Optional[str]:
             except BadSignature:
                 session_data = None
             if session_data:
-                user_id = session_data.get("user_id")
+                user_id = _normalize_user_id(session_data.get("user_id"))
                 user = db.query(ClientUser).filter(ClientUser.id == user_id).first()
                 if user:
                     request.state.client_user_id = str(user.id)
@@ -52,7 +64,8 @@ def resolve_client_id_from_request(request: Request) -> Optional[str]:
             except Exception:
                 payload = None
             if payload:
-                user = db.query(ClientUser).filter(ClientUser.id == payload.get("sub")).first()
+                user_id = _normalize_user_id(payload.get("sub"))
+                user = db.query(ClientUser).filter(ClientUser.id == user_id).first()
                 if user:
                     request.state.client_user_id = str(user.id)
                     request.state.client_id = str(user.client_id)

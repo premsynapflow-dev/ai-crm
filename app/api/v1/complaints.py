@@ -11,6 +11,7 @@ Example of correct filtering:
 """
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -36,6 +37,16 @@ from app.services.ticket_state_machine import TicketStateMachine
 
 router = APIRouter(prefix="/api/v1/complaints", tags=["complaints-v1"])
 settings = get_settings()
+
+
+def _normalize_user_id(value: str | UUID | None) -> UUID | str | None:
+    if value in (None, ""):
+        return None
+
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError):
+        return value
 
 
 class ComplaintCreateRequest(BaseModel):
@@ -165,7 +176,8 @@ def _get_user_from_token(db: Session, authorization: str | None):
         data = decode_token(token, "access", settings.access_token_expire_minutes * 60)
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
-    user = db.query(ClientUser).filter(ClientUser.id == data.get("sub")).first()
+    user_id = _normalize_user_id(data.get("sub"))
+    user = db.query(ClientUser).filter(ClientUser.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user

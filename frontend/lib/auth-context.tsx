@@ -29,22 +29,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true
 
-    authAPI.getCurrentUser()
-      .then((currentUser) => {
+    const loadCurrentUser = async () => {
+      try {
+        const currentUser = await authAPI.getCurrentUser()
         if (active) {
           setUser(currentUser)
         }
-      })
-      .catch(() => {
+      } catch {
         if (active) {
           setUser(null)
         }
-      })
-      .finally(() => {
+      } finally {
         if (active) {
           setIsLoading(false)
         }
-      })
+      }
+    }
+
+    void loadCurrentUser()
 
     return () => {
       active = false
@@ -55,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const loggedInUser = await authAPI.login({ email, password })
       setUser(loggedInUser)
+      router.replace('/dashboard')
       return true
     } catch {
       setUser(null)
@@ -65,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null)
     void authAPI.logout()
-    router.push('/')
+    router.push('/login')
   }
 
   const updatePlan = async (plan: PlanId) => {
