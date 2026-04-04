@@ -152,6 +152,10 @@ export function SettingsContent() {
             <Key className="h-4 w-4" />
             API Keys
           </TabsTrigger>
+          <TabsTrigger value="connections" className="gap-2">
+            <Key className="h-4 w-4" />
+            Connections
+          </TabsTrigger>
           <TabsTrigger value="webhooks" className="gap-2">
             <Webhook className="h-4 w-4" />
             Webhooks
@@ -167,6 +171,12 @@ export function SettingsContent() {
             </TabsTrigger>
           )}
         </TabsList>
+        <TabsContent value="connections">
+          {/* Connections tab content: render the ConnectionsPage component */}
+          {typeof window !== 'undefined' && (
+            require('@/app/settings/connections/page').default ? require('@/app/settings/connections/page').default() : null
+          )}
+        </TabsContent>
 
         <TabsContent value="profile">
           <Card>
