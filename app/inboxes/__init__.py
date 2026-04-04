@@ -1,0 +1,2 @@
+"""Email inbox connection subsystem."""
+
