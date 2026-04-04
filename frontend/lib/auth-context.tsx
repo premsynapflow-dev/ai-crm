@@ -74,11 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const loggedInUser = await authAPI.login({ email, password })
       setUser(loggedInUser)
-      if (typeof window !== 'undefined') {
-        window.location.href = '/'
-      } else {
-        router.replace('/')
-      }
       return true
     } catch {
       setUser(null)

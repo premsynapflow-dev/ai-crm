@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const enableVercelAnalytics = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV)
 
 export const metadata: Metadata = {
   title: 'SynapFlow - AI-Powered Complaint Intelligence',
@@ -45,7 +46,7 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased`}>
         {children}
         <Toaster position="top-right" richColors />
-        <Analytics />
+        {enableVercelAnalytics ? <Analytics /> : null}
       </body>
     </html>
   )
