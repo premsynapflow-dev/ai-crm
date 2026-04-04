@@ -19,6 +19,17 @@ def send_complaint_reply(
     reply_text: str | None = None,
     status_on_success: str = "sent",
 ):
+
+    # ENFORCEMENT: Only allow sending if reply_queue exists and is approved
+    if not hasattr(complaint, "reply_queue") or complaint.reply_queue is None or complaint.reply_queue.status != "approved":
+        logger.warning(
+            "Blocked reply send: Complaint %s does not have approved AIReplyQueue entry.",
+            complaint.id,
+        )
+        complaint.ai_reply_status = "agent_review"
+        db.flush()
+        return {"sent": False, "channels": []}
+
     text_to_send = (reply_text or complaint.ai_reply or "").strip()
     channels_sent: list[str] = []
     delivered_to_customer = False

@@ -95,7 +95,18 @@ class HardenedAutoReplyService:
             recommendation = "human_review"
         client = self.db.query(Client).filter(Client.id == ticket.client_id).first()
 
-        if recommendation == "auto_approve":
+        # ENFORCEMENT: Risk-based auto-reply
+        high_urgency = hasattr(ticket, "urgency_score") and ticket.urgency_score is not None and ticket.urgency_score >= 0.7
+        negative_sentiment = hasattr(ticket, "sentiment") and ticket.sentiment is not None and ticket.sentiment < 0
+        compliance_category = hasattr(ticket, "rbi_category_code") and ticket.rbi_category_code is not None
+
+        if high_urgency or negative_sentiment or compliance_category:
+            queue_entry.status = "pending"
+            queue_entry.reviewed_by = None
+            queue_entry.reviewed_at = None
+            queue_entry.rejection_reason = None
+            ticket.ai_reply_status = "pending"
+        elif recommendation == "auto_approve":
             queue_entry.status = "approved"
             queue_entry.reviewed_by = "system"
             queue_entry.reviewed_at = _utcnow()

@@ -235,17 +235,169 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         }
 
     customer_email, customer_phone = _customer_fields_for_message(message)
-    from app.intake.webhook import _process_complaint_for_client
-
-    complaint = _process_complaint_for_client(
-        db=db,
-        client=client,
-        message=message.message_text,
-        source=message.channel,
+    # Unify: Use the same logic as _process_complaint_for_client, but inline here to avoid duplicate logic
+    from app.services.customer_profile import CustomerProfileService
+    from app.services.ticket_state_machine import TicketStateMachine
+    from app.services.sla_manager import SLAManager
+    from app.services.auto_reply_hardened import HardenedAutoReplyService
+    from app.services.rbi_compliance import RBIComplianceService
+    from app.services.audit_logs import append_audit_log
+    from app.middleware.feature_gate import has_feature_access
+    from app.billing.plans import PLANS
+    from app.intelligence.classifier import classify_message, summarize_if_needed
+    from app.utils.ticket import generate_ticket_id, generate_thread_id
+    from app.services.event_logger import log_event
+    from app.workflow.dispatcher import dispatch_action
+    from app.workflow.rule_engine import decide_action
+    from app.services.rules_engine import get_matching_rules
+    # ---
+    classification = classify_message(message.message_text)
+    summary = summarize_if_needed(message.message_text, classification)
+    intent = classification["intent"]
+    recommended_action = classification["recommended_action"]
+    confidence = classification["confidence"]
+    priority = classification["priority"]
+    category = classification["category"]
+    sentiment_score = classification["sentiment"]
+    urgency = classification["urgency_score"]
+    assigned_team = None
+    plan = PLANS.get(client.plan_id, PLANS["starter"])
+    # Sentiment details omitted for brevity
+    _ACTION_MAP = {
+        "escalate": "ESCALATE_HIGH",
+        "notify_sales": "NOTIFY_SALES",
+        "support_ticket": "AUTO_REPLY",
+        "auto_reply": "AUTO_REPLY",
+        "product_feedback": "PRODUCT_FEEDBACK",
+    }
+    action = _ACTION_MAP.get(recommended_action) or decide_action(
+        category=category,
+        sentiment=sentiment_score,
+        urgency=urgency,
+    )
+    ticket_id = generate_ticket_id()
+    thread_id = generate_thread_id()
+    from app.db.models import Complaint
+    complaint = Complaint(
+        client_id=client.id,
+        summary=summary,
+        source=message.channel or "api",
         customer_email=customer_email,
         customer_phone=customer_phone,
-        return_complaint=True,
+        intent=intent,
+        recommended_action=recommended_action,
+        confidence=confidence,
+        priority=priority,
+        category=category,
+        sentiment=sentiment_score,
+        urgency_score=urgency,
+        assigned_team=assigned_team,
+        assigned_to=assigned_team,
+        ticket_id=ticket_id,
+        thread_id=thread_id,
+        status=action,
+        state="new",
     )
+    db.add(complaint)
+    db.flush()
+    append_audit_log(
+        db,
+        entity_type="ticket",
+        entity_id=complaint.id,
+        action="ticket_created",
+        performed_by=client.name,
+        old_value=None,
+        new_value={
+            "ticket_id": complaint.ticket_id,
+            "status": complaint.status,
+            "resolution_status": complaint.resolution_status,
+            "source": complaint.source,
+            "rbi_category_code": complaint.rbi_category_code,
+            "tat_status": complaint.tat_status,
+        },
+    )
+    CustomerProfileService(db).sync_customer_for_complaint(
+        complaint,
+        interaction_type="ticket",
+        interaction_channel=message.channel or "api",
+        commit=False,
+    )
+    TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
+    SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=client.name,
+        reason="Initial ticket classification",
+        metadata={"source": message.channel or "api"},
+        commit=False,
+    )
+    rules = get_matching_rules(db, client.id, classification)
+    for rule in rules:
+        from app.services.action_executor import execute_action
+        execute_action(rule, complaint, client)
+    SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
+    TicketStateMachine(db).sync_from_legacy(
+        complaint,
+        transitioned_by=client.name,
+        reason="Complaint ingestion workflow",
+        metadata={"source": message.channel or "api"},
+        commit=False,
+    )
+    log_event(
+        db,
+        client.id,
+        "complaint_received",
+        {
+            "ticket_id": complaint.ticket_id,
+            "complaint_id": str(complaint.id),
+            "summary": complaint.summary,
+            "category": complaint.category,
+            "priority": complaint.priority,
+            "source": complaint.source,
+            "status": complaint.status,
+        },
+    )
+    if client.is_rbi_regulated and has_feature_access(client, "rbi_compliance", db=db):
+        RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
+    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(complaint, commit=False)
+    if queue_entry.status in {"pending", "rejected"}:
+        log_event(
+            db,
+            client.id,
+            "ai_reply_queued_for_review" if queue_entry.status == "pending" else "ai_reply_rejected",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.ai_reply,
+                "confidence": complaint.ai_reply_confidence,
+                "queue_status": queue_entry.status,
+            },
+        )
+    dispatch_action(
+        action=action,
+        client_name=client.name,
+        complaint_id=str(complaint.id),
+        summary=summary,
+        category=category,
+        sentiment=sentiment_score,
+        urgency=urgency,
+        intent=intent,
+        recommended_action=recommended_action,
+        client_slack_webhook=client.slack_webhook_url,
+        customer_email=customer_email,
+        customer_phone=customer_phone,
+    )
+    unified_message.status = "processed"
+    unified_message.retry_count = 0
+    unified_message.last_error = None
+    unified_message.next_retry_at = None
+    unified_message.raw_payload = {
+        **(unified_message.raw_payload or {}),
+        "complaint_id": str(complaint.id),
+        "ticket_id": complaint.ticket_id,
+        "complaint_thread_id": complaint.thread_id,
+        "conversation_id": str(conversation.id),
+    }
 
     unified_message.status = "processed"
     unified_message.retry_count = 0

@@ -355,17 +355,22 @@ def process_email_webhook(
 ) -> dict:
     try:
         _enforce_usage_limit(client)
-        message = f"{payload.subject} {payload.text}".strip()
-        action = _process_complaint_for_client(
-            db=db,
-            client=client,
-            message=message,
-            source="email",
-            customer_email=payload.from_,
-            customer_phone=None,
+        from app.services.unified_ingestion import IncomingMessage, process_incoming_message
+        incoming_message = IncomingMessage(
+            client_id=client.id,
+            channel="email",
+            external_message_id=payload.subject,  # Use subject as unique id for demo; replace as needed
+            sender_id=payload.from_,
+            sender_name=None,
+            message_text=f"{payload.subject} {payload.text}".strip(),
+            direction="inbound",
+            status="received",
+            raw_payload=payload.model_dump() if hasattr(payload, 'model_dump') else dict(payload),
         )
+        result = process_incoming_message(db, incoming_message)
         db.commit()
         track_ticket_usage(client.id)
+        action = result
     except HTTPException:
         raise
     except OperationalError:
@@ -394,16 +399,22 @@ def process_whatsapp_webhook(
 ) -> dict:
     try:
         _enforce_usage_limit(client)
-        action = _process_complaint_for_client(
-            db=db,
-            client=client,
-            message=payload.body,
-            source="whatsapp",
-            customer_email=None,
-            customer_phone=payload.from_,
+        from app.services.unified_ingestion import IncomingMessage, process_incoming_message
+        incoming_message = IncomingMessage(
+            client_id=client.id,
+            channel="whatsapp",
+            external_message_id=payload.body[:32],  # Use body hash/part as unique id for demo
+            sender_id=payload.from_,
+            sender_name=None,
+            message_text=payload.body,
+            direction="inbound",
+            status="received",
+            raw_payload=payload.model_dump() if hasattr(payload, 'model_dump') else dict(payload),
         )
+        result = process_incoming_message(db, incoming_message)
         db.commit()
         track_ticket_usage(client.id)
+        action = result
     except HTTPException:
         raise
     except OperationalError:
