@@ -32,6 +32,7 @@ import { getCompanySectorLabel, isRbiEligibleCompany } from '@/lib/company-profi
 import { settingsAPI, type SettingsSummary } from '@/lib/api/settings'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
+import ConnectionsPage from '@/app/settings/connections/page'
 
 function formatDate(value?: string | null) {
   if (!value) {
@@ -172,10 +173,7 @@ export function SettingsContent() {
           )}
         </TabsList>
         <TabsContent value="connections">
-          {/* Connections tab content: render the ConnectionsPage component */}
-          {typeof window !== 'undefined' && (
-            require('@/app/settings/connections/page').default ? require('@/app/settings/connections/page').default() : null
-          )}
+          <ConnectionsPage />
         </TabsContent>
 
         <TabsContent value="profile">
@@ -486,4 +484,3 @@ export function SettingsContent() {
     </div>
   )
 }
-
