@@ -64,7 +64,7 @@ export const authAPI = {
 
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
-      console.log('[auth] Token after storing:', window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY))
+      console.log('TOKEN STORED:', window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY))
     }
 
     return authAPI.getCurrentUser()

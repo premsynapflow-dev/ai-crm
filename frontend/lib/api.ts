@@ -38,16 +38,20 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const token = getStoredAccessToken()
-  const authorizationHeader = token ? `Bearer ${token}` : null
 
-  console.log('[auth] Authorization header before API call:', authorizationHeader)
+  console.log('[auth] Authorization header before API call:', token)
 
-  if (authorizationHeader) {
+  if (token) {
+    const authorizationHeader = `Bearer ${token}`
     if (typeof config.headers?.set === 'function') {
       config.headers.set('Authorization', authorizationHeader)
     } else if (config.headers) {
       ;(config.headers as Record<string, string>).Authorization = authorizationHeader
     }
+  } else if (typeof config.headers?.delete === 'function') {
+    config.headers.delete('Authorization')
+  } else if (config.headers) {
+    delete (config.headers as Record<string, string>).Authorization
   }
 
   return config
@@ -57,8 +61,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
+      console.warn('Unauthorized - clearing token')
       clearStoredAccessToken()
-      console.log('[auth] Received 401 response, cleared stored access token')
 
       if (!AUTH_REDIRECT_EXEMPT_PATHS.has(normalizePathname(window.location.pathname))) {
         window.location.href = '/login'

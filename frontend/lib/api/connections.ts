@@ -1,27 +1,27 @@
 // API hooks for Connections tab
-import axios from "axios";
+import api from "../api";
 
 export async function fetchGmailStatus() {
-  const res = await axios.get("/api/connections/gmail/status");
+  const res = await api.get("/api/connections/gmail/status");
   return res.data;
 }
 
 export async function connectGmail() {
-  const res = await axios.post("/api/connections/gmail/connect");
+  const res = await api.post("/api/connections/gmail/connect");
   return res.data;
 }
 
 export async function disconnectGmail() {
-  const res = await axios.post("/api/connections/gmail/disconnect");
+  const res = await api.post("/api/connections/gmail/disconnect");
   return res.data;
 }
 
 export async function fetchWhatsAppStatus() {
-  const res = await axios.get("/api/connections/whatsapp/status");
+  const res = await api.get("/api/connections/whatsapp/status");
   return res.data;
 }
 
 export async function saveWhatsAppConnection(webhookOrKey: string) {
-  const res = await axios.post("/api/connections/whatsapp/save", { webhook: webhookOrKey });
+  const res = await api.post("/api/connections/whatsapp/save", { webhook: webhookOrKey });
   return res.data;
 }
