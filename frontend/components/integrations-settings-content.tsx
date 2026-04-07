@@ -23,6 +23,17 @@ import { cn } from '@/lib/utils'
 
 const DEFAULT_FORWARDING_ADDRESS = 'support@inbound.synapflow.com'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    return String((detail as Record<string, unknown>).message)
+  }
+  return fallback
+}
+
 function formatChannelLabel(channel: string) {
   switch (channel) {
     case 'gmail':
@@ -140,8 +151,8 @@ export function IntegrationsSettingsContent() {
         throw new Error('Missing auth URL')
       }
       window.location.assign(response.auth_url)
-    } catch {
-      toast.error('Unable to start Gmail OAuth right now')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to start Gmail OAuth right now'))
       setIsConnectingGmail(false)
     }
   }

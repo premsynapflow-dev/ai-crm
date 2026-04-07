@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
     google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
     google_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_OAUTH_REDIRECT_URI")
+    google_inboxes_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_INBOXES_OAUTH_REDIRECT_URI")
+    google_integrations_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI")
     gmail_pubsub_topic: str = Field(default="", alias="GMAIL_PUBSUB_TOPIC")
     gmail_watch_label_ids: str = Field(default="", alias="GMAIL_WATCH_LABEL_IDS")
 
@@ -121,6 +123,26 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         return self.environment == "dev"
 
+    def google_oauth_redirect_uri_for(self, flow: Literal["integrations", "inboxes"]) -> str:
+        if flow == "integrations":
+            redirect_uri = self.google_integrations_oauth_redirect_uri.strip()
+            path = "/integrations/gmail/callback"
+        else:
+            redirect_uri = self.google_inboxes_oauth_redirect_uri.strip()
+            path = "/auth/gmail/callback"
+
+        if redirect_uri:
+            return redirect_uri
+
+        legacy_redirect_uri = self.google_oauth_redirect_uri.strip()
+        if legacy_redirect_uri:
+            return legacy_redirect_uri
+
+        base_url = self.app_base_url.strip().rstrip("/")
+        if not base_url:
+            return ""
+        return f"{base_url}{path}"
+
     @field_validator("jwt_secret_key")
     @classmethod
     def default_jwt_secret(cls, value: str, info):  # type: ignore[override]
@@ -173,6 +195,8 @@ def _manual_settings_data() -> dict:
         "GOOGLE_CLIENT_ID": os.getenv("GOOGLE_CLIENT_ID", ""),
         "GOOGLE_CLIENT_SECRET": os.getenv("GOOGLE_CLIENT_SECRET", ""),
         "GOOGLE_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_OAUTH_REDIRECT_URI", ""),
+        "GOOGLE_INBOXES_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_INBOXES_OAUTH_REDIRECT_URI", ""),
+        "GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI", ""),
         "GMAIL_PUBSUB_TOPIC": os.getenv("GMAIL_PUBSUB_TOPIC", ""),
         "GMAIL_WATCH_LABEL_IDS": os.getenv("GMAIL_WATCH_LABEL_IDS", ""),
         "WHATSAPP_APP_SECRET": os.getenv("WHATSAPP_APP_SECRET", ""),

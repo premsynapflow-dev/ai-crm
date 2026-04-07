@@ -130,6 +130,7 @@ def _google_request(
 
 
 def _exchange_code_for_tokens(code: str) -> dict[str, Any]:
+    redirect_uri = _ensure_google_oauth_config()
     response = _google_request(
         "POST",
         GOOGLE_TOKEN_URL,
@@ -137,13 +138,31 @@ def _exchange_code_for_tokens(code: str) -> dict[str, Any]:
             "code": code,
             "client_id": settings.google_client_id,
             "client_secret": settings.google_client_secret,
-            "redirect_uri": settings.google_oauth_redirect_uri,
+            "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         },
     )
     if response.status_code >= 400:
         raise _request_error(response)
     return response.json()
+
+
+def _ensure_google_oauth_config() -> str:
+    missing: list[str] = []
+    if not settings.google_client_id.strip():
+        missing.append("GOOGLE_CLIENT_ID")
+    if not settings.google_client_secret.strip():
+        missing.append("GOOGLE_CLIENT_SECRET")
+
+    redirect_uri = settings.google_oauth_redirect_uri_for("integrations")
+    if not redirect_uri:
+        missing.append("GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI or GOOGLE_OAUTH_REDIRECT_URI or APP_BASE_URL")
+    if not settings.gmail_pubsub_topic.strip():
+        missing.append("GMAIL_PUBSUB_TOPIC")
+
+    if missing:
+        raise HTTPException(status_code=500, detail=f"Gmail integration is not configured. Missing: {', '.join(missing)}")
+    return redirect_uri
 
 
 def _refresh_access_token(connection: ChannelConnection, *, force: bool = False) -> str:
@@ -363,11 +382,10 @@ def send_gmail_reply(
 def connect_gmail(
     client: Client = Depends(get_current_client),
 ) -> dict[str, Any]:
-    if not settings.google_client_id or not settings.google_client_secret or not settings.google_oauth_redirect_uri:
-        raise HTTPException(status_code=500, detail="Google OAuth is not configured")
+    redirect_uri = _ensure_google_oauth_config()
 
     state = state_serializer.dumps({"client_id": str(client.id)})
-    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode({'client_id': settings.google_client_id, 'redirect_uri': settings.google_oauth_redirect_uri, 'response_type': 'code', 'scope': GOOGLE_OAUTH_SCOPE, 'access_type': 'offline', 'prompt': 'consent', 'state': state})}"
+    auth_url = f"{GOOGLE_AUTH_URL}?{urlencode({'client_id': settings.google_client_id, 'redirect_uri': redirect_uri, 'response_type': 'code', 'scope': GOOGLE_OAUTH_SCOPE, 'access_type': 'offline', 'prompt': 'consent', 'state': state})}"
     return {"auth_url": auth_url}
 
 

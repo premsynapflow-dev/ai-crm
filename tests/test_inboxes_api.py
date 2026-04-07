@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlparse
 
 from app.db.models import Client, ClientUser
+import app.integrations.gmail as gmail_integration
 from app.inboxes.models import Inbox
 from app.inboxes import service as inbox_service
 from app.security.passwords import hash_password
@@ -180,3 +181,58 @@ def test_gmail_oauth_flow_stores_inbox_and_redirects(monkeypatch, test_db, clien
     assert saved_inbox.provider_type == "gmail"
     assert decrypt_secret(saved_inbox.access_token) == "gmail-access-token"
     assert decrypt_secret(saved_inbox.refresh_token) == "gmail-refresh-token"
+
+
+def test_inboxes_gmail_connect_derives_redirect_uri_from_app_base_url(monkeypatch, test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+
+    monkeypatch.setattr(inbox_service.settings, "google_client_id", "google-client-id")
+    monkeypatch.setattr(inbox_service.settings, "google_client_secret", "google-client-secret")
+    monkeypatch.setattr(inbox_service.settings, "google_oauth_redirect_uri", "")
+    monkeypatch.setattr(inbox_service.settings, "google_inboxes_oauth_redirect_uri", "")
+    monkeypatch.setattr(inbox_service.settings, "app_base_url", "http://testserver")
+
+    connect_url_response = client.get("/inboxes/gmail/connect-url", headers=headers)
+    assert connect_url_response.status_code == 200
+
+    oauth_redirect = client.get(connect_url_response.json()["connect_url"], follow_redirects=False)
+    assert oauth_redirect.status_code == 307
+    google_url = urlparse(oauth_redirect.headers["location"])
+    query = parse_qs(google_url.query)
+
+    assert query["redirect_uri"] == ["http://testserver/auth/gmail/callback"]
+
+
+def test_integrations_gmail_connect_derives_redirect_uri_from_app_base_url(monkeypatch, test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+
+    monkeypatch.setattr(gmail_integration.settings, "google_client_id", "google-client-id")
+    monkeypatch.setattr(gmail_integration.settings, "google_client_secret", "google-client-secret")
+    monkeypatch.setattr(gmail_integration.settings, "google_oauth_redirect_uri", "")
+    monkeypatch.setattr(gmail_integration.settings, "google_integrations_oauth_redirect_uri", "")
+    monkeypatch.setattr(gmail_integration.settings, "app_base_url", "http://testserver")
+    monkeypatch.setattr(gmail_integration.settings, "gmail_pubsub_topic", "projects/test/topics/gmail")
+
+    response = client.get("/integrations/gmail/connect", headers=headers)
+
+    assert response.status_code == 200
+    google_url = urlparse(response.json()["auth_url"])
+    query = parse_qs(google_url.query)
+
+    assert query["redirect_uri"] == ["http://testserver/integrations/gmail/callback"]
+
+
+def test_integrations_gmail_connect_reports_missing_pubsub_topic(monkeypatch, test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+
+    monkeypatch.setattr(gmail_integration.settings, "google_client_id", "google-client-id")
+    monkeypatch.setattr(gmail_integration.settings, "google_client_secret", "google-client-secret")
+    monkeypatch.setattr(gmail_integration.settings, "google_oauth_redirect_uri", "")
+    monkeypatch.setattr(gmail_integration.settings, "google_integrations_oauth_redirect_uri", "")
+    monkeypatch.setattr(gmail_integration.settings, "app_base_url", "http://testserver")
+    monkeypatch.setattr(gmail_integration.settings, "gmail_pubsub_topic", "")
+
+    response = client.get("/integrations/gmail/connect", headers=headers)
+
+    assert response.status_code == 500
+    assert "GMAIL_PUBSUB_TOPIC" in response.json()["detail"]

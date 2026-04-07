@@ -199,6 +199,12 @@ Both use `pg_dump` and require `DATABASE_URL` to be set.
    - Key Secret
    - Webhook Secret
 5. Set up an SMTP provider for outbound emails
+6. For Gmail connections, add:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `APP_BASE_URL`
+   - `GMAIL_PUBSUB_TOPIC` for the Gmail integration flow
+   - optional `GOOGLE_INBOXES_OAUTH_REDIRECT_URI` or `GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI` overrides if you do not want the app to derive callbacks from `APP_BASE_URL`
 
 ### Database and deployment
 

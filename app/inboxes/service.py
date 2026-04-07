@@ -43,9 +43,20 @@ def _coerce_uuid(value: str | UUID):
     return UUID(str(value))
 
 
-def ensure_google_oauth_config() -> None:
-    if not settings.google_client_id or not settings.google_client_secret or not settings.google_oauth_redirect_uri:
-        raise HTTPException(status_code=500, detail="Google OAuth is not configured")
+def ensure_google_oauth_config() -> str:
+    missing: list[str] = []
+    if not settings.google_client_id.strip():
+        missing.append("GOOGLE_CLIENT_ID")
+    if not settings.google_client_secret.strip():
+        missing.append("GOOGLE_CLIENT_SECRET")
+
+    redirect_uri = settings.google_oauth_redirect_uri_for("inboxes")
+    if not redirect_uri:
+        missing.append("GOOGLE_INBOXES_OAUTH_REDIRECT_URI or GOOGLE_OAUTH_REDIRECT_URI or APP_BASE_URL")
+
+    if missing:
+        raise HTTPException(status_code=500, detail=f"Google OAuth is not configured. Missing: {', '.join(missing)}")
+    return redirect_uri
 
 
 def create_gmail_connect_url(client: Client, user: ClientUser) -> str:
@@ -93,7 +104,7 @@ def resolve_gmail_connect_context(
 
 
 def build_google_redirect_url(*, tenant_id: str, redirect_path: str = DEFAULT_SETTINGS_REDIRECT) -> str:
-    ensure_google_oauth_config()
+    redirect_uri = ensure_google_oauth_config()
     state = oauth_state_serializer.dumps(
         {
             "tenant_id": tenant_id,
@@ -103,7 +114,7 @@ def build_google_redirect_url(*, tenant_id: str, redirect_path: str = DEFAULT_SE
     query = urlencode(
         {
             "client_id": settings.google_client_id,
-            "redirect_uri": settings.google_oauth_redirect_uri,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": " ".join(GMAIL_SCOPES),
             "access_type": "offline",
@@ -130,7 +141,7 @@ def load_oauth_state(state: str) -> dict[str, str]:
 
 
 def exchange_google_code(code: str) -> dict[str, Any]:
-    ensure_google_oauth_config()
+    redirect_uri = ensure_google_oauth_config()
     with httpx.Client(timeout=20.0) as client:
         response = client.post(
             GOOGLE_TOKEN_URL,
@@ -138,7 +149,7 @@ def exchange_google_code(code: str) -> dict[str, Any]:
                 "code": code,
                 "client_id": settings.google_client_id,
                 "client_secret": settings.google_client_secret,
-                "redirect_uri": settings.google_oauth_redirect_uri,
+                "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code",
             },
         )
