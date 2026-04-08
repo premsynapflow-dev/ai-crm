@@ -35,10 +35,7 @@ export interface Plan {
   trial_requires_card: boolean
   features: string[]
   feature_flags: PlanFeatureFlags
-  razorpay_plan_ids?: {
-    monthly: string
-    annual: string
-  }
+  razorpay_plan_ids?: Partial<Record<'monthly' | 'annual', string>>
 }
 
 export interface Invoice {

@@ -41,7 +41,34 @@ def _get_client_by_api_key(x_api_key: str) -> Client:
 @router.post("/checkout")
 def billing_checkout(payload: CheckoutRequest, x_api_key: str = Header(default="", alias="x-api-key")):
     client = _get_client_by_api_key(x_api_key)
-    return create_subscription(client.id, payload.plan_id, payload.billing_cycle)
+    plan = PLANS.get(payload.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+
+    price = plan.get("annual_price") if payload.billing_cycle == "annual" else plan.get("monthly_price")
+    if price is None:
+        raise HTTPException(status_code=400, detail="Selected plan does not have a fixed price; contact support")
+
+    try:
+        return create_subscription(client.id, payload.plan_id, payload.billing_cycle)
+    except Exception:
+        logger.exception("Razorpay subscription checkout failed; falling back to payment link; client=%s", client.id)
+        payment_link = create_payment_link(
+            client.id,
+            int(price) * 100,
+            plan_id=payload.plan_id,
+            billing_cycle=payload.billing_cycle,
+            description=f"SynapFlow {plan['name']} ({payload.billing_cycle}) plan payment",
+        )
+        payment_url = payment_link.get("short_url")
+        if not payment_url:
+            raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment")
+        return {
+            "status": "payment_pending",
+            "plan_id": payload.plan_id,
+            "billing_cycle": payload.billing_cycle,
+            "payment_url": payment_url,
+        }
 
 
 @router.post("/webhook/razorpay")

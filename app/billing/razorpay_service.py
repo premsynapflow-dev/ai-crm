@@ -44,7 +44,7 @@ def create_subscription(client_id, plan_id, billing_cycle="monthly"):
 
     if not razorpay_plan_id:
         logger.error("create_subscription failed: missing Razorpay plan_id for plan_id=%s billing_cycle=%s", plan_id, billing_cycle)
-        raise ValueError("invalid Razorpay plan" )
+        raise ValueError("Razorpay subscription plan is not configured")
 
     if not plan_rate:
         logger.error("create_subscription failed: invalid price for plan_id=%s billing_cycle=%s", plan_id, billing_cycle)

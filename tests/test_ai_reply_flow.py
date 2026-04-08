@@ -1,8 +1,9 @@
 import unittest
+import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from app.db.models import Complaint
+from app.db.models import AIReplyQueue, Complaint
 from app.intelligence.reply_decision import decide_reply_action
 from app.replies.send_reply import send_complaint_reply
 
@@ -19,6 +20,17 @@ class _FakeDB:
 
 
 class AIReplyFlowTests(unittest.TestCase):
+    def _attach_approved_reply(self, complaint):
+        complaint.id = complaint.id or uuid.uuid4()
+        complaint.client_id = complaint.client_id or uuid.uuid4()
+        complaint.reply_queue = AIReplyQueue(
+            complaint_id=complaint.id,
+            client_id=complaint.client_id,
+            generated_reply=complaint.ai_reply or "Approved reply",
+            confidence_score=0.9,
+            status="approved",
+        )
+
     def test_reply_decision_threshold(self):
         self.assertEqual(decide_reply_action(0.9), "auto_send_reply")
         self.assertEqual(decide_reply_action(0.85), "mark_for_agent_review")
@@ -34,8 +46,12 @@ class AIReplyFlowTests(unittest.TestCase):
             ai_reply="Here is the next step for your billing question.",
         )
         complaint.created_at = datetime.now(timezone.utc)
+        self._attach_approved_reply(complaint)
 
-        with patch("app.replies.send_reply.send_email", return_value=True):
+        with patch(
+            "app.replies.send_reply.send_reply_via_original_channel",
+            return_value={"sent": True, "channels": ["email"]},
+        ):
             result = send_complaint_reply(_FakeDB(), complaint)
 
         self.assertTrue(result["sent"])
@@ -53,8 +69,12 @@ class AIReplyFlowTests(unittest.TestCase):
             ai_reply="We have received your issue.",
         )
         complaint.created_at = datetime.now(timezone.utc)
+        self._attach_approved_reply(complaint)
 
-        with patch("app.replies.send_reply.settings.slack_webhook_url", ""), patch(
+        with patch(
+            "app.replies.send_reply.send_reply_via_original_channel",
+            return_value={"sent": False, "channels": []},
+        ), patch("app.replies.send_reply.settings.slack_webhook_url", ""), patch(
             "app.replies.send_reply.send_slack_alert", return_value=False
         ):
             result = send_complaint_reply(_FakeDB(), complaint, client=None)

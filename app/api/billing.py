@@ -96,9 +96,6 @@ def upgrade_plan(
             db.commit()
             db.refresh(client)
             plan_applied = True
-        except ValueError as exc:
-            logger.error("Invalid upgrade request for client=%s target_plan=%s reason=%s", client.id, payload.plan_id, exc)
-            raise HTTPException(status_code=400, detail=str(exc))
         except Exception:
             logger.exception(
                 "Razorpay subscription creation failed for client=%s target_plan=%s, attempting payment link fallback",

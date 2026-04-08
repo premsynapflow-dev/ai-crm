@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.billing import usage
-from app.onboarding.flows import apply_trial_plan
+from app.onboarding.flows import apply_signup_plan
 
 
 class _FakeSession:
@@ -50,18 +50,15 @@ class BillingUsageTests(unittest.TestCase):
         with patch("app.billing.usage._get_or_create_usage", return_value=(record, client)):
             self.assertEqual(usage.calculate_overage("client-1", db=object()), 300)
 
-    def test_apply_trial_plan_sets_trial_window(self):
+    def test_apply_signup_plan_sets_free_plan(self):
         client = SimpleNamespace(plan_id="", plan="", monthly_ticket_limit=0, trial_ends_at=None)
 
-        updated = apply_trial_plan(client)
+        updated = apply_signup_plan(client)
 
-        self.assertEqual(updated.plan_id, "starter")
-        self.assertEqual(updated.plan, "starter")
-        self.assertEqual(updated.monthly_ticket_limit, 500)
-        self.assertIsNotNone(updated.trial_ends_at)
-        delta = updated.trial_ends_at - datetime.now(timezone.utc)
-        self.assertGreater(delta, timedelta(days=29, hours=23))
-        self.assertLess(delta, timedelta(days=30, minutes=1))
+        self.assertEqual(updated.plan_id, "free")
+        self.assertEqual(updated.plan, "free")
+        self.assertEqual(updated.monthly_ticket_limit, 50)
+        self.assertIsNone(updated.trial_ends_at)
 
 
 if __name__ == "__main__":

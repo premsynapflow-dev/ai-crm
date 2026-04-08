@@ -15,6 +15,14 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 class RBIComplianceService:
     INTERNAL_OMBUDSMAN = "Internal Ombudsman"
 
@@ -55,7 +63,7 @@ class RBIComplianceService:
         3. System default (config.rbi_tat_default_days)
         """
         if complaint.tat_due_at:
-            return complaint.tat_due_at
+            return _as_aware_utc(complaint.tat_due_at)
         
         # Try to fetch client-specific TAT rule
         tat_days = None
@@ -67,16 +75,18 @@ class RBIComplianceService:
         if tat_days is None:
             tat_days = category.tat_days if category else self.settings.rbi_tat_default_days
         
-        created_at = complaint.created_at or _utcnow()
+        created_at = _as_aware_utc(complaint.created_at) or _utcnow()
         return created_at + timedelta(days=tat_days)
 
     def _calculate_tat_state(self, complaint: Complaint, tat_due_at: datetime | None) -> tuple[str, datetime | None, int]:
         if tat_due_at is None:
             return "not_applicable", None, 0
+        tat_due_at = _as_aware_utc(tat_due_at)
 
         if complaint.resolved_at:
-            if complaint.resolved_at > tat_due_at:
-                delta = complaint.resolved_at - tat_due_at
+            resolved_at = _as_aware_utc(complaint.resolved_at)
+            if resolved_at > tat_due_at:
+                delta = resolved_at - tat_due_at
                 return "breached", complaint.tat_breached_at or tat_due_at, int(delta.total_seconds() // 3600)
             return "resolved", complaint.tat_breached_at, 0
 

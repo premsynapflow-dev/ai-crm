@@ -32,3 +32,6 @@ def test_client_isolation(
         "isolation_working": True,
         "message": f"You can only access your own {my_complaints} complaints.",
     }
+
+
+test_client_isolation.__test__ = False

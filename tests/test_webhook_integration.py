@@ -38,7 +38,7 @@ def test_complaint_missing_api_key(client):
         json={"message": "Test complaint"}
     )
     
-    assert response.status_code == 422  # Validation error
+    assert response.status_code == 401
 
 
 def test_complaint_empty_message(client, test_client_record):

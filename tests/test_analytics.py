@@ -13,6 +13,8 @@ def test_analytics_overview_is_json_serializable(test_db, test_client_record):
         Complaint(
             id=uuid.uuid4(),
             client_id=test_client_record.id,
+            ticket_id="TKT-AN-001",
+            thread_id="TH-AN-001",
             summary="Issue 1",
             category="general",
             sentiment=0.1,
@@ -23,6 +25,8 @@ def test_analytics_overview_is_json_serializable(test_db, test_client_record):
         Complaint(
             id=uuid.uuid4(),
             client_id=test_client_record.id,
+            ticket_id="TKT-AN-002",
+            thread_id="TH-AN-002",
             summary="Issue 2",
             category="general",
             sentiment=0.2,

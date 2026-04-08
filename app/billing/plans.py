@@ -1,3 +1,11 @@
+import os
+
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+
 PLAN_ORDER = ["free", "starter", "pro", "max", "scale", "enterprise"]
 
 ALLOWED_UPGRADES = {
@@ -25,11 +33,20 @@ def _with_compat_aliases(plan_id: str, data: dict) -> dict:
     feature_flags = dict(plan.get("feature_flags", {}))
     feature_flags.pop("zapier", None)
     plan["feature_flags"] = feature_flags
-    plan["razorpay_plan_ids"] = {
-        "monthly": f"synapflow_{plan_id}_monthly",
-        "annual": f"synapflow_{plan_id}_annual",
-    } if plan_id in {"starter", "pro", "max", "scale"} else {}
+    plan["razorpay_plan_ids"] = _configured_razorpay_plan_ids(plan_id)
     return plan
+
+
+def _configured_razorpay_plan_ids(plan_id: str) -> dict[str, str]:
+    if plan_id not in {"starter", "pro", "max", "scale"}:
+        return {}
+
+    prefix = f"RAZORPAY_PLAN_{plan_id.upper()}"
+    plan_ids = {
+        "monthly": os.getenv(f"{prefix}_MONTHLY", "").strip(),
+        "annual": os.getenv(f"{prefix}_ANNUAL", "").strip(),
+    }
+    return {cycle: value for cycle, value in plan_ids.items() if value}
 
 
 def is_upgrade_allowed(current_plan: str | None, target_plan: str) -> bool:
@@ -350,6 +367,3 @@ if not scale_plan:
 
 if scale_plan.get("monthly_price") is None or scale_plan.get("annual_price") is None:
     raise AssertionError("Scale plan must include monthly_price and annual_price")
-
-if not scale_plan.get("razorpay_plan_ids") or "monthly" not in scale_plan.get("razorpay_plan_ids", {}):
-    raise AssertionError("Scale plan must include razorpay_plan_ids for monthly and annual")

@@ -6,6 +6,15 @@ from app.billing import razorpay_service
 
 
 class RazorpayServiceTests(unittest.TestCase):
+    def test_create_subscription_requires_configured_razorpay_plan_id(self):
+        original_plan_ids = razorpay_service.PLANS["starter"]["razorpay_plan_ids"]
+        razorpay_service.PLANS["starter"]["razorpay_plan_ids"] = {}
+        try:
+            with self.assertRaisesRegex(ValueError, "not configured"):
+                razorpay_service.create_subscription("client_123", "starter", "monthly")
+        finally:
+            razorpay_service.PLANS["starter"]["razorpay_plan_ids"] = original_plan_ids
+
     def test_verify_payment_accepts_valid_signature(self):
         original_secret = razorpay_service.settings.razorpay_key_secret
         razorpay_service.settings.razorpay_key_secret = "super-secret"

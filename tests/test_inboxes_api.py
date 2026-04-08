@@ -189,6 +189,7 @@ def test_inboxes_gmail_connect_derives_redirect_uri_from_app_base_url(monkeypatc
     monkeypatch.setattr(inbox_service.settings, "google_client_id", "google-client-id")
     monkeypatch.setattr(inbox_service.settings, "google_client_secret", "google-client-secret")
     monkeypatch.setattr(inbox_service.settings, "google_oauth_redirect_uri", "")
+    monkeypatch.setattr(inbox_service.settings, "google_redirect_uri", "")
     monkeypatch.setattr(inbox_service.settings, "google_inboxes_oauth_redirect_uri", "")
     monkeypatch.setattr(inbox_service.settings, "app_base_url", "http://testserver")
 
@@ -209,6 +210,7 @@ def test_integrations_gmail_connect_derives_redirect_uri_from_app_base_url(monke
     monkeypatch.setattr(gmail_integration.settings, "google_client_id", "google-client-id")
     monkeypatch.setattr(gmail_integration.settings, "google_client_secret", "google-client-secret")
     monkeypatch.setattr(gmail_integration.settings, "google_oauth_redirect_uri", "")
+    monkeypatch.setattr(gmail_integration.settings, "google_redirect_uri", "")
     monkeypatch.setattr(gmail_integration.settings, "google_integrations_oauth_redirect_uri", "")
     monkeypatch.setattr(gmail_integration.settings, "app_base_url", "http://testserver")
     monkeypatch.setattr(gmail_integration.settings, "gmail_pubsub_topic", "projects/test/topics/gmail")
@@ -228,6 +230,7 @@ def test_integrations_gmail_connect_reports_missing_pubsub_topic(monkeypatch, te
     monkeypatch.setattr(gmail_integration.settings, "google_client_id", "google-client-id")
     monkeypatch.setattr(gmail_integration.settings, "google_client_secret", "google-client-secret")
     monkeypatch.setattr(gmail_integration.settings, "google_oauth_redirect_uri", "")
+    monkeypatch.setattr(gmail_integration.settings, "google_redirect_uri", "")
     monkeypatch.setattr(gmail_integration.settings, "google_integrations_oauth_redirect_uri", "")
     monkeypatch.setattr(gmail_integration.settings, "app_base_url", "http://testserver")
     monkeypatch.setattr(gmail_integration.settings, "gmail_pubsub_topic", "")

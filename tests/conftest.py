@@ -50,6 +50,7 @@ def client(test_db):
     import app.billing.usage as billing_usage
     import app.middleware.audit as audit_middleware
     import app.middleware.feature_gate as feature_gate_middleware
+    import app.middleware.rate_limiter as rate_limiter_middleware
     import app.middleware.rls_context as rls_context_middleware
 
     original_usage_session_local = billing_usage.SessionLocal
@@ -77,10 +78,12 @@ def client(test_db):
     feature_gate_middleware.SessionLocal = TestingSessionLocal
     rls_context_middleware.SessionLocal = TestingSessionLocal
     feature_gate_middleware.FeatureGateMiddleware._resolve_client = safe_resolve_client
+    rate_limiter_middleware.rate_limiter.requests.clear()
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+    rate_limiter_middleware.rate_limiter.requests.clear()
     billing_usage.SessionLocal = original_usage_session_local
     audit_middleware.SessionLocal = original_audit_session_local
     feature_gate_middleware.SessionLocal = original_feature_gate_session_local

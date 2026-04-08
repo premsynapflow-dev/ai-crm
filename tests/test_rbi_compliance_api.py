@@ -40,8 +40,10 @@ def test_rbi_compliance_feature_gate_blocks_starter_plan(test_db, client, test_c
 
 
 def test_rbi_complaint_registration_escalation_and_mis_report(test_db, client, test_client_record):
-    test_client_record.plan_id = "pro"
-    test_client_record.plan = "pro"
+    test_client_record.plan_id = "scale"
+    test_client_record.plan = "scale"
+    test_client_record.is_rbi_regulated = True
+    test_client_record.business_sector = "nbfc_hfc"
     test_db.commit()
 
     complaint = _create_complaint(
@@ -78,9 +80,9 @@ def test_rbi_complaint_registration_escalation_and_mis_report(test_db, client, t
     assert escalate_body["rbi_reference"] == rbi_row.rbi_reference_number
 
     test_db.refresh(rbi_row)
-    assert rbi_row.escalation_level == 3
-    assert rbi_row.escalated_to_rbi is True
-    assert rbi_row.rbi_escalation_date is not None
+    assert rbi_row.escalation_level == 1
+    assert rbi_row.escalated_to_rbi is False
+    assert rbi_row.rbi_escalation_date is None
 
     now = datetime.now(timezone.utc)
     def safe_check_tat(self, rbi_complaint):

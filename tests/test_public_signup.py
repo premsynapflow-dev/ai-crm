@@ -70,16 +70,16 @@ class PublicSignupTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def _trial_plan(self, client):
-        client.plan_id = "starter"
-        client.plan = "starter"
-        client.monthly_ticket_limit = 500
+        client.plan_id = "free"
+        client.plan = "free"
+        client.monthly_ticket_limit = 50
         return client
 
     def test_signup_accepts_json(self):
         fake_db = _FakeDB()
         with patch("app.api.public.SessionLocal", return_value=fake_db), patch(
             "app.api.public.hash_password", return_value="hashed"
-        ), patch("app.api.public.apply_trial_plan", side_effect=self._trial_plan), patch(
+        ), patch("app.api.public.apply_signup_plan", side_effect=self._trial_plan), patch(
             "app.api.public.enqueue_welcome_sequence"
         ):
             response = self.client.post(
@@ -88,6 +88,8 @@ class PublicSignupTests(unittest.TestCase):
                     "company_name": "Acme",
                     "email": "founder@example.com",
                     "password": "strongpass123",
+                    "phone_number": "+919876543210",
+                    "business_sector": "nbfc_hfc",
                 },
             )
         self.assertEqual(response.status_code, 200)
@@ -98,7 +100,7 @@ class PublicSignupTests(unittest.TestCase):
         fake_db = _FakeDB()
         with patch("app.api.public.SessionLocal", return_value=fake_db), patch(
             "app.api.public.hash_password", return_value="hashed"
-        ), patch("app.api.public.apply_trial_plan", side_effect=self._trial_plan), patch(
+        ), patch("app.api.public.apply_signup_plan", side_effect=self._trial_plan), patch(
             "app.api.public.enqueue_welcome_sequence"
         ):
             response = self.client.post(
@@ -107,6 +109,8 @@ class PublicSignupTests(unittest.TestCase):
                     "company_name": "Acme",
                     "email": "founder@example.com",
                     "password": "strongpass123",
+                    "phone_number": "+919876543210",
+                    "business_sector": "nbfc_hfc",
                 },
             )
         self.assertEqual(response.status_code, 200)

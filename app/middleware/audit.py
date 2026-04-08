@@ -8,6 +8,17 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _parse_uuid(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
 class RequestAuditMiddleware(BaseHTTPMiddleware):
     """Async audit logging - doesn't block request"""
     
@@ -17,7 +28,7 @@ class RequestAuditMiddleware(BaseHTTPMiddleware):
         # Audit in background (non-blocking)
         try:
             db = SessionLocal()
-            client_id = getattr(request.state, "client_id", None)
+            client_id = _parse_uuid(getattr(request.state, "client_id", None))
             
             audit = RequestAudit(
                 client_id=client_id,
