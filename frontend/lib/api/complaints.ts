@@ -87,6 +87,7 @@ interface ComplaintApiPayload {
   ai_confidence?: number
   ai_reply?: string
   ticket_id?: string
+  ticket_number?: string
   resolution_status?: string
   first_response_at?: string | null
   resolved_at?: string | null
@@ -154,7 +155,7 @@ function normalizeComplaint(complaint: ComplaintApiPayload): ComplaintDetail {
     createdAt: complaint.created_at ?? new Date().toISOString(),
     updatedAt: complaint.updated_at ?? complaint.created_at ?? new Date().toISOString(),
     suggestedResponse: complaint.ai_reply,
-    ticketId: complaint.ticket_id,
+    ticketId: complaint.ticket_id ?? complaint.ticket_number,
     resolutionStatus: complaint.resolution_status,
     firstResponseAt: complaint.first_response_at ?? null,
     resolvedAt: complaint.resolved_at ?? null,

@@ -100,7 +100,7 @@ function MessageBubble({ message }: { message: ComplaintThreadMessage }) {
     <div className={cn('flex', isOutbound ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[88%] rounded-2xl border px-4 py-3 shadow-sm',
+          'max-w-[min(920px,84%)] rounded-2xl border px-4 py-3 shadow-sm',
           isOutbound
             ? 'border-sky-200 bg-sky-50 text-slate-800'
             : 'border-slate-200 bg-white text-slate-900',
@@ -113,7 +113,7 @@ function MessageBubble({ message }: { message: ComplaintThreadMessage }) {
           <span className="font-medium text-slate-700">{message.senderName}</span>
           <span>{formatDateTime(message.timestamp)}</span>
         </div>
-        <div className="whitespace-pre-wrap text-sm leading-6">{message.messageText || 'No message body available.'}</div>
+        <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.messageText || 'No message body available.'}</div>
         {attachmentNames.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {attachmentNames.map((filename) => (
@@ -301,15 +301,17 @@ export function ComplaintDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-6xl overflow-hidden p-0">
-        <DialogHeader className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_32%),linear-gradient(135deg,_rgba(255,255,255,0.98),_rgba(241,245,249,0.94))] px-6 py-5">
+      <DialogContent className="max-h-[95vh] overflow-hidden p-0 sm:max-w-[calc(100vw-2.5rem)] xl:max-w-[1500px] 2xl:max-w-[1650px]">
+        <DialogHeader className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_32%),linear-gradient(135deg,_rgba(255,255,255,0.98),_rgba(241,245,249,0.94))] px-6 py-5 pr-16 xl:px-8 xl:py-6">
           <DialogTitle className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-xs uppercase tracking-[0.18em] text-slate-500">
-                {currentComplaint.ticketId ?? currentComplaint.id}
+                {currentComplaint.ticketId ?? 'Ticket pending'}
               </span>
               <Separator orientation="vertical" className="hidden h-4 sm:block" />
-              <span className="text-xl text-slate-950">{currentComplaint.subject}</span>
+              <span className="max-w-[min(100%,1000px)] break-words text-[clamp(1.35rem,2vw,2.3rem)] leading-[1.15] text-slate-950">
+                {currentComplaint.subject}
+              </span>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge className={cn('capitalize', statusColors[currentComplaint.status])}>
@@ -328,9 +330,9 @@ export function ComplaintDetailModal({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="grid h-[calc(92vh-126px)] gap-0 xl:grid-cols-[1.45fr_0.95fr]">
+        <div className="grid h-[calc(95vh-128px)] gap-0 xl:grid-cols-[minmax(0,1.7fr)_minmax(420px,0.95fr)] 2xl:grid-cols-[minmax(0,1.9fr)_minmax(480px,560px)]">
           <div className="flex min-h-0 flex-col border-b border-slate-200 xl:border-b-0 xl:border-r">
-            <div className="flex flex-wrap gap-4 px-6 py-4">
+            <div className="flex flex-wrap gap-4 px-6 py-4 xl:px-8">
               <div className="flex items-center gap-2 text-sm text-slate-700">
                 <User className="h-4 w-4 text-slate-500" />
                 <span className="font-medium">{currentComplaint.customerName}</span>
@@ -345,7 +347,7 @@ export function ComplaintDetailModal({
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col px-6 pb-6">
+            <div className="flex min-h-0 flex-1 flex-col px-6 pb-6 xl:px-8 xl:pb-8">
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Conversation thread</p>
@@ -365,7 +367,7 @@ export function ComplaintDetailModal({
                 </div>
               ) : (
                 <ScrollArea className="min-h-0 flex-1 rounded-3xl border border-slate-200 bg-slate-50/80">
-                  <div className="space-y-4 p-4">
+                  <div className="space-y-5 p-4 xl:p-6">
                     {threadMessages.map((message) => (
                       <MessageBubble key={message.id} message={message} />
                     ))}
@@ -375,7 +377,7 @@ export function ComplaintDetailModal({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-6 py-6">
+          <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-6 py-6 xl:px-8 xl:py-8">
             <Card className="gap-4 border-slate-200 bg-white/95 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.35)]">
               <CardHeader className="gap-1">
                 <CardTitle className="flex items-center gap-2 text-base">

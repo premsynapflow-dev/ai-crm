@@ -281,7 +281,7 @@ export function ComplaintsInbox() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search by ID, customer, or subject..."
+                  placeholder="Search by Ticket ID, customer, or subject..."
                   value={searchQuery}
                   onChange={(event) => {
                     setSearchQuery(event.target.value)
@@ -416,7 +416,7 @@ export function ComplaintsInbox() {
                       onCheckedChange={handleSelectAll}
                     />
                   </TableHead>
-                  <TableHead>ID</TableHead>
+                  <TableHead>Ticket ID</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Subject</TableHead>
@@ -454,10 +454,12 @@ export function ComplaintsInbox() {
                           onCheckedChange={(checked) => handleSelectOne(complaint.id, checked as boolean)}
                         />
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{complaint.id}</TableCell>
+                      <TableCell className="whitespace-nowrap font-mono text-sm">
+                        {complaint.ticketId ?? 'Ticket pending'}
+                      </TableCell>
                       <TableCell className="font-medium">{complaint.customerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{complaint.customerEmail || '-'}</TableCell>
-                      <TableCell className="max-w-[180px] truncate">{complaint.subject}</TableCell>
+                      <TableCell className="max-w-[260px] truncate">{complaint.subject}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
                           {complaint.category}

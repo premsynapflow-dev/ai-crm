@@ -35,6 +35,7 @@ from app.db.models import (
     TicketAssignment,
     TicketComment,
     TicketStateTransition,
+    UnifiedMessage,
 )
 from app.db.session import get_db
 from app.middleware.feature_gate import ensure_feature_access
@@ -145,18 +146,110 @@ def _customer_name(email: str | None) -> str:
     return "Customer"
 
 
-def _serialize_complaint(complaint: Complaint) -> dict[str, object]:
+def _header_subject(raw_payload: dict[str, object] | None) -> str | None:
+    headers = (raw_payload or {}).get("headers")
+    if not isinstance(headers, dict):
+        return None
+
+    for key, value in headers.items():
+        if str(key).lower() != "subject":
+            continue
+        subject = " ".join(str(value or "").split()).strip()
+        return subject or None
+    return None
+
+
+def _message_subject(message: UnifiedMessage) -> str | None:
+    raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    subject = _header_subject(raw_payload)
+    if subject:
+        return subject
+
+    if (message.channel or "").lower() not in {"email", "gmail"}:
+        return None
+
+    for line in (message.message_text or "").splitlines():
+        normalized = " ".join(line.split()).strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _display_subject_for_messages(messages: list[UnifiedMessage], fallback: str | None) -> str:
+    for message in messages:
+        if message.direction != "inbound":
+            continue
+        subject = _message_subject(message)
+        if subject:
+            return subject
+
+    normalized_fallback = " ".join(str(fallback or "").split()).strip()
+    return normalized_fallback or "Complaint"
+
+
+def _thread_subject_map(db: Session, complaints: list[Complaint]) -> dict[str, str]:
+    if not complaints:
+        return {}
+
+    client_id = complaints[0].client_id
+    thread_ids_by_source: dict[str, set[str]] = {}
+    for complaint in complaints:
+        source = (complaint.source or "").strip()
+        thread_id = (complaint.thread_id or "").strip()
+        if not source or not thread_id:
+            continue
+        thread_ids_by_source.setdefault(source, set()).add(thread_id)
+
+    if not thread_ids_by_source:
+        return {}
+
+    subject_by_thread: dict[tuple[str, str], str] = {}
+    for source, thread_ids in thread_ids_by_source.items():
+        messages = (
+            db.query(UnifiedMessage)
+            .filter(
+                UnifiedMessage.client_id == client_id,
+                UnifiedMessage.channel == source,
+                UnifiedMessage.external_thread_id.in_(sorted(thread_ids)),
+                UnifiedMessage.direction == "inbound",
+            )
+            .order_by(UnifiedMessage.timestamp.asc(), UnifiedMessage.created_at.asc())
+            .all()
+        )
+        for message in messages:
+            thread_id = (message.external_thread_id or "").strip()
+            thread_key = (source, thread_id)
+            if not thread_id or thread_key in subject_by_thread:
+                continue
+            subject = _message_subject(message)
+            if subject:
+                subject_by_thread[thread_key] = subject
+
+    return {
+        str(complaint.id): subject_by_thread[(complaint.source or "", complaint.thread_id or "")]
+        for complaint in complaints
+        if (complaint.source or "", complaint.thread_id or "") in subject_by_thread
+    }
+
+
+def _original_subject_for_complaint(db: Session, complaint: Complaint) -> str:
+    return _display_subject_for_messages(get_thread_messages(db, complaint), complaint.summary)
+
+
+def _serialize_complaint(complaint: Complaint, *, subject_override: str | None = None) -> dict[str, object]:
     created_at = complaint.created_at.isoformat() if complaint.created_at else None
     updated_at = complaint.resolved_at.isoformat() if complaint.resolved_at else created_at
     confidence = float(complaint.ai_reply_confidence or complaint.confidence or 0.0) * 100
+    subject_value = " ".join(str(subject_override or complaint.summary or "").split()).strip() or "Complaint"
+    complaint_text = " ".join(str(complaint.summary or "").split()).strip() or subject_value
 
     return {
         "id": str(complaint.id),
         "customer_name": _customer_name(complaint.customer_email),
         "customer_email": complaint.customer_email or "",
         "customer_phone": complaint.customer_phone or "",
-        "subject": complaint.summary,
-        "complaint_text": complaint.summary,
+        "subject": subject_value,
+        "complaint_text": complaint_text,
         "category": complaint.category,
         "priority": _priority_label(complaint.priority),
         "sentiment": _sentiment_label(complaint.sentiment),
@@ -189,8 +282,11 @@ def _serialize_complaint(complaint: Complaint) -> dict[str, object]:
 
 
 def _serialize_complaint_detail(db: Session, complaint: Complaint) -> dict[str, object]:
-    payload = _serialize_complaint(complaint)
     thread_messages = get_thread_messages(db, complaint)
+    payload = _serialize_complaint(
+        complaint,
+        subject_override=_display_subject_for_messages(thread_messages, complaint.summary),
+    )
     conversation_summary = build_conversation_summary(complaint, thread_messages)
     conversation_id = None
     for message in thread_messages:
@@ -350,7 +446,16 @@ def list_complaints(
     query = query.order_by(Complaint.created_at.desc())
     items = query.offset((page - 1) * page_size).limit(page_size).all()
     total = query.count()
-    return {"items": [_serialize_complaint(item) for item in items], "total": total, "page": page, "page_size": page_size}
+    subject_map = _thread_subject_map(db, items)
+    return {
+        "items": [
+            _serialize_complaint(item, subject_override=subject_map.get(str(item.id)))
+            for item in items
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @router.get("/{complaint_id}")
@@ -503,7 +608,7 @@ def update_complaint(
     )
     db.commit()
     db.refresh(complaint)
-    return _serialize_complaint(complaint)
+    return _serialize_complaint(complaint, subject_override=_original_subject_for_complaint(db, complaint))
 
 
 @router.post("/{complaint_id}/reply")
@@ -682,7 +787,7 @@ def escalate_complaint(
     )
     db.commit()
     db.refresh(complaint)
-    return _serialize_complaint(complaint)
+    return _serialize_complaint(complaint, subject_override=_original_subject_for_complaint(db, complaint))
 
 
 @router.delete("/{complaint_id}")

@@ -198,7 +198,7 @@ def test_get_complaint_returns_thread_and_summary(test_db, client, test_client_r
     complaint = Complaint(
         id=complaint_id,
         client_id=test_client_record.id,
-        summary="Customer shared an order ID after the first reply",
+        summary="Re: Shipment delay for order ORD-445566",
         category="support",
         sentiment=0.0,
         priority=2,
@@ -222,7 +222,11 @@ def test_get_complaint_returns_thread_and_summary(test_db, client, test_client_r
         timestamp=datetime.now(timezone.utc),
         direction="inbound",
         status="processed",
-        raw_payload={"complaint_id": str(complaint_id), "conversation_id": str(uuid.uuid4())},
+        raw_payload={
+            "complaint_id": str(complaint_id),
+            "conversation_id": str(uuid.uuid4()),
+            "headers": {"Subject": "Shipment delay for order ORD-445566"},
+        },
     )
     follow_up_message = UnifiedMessage(
         id=uuid.uuid4(),
@@ -237,7 +241,11 @@ def test_get_complaint_returns_thread_and_summary(test_db, client, test_client_r
         timestamp=datetime.now(timezone.utc),
         direction="inbound",
         status="processed",
-        raw_payload={"complaint_id": str(complaint_id), "conversation_id": str(uuid.uuid4())},
+        raw_payload={
+            "complaint_id": str(complaint_id),
+            "conversation_id": str(uuid.uuid4()),
+            "headers": {"Subject": "Re: Shipment delay for order ORD-445566"},
+        },
     )
     test_db.add_all([complaint, inbound_message, follow_up_message])
     test_db.commit()
@@ -247,6 +255,71 @@ def test_get_complaint_returns_thread_and_summary(test_db, client, test_client_r
     assert response.status_code == 200
     payload = response.json()
     assert payload["thread_id"] == "<root-message@example.com>"
+    assert payload["subject"] == "Shipment delay for order ORD-445566"
     assert len(payload["thread_messages"]) == 2
     assert payload["conversation_summary"]["message_count"] == 2
     assert payload["conversation_summary"]["attachments"] == ["order-details.pdf"]
+
+
+def test_list_complaints_prefers_original_thread_subject(test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+    complaint_id = uuid.uuid4()
+    complaint = Complaint(
+        id=complaint_id,
+        client_id=test_client_record.id,
+        summary="Re: Order ID for delayed shipment",
+        category="support",
+        sentiment=0.0,
+        priority=2,
+        source="email",
+        customer_email="customer@example.com",
+        ticket_id="TKT-LIST-1",
+        ticket_number="TKT-LIST-1",
+        thread_id="<ticket-list-root@example.com>",
+        created_at=datetime.now(timezone.utc),
+    )
+    first_message = UnifiedMessage(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        channel="email",
+        external_message_id="<ticket-list-root@example.com>",
+        external_thread_id="<ticket-list-root@example.com>",
+        sender_id="customer@example.com",
+        sender_name="Customer",
+        message_text="Original order delay body",
+        attachments=[],
+        timestamp=datetime.now(timezone.utc),
+        direction="inbound",
+        status="processed",
+        raw_payload={
+            "complaint_id": str(complaint_id),
+            "headers": {"Subject": "Original delayed shipment complaint"},
+        },
+    )
+    follow_up_message = UnifiedMessage(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        channel="email",
+        external_message_id="<ticket-list-followup@example.com>",
+        external_thread_id="<ticket-list-root@example.com>",
+        sender_id="customer@example.com",
+        sender_name="Customer",
+        message_text="Here is the order ID you requested.",
+        attachments=[],
+        timestamp=datetime.now(timezone.utc) + timedelta(minutes=5),
+        direction="inbound",
+        status="processed",
+        raw_payload={
+            "complaint_id": str(complaint_id),
+            "headers": {"Subject": "Re: Original delayed shipment complaint"},
+        },
+    )
+    test_db.add_all([complaint, first_message, follow_up_message])
+    test_db.commit()
+
+    response = client.get("/api/v1/complaints", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["ticket_id"] == "TKT-LIST-1"
+    assert payload["items"][0]["subject"] == "Original delayed shipment complaint"

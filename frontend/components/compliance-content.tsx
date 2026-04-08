@@ -235,7 +235,7 @@ export function ComplianceContent() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-semibold text-slate-900">{complaint.ticketId || complaint.id}</p>
+                          <p className="font-semibold text-slate-900">{complaint.ticketId || 'Ticket pending'}</p>
                           <p className="text-sm text-muted-foreground">{complaint.subject}</p>
                         </div>
                         <Badge variant="outline">{complaint.category}</Badge>
