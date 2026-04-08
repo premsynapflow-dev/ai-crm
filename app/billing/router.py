@@ -130,6 +130,7 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
                 db_client.plan_id = payload.plan_id
                 db_client.plan = payload.plan_id
                 db_client.monthly_ticket_limit = plan.get("tickets_per_month", db_client.monthly_ticket_limit)
+                db_client.trial_ends_at = None
                 db.commit()
                 plan_applied = True
             except Exception:

@@ -2,6 +2,7 @@ PLAN_ORDER = ["free", "starter", "pro", "max", "scale", "enterprise"]
 
 ALLOWED_UPGRADES = {
     "free": ["starter", "pro", "max", "scale", "enterprise"],
+    "trial": ["starter", "pro", "max", "scale", "enterprise"],
     "starter": ["pro", "max", "scale"],
     "pro": ["max", "scale"],
     "max": ["scale"],

@@ -1,5 +1,3 @@
-from datetime import datetime, timedelta, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -94,10 +92,7 @@ def upgrade_plan(
             client.plan_id = payload.plan_id
             client.plan = payload.plan_id
             client.monthly_ticket_limit = plan.get("tickets_per_month", client.monthly_ticket_limit)
-            if payload.plan_id == "starter" and plan.get("trial_days"):
-                client.trial_ends_at = client.trial_ends_at or (datetime.now(timezone.utc) + timedelta(days=plan["trial_days"]))
-            else:
-                client.trial_ends_at = None
+            client.trial_ends_at = None
             db.commit()
             db.refresh(client)
             plan_applied = True

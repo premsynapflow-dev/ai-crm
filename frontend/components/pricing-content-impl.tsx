@@ -50,6 +50,17 @@ function formatLimit(value: number) {
   return value >= 999999 ? 'Unlimited' : value.toLocaleString('en-IN')
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    return String((detail as Record<string, unknown>).message)
+  }
+  return fallback
+}
+
 export function PricingContentImpl() {
   const { user } = useAuth()
   const [plans, setPlans] = useState<Record<string, Plan>>({})
@@ -122,8 +133,8 @@ export function PricingContentImpl() {
       }
       setCurrentPlanId(planId)
       toast.success(`Plan updated to ${plans[planId]?.name ?? planId}`)
-    } catch {
-      toast.error('Unable to start upgrade flow')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Unable to start upgrade flow'))
     } finally {
       setIsUpgrading(null)
     }
