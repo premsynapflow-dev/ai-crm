@@ -17,16 +17,27 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _process_messages(db: Session, messages: list[IncomingMessage]) -> tuple[int, int]:
+def _process_messages(db: Session, messages: list[IncomingMessage]) -> tuple[int, int, int]:
     processed = 0
     duplicates = 0
+    errors = 0
     for message in messages:
-        result = process_incoming_message(db, message)
-        if result.get("status") == "duplicate":
-            duplicates += 1
-        else:
-            processed += 1
-    return processed, duplicates
+        try:
+            result = process_incoming_message(db, message)
+            if result.get("status") == "duplicate":
+                duplicates += 1
+            else:
+                processed += 1
+            db.commit()
+        except Exception:
+            db.rollback()
+            errors += 1
+            logger.exception(
+                "Inbox message processing failed channel=%s external_message_id=%s",
+                message.channel,
+                message.external_message_id,
+            )
+    return processed, duplicates, errors
 
 
 def poll_inbox(db: Session, inbox: Inbox, *, max_results: int = 20) -> dict[str, Any]:
@@ -58,15 +69,16 @@ def poll_inbox(db: Session, inbox: Inbox, *, max_results: int = 20) -> dict[str,
         }
 
     logger.info("Fetched %s %s messages for inbox=%s", len(messages), provider, inbox.id)
-    processed, duplicates = _process_messages(db, messages)
+    processed, duplicates, errors = _process_messages(db, messages)
     inbox.last_synced_at = _utcnow()
     logger.info(
-        "Inbox poll complete inbox=%s provider=%s fetched=%s processed=%s duplicates=%s",
+        "Inbox poll complete inbox=%s provider=%s fetched=%s processed=%s duplicates=%s errors=%s",
         inbox.id,
         provider,
         len(messages),
         processed,
         duplicates,
+        errors,
     )
     return {
         "inbox_id": str(inbox.id),
@@ -74,6 +86,7 @@ def poll_inbox(db: Session, inbox: Inbox, *, max_results: int = 20) -> dict[str,
         "fetched": len(messages),
         "processed": processed,
         "duplicates": duplicates,
+        "errors": errors,
     }
 
 
@@ -107,6 +120,7 @@ def poll_all_inboxes(*, max_results: int = 20) -> dict[str, int]:
                 totals["fetched"] += int(result["fetched"])
                 totals["processed"] += int(result["processed"])
                 totals["duplicates"] += int(result["duplicates"])
+                totals["errors"] += int(result.get("errors", 0))
                 db.commit()
             except Exception as exc:
                 db.rollback()

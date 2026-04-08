@@ -2,7 +2,7 @@
 Build custom AI prompts from client templates
 """
 
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 
 # Default prompt configuration
@@ -116,6 +116,14 @@ Return exactly this structure:
     return prompt
 
 
+def _history_item_summary(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("summary", "") or "").strip()
+    if isinstance(item, str):
+        return item.strip()
+    return str(getattr(item, "summary", "") or "").strip()
+
+
 def build_reply_prompt(complaint_summary: str, customer_history: list, config: Optional[Dict] = None) -> str:
     """Build reply generation prompt from template
 
@@ -149,9 +157,11 @@ def build_reply_prompt(complaint_summary: str, customer_history: list, config: O
     # History context
     history_text = ""
     if customer_history:
+        history_summaries = [_history_item_summary(item) for item in customer_history[-3:]]
         history_text = "Previous interactions:\n"
-        for item in customer_history[-3:]:
-            history_text += f"- {item.get('summary', '')}\n"
+        for summary in history_summaries:
+            if summary:
+                history_text += f"- {summary}\n"
 
     # Signature
     signature = reply_guidelines.get("signature", "Best regards,\nSupport Team")
