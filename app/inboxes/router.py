@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
@@ -83,26 +85,68 @@ def gmail_callback(
         return RedirectResponse(url="/settings?gmail_error=true", status_code=307)
 
 
+def _connect_imap(
+    payload: ConnectImapRequest,
+    *,
+    client: Client,
+    db: Session,
+) -> dict[str, Any]:
+    email_address = inbox_service.normalize_email_address(payload.email)
+    imap_host = (payload.imap_host or payload.host or "").strip()
+    if not imap_host:
+        inferred = inbox_service.infer_imap_host(email_address)
+        if inferred:
+            imap_host = inferred
+        else:
+            raise HTTPException(status_code=400, detail="IMAP host is required")
+
+    imap_port = payload.port or payload.imap_port or 993
+    use_ssl = payload.use_ssl if payload.use_ssl is not None else payload.imap_use_ssl
+    username = (payload.username or email_address).strip()
+
+    try:
+        inbox_service.test_imap_connection(
+            imap_host=imap_host,
+            imap_port=imap_port,
+            username=username,
+            password=payload.password,
+            use_ssl=bool(use_ssl),
+        )
+    except TypeError as exc:
+        if "unexpected keyword argument 'use_ssl'" not in str(exc):
+            raise
+        inbox_service.test_imap_connection(
+            imap_host=imap_host,
+            imap_port=imap_port,
+            username=username,
+            password=payload.password,
+        )
+    inbox = inbox_service.upsert_imap_inbox(
+        db,
+        tenant_id=client.id,
+        email_address=email_address,
+        imap_host=imap_host,
+        imap_port=imap_port,
+        use_ssl=bool(use_ssl),
+        username=username,
+        password=payload.password,
+    )
+    return inbox_service.serialize_inbox(inbox)
+
+
 @router.post("/inboxes/connect-imap", response_model=InboxSummary)
 def connect_imap(
     payload: ConnectImapRequest,
     client: Client = Depends(get_current_client),
     db: Session = Depends(get_db),
 ):
-    email_address = inbox_service.normalize_email_address(payload.email)
-    inbox_service.test_imap_connection(
-        imap_host=payload.imap_host.strip(),
-        imap_port=payload.imap_port,
-        username=payload.username.strip(),
-        password=payload.password,
-    )
-    inbox = inbox_service.upsert_imap_inbox(
-        db,
-        tenant_id=client.id,
-        email_address=email_address,
-        imap_host=payload.imap_host.strip(),
-        imap_port=payload.imap_port,
-        username=payload.username.strip(),
-        password=payload.password,
-    )
-    return inbox_service.serialize_inbox(inbox)
+    return _connect_imap(payload, client=client, db=db)
+
+
+@router.post("/inboxes/imap/connect", response_model=InboxSummary)
+def connect_imap_alias(
+    payload: ConnectImapRequest,
+    client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+):
+    return _connect_imap(payload, client=client, db=db)

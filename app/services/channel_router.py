@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ChannelConnection, Client, Complaint, UnifiedMessage
 from app.db.session import SessionLocal
+from app.inboxes.models import Inbox
 from app.services.event_logger import log_event
 from app.services.message_events import log_message_event
 from app.services.retry_service import handle_failed_send
@@ -43,14 +44,36 @@ def _latest_inbound_for_complaint(db: Session, complaint: Complaint) -> UnifiedM
     return query.filter(UnifiedMessage.sender_id == sender_id).first()
 
 
-def _resolve_connection(db: Session, inbound_message: UnifiedMessage | None, complaint: Complaint) -> ChannelConnection | None:
+def _resolve_connection(db: Session, inbound_message: UnifiedMessage | None, complaint: Complaint) -> ChannelConnection | Inbox | None:
     connection_id = None
+    inbox_id = None
+    account_identifier = None
     if inbound_message and isinstance(inbound_message.raw_payload, dict):
         connection_id = inbound_message.raw_payload.get("connection_id")
+        inbox_id = inbound_message.raw_payload.get("inbox_id")
+        account_identifier = inbound_message.raw_payload.get("account_identifier")
+    if inbox_id:
+        inbox = db.query(Inbox).filter(Inbox.id == inbox_id, Inbox.is_active == True).first()
+        if inbox is not None:
+            return inbox
     if connection_id:
         return db.query(ChannelConnection).filter(ChannelConnection.id == connection_id).first()
 
-    account_identifier = complaint.customer_email if complaint.source in {"gmail", "email"} else complaint.customer_phone
+    if complaint.source == "gmail":
+        inbox_query = db.query(Inbox).filter(
+            Inbox.tenant_id == complaint.client_id,
+            Inbox.provider_type == "gmail",
+            Inbox.is_active == True,
+        )
+        if account_identifier:
+            inbox = inbox_query.filter(Inbox.email_address == account_identifier).first()
+            if inbox is not None:
+                return inbox
+        inbox = inbox_query.order_by(Inbox.created_at.desc()).first()
+        if inbox is not None:
+            return inbox
+
+    account_identifier = account_identifier or (complaint.customer_email if complaint.source in {"gmail", "email"} else complaint.customer_phone)
     channel_type = complaint.source if complaint.source in {"gmail", "whatsapp"} else "email"
     query = db.query(ChannelConnection).filter(
         ChannelConnection.client_id == complaint.client_id,
@@ -242,10 +265,10 @@ def send_reply_via_original_channel(
             outbound_message=outbound_message,
             external_message_id=external_message_id,
             external_thread_id=external_thread_id,
-            sender_id=connection.account_identifier,
+            sender_id=connection.email_address if isinstance(connection, Inbox) else connection.account_identifier,
             sender_name=client.name if client else "SynapFlow",
             raw_payload={
-                "connection_id": str(connection.id),
+                "inbox_id" if isinstance(connection, Inbox) else "connection_id": str(connection.id),
                 **provider_payload,
             },
         )

@@ -20,7 +20,8 @@ from app.auth import get_current_client
 from app.config import get_settings
 from app.db.models import ChannelConnection, Client
 from app.db.session import get_db
-from app.utils.crypto import decrypt_secret, encrypt_secret
+from app.inboxes.models import Inbox
+from app.utils.crypto import decrypt_secret
 from app.utils.logging import get_logger
 from app.utils.webhook_security import verify_webhook_signature
 
@@ -177,20 +178,35 @@ def connect_email_integration(
     else:
         if not all([payload.imap_host, payload.imap_username, payload.imap_password]):
             raise HTTPException(status_code=400, detail="IMAP host, username, and password are required")
-        account_identifier = payload.account_identifier or payload.imap_username
-        metadata = {
+        from app.inboxes import service as inbox_service
+
+        inbox = inbox_service.upsert_imap_inbox(
+            db,
+            tenant_id=client.id,
+            email_address=inbox_service.normalize_email_address(payload.account_identifier or payload.imap_username or ""),
+            imap_host=payload.imap_host.strip(),
+            imap_port=payload.imap_port,
+            use_ssl=payload.imap_port == 993,
+            username=payload.imap_username.strip(),
+            password=payload.imap_password,
+        )
+        inbox.metadata_json = {
+            **(inbox.metadata_json or {}),
             "mode": "imap",
             "display_name": payload.display_name or client.name,
-            "imap_host": payload.imap_host,
-            "imap_port": payload.imap_port,
-            "imap_username": payload.imap_username,
             "smtp_host": payload.smtp_host,
             "smtp_port": payload.smtp_port,
             "smtp_username": payload.smtp_username,
         }
-        access_token = encrypt_secret(payload.imap_password)
-        refresh_token = encrypt_secret(payload.smtp_password)
-        token_expiry = None
+        db.commit()
+        db.refresh(inbox)
+        return {
+            "connection_id": str(inbox.id),
+            "channel_type": "email",
+            "account_identifier": inbox.email_address,
+            "status": "active" if inbox.is_active else "inactive",
+            "metadata": {"provider_type": "imap", "inbox_id": str(inbox.id), **(inbox.metadata_json or {})},
+        }
 
     connection = (
         db.query(ChannelConnection)
@@ -232,11 +248,14 @@ def list_integrations(
 ) -> list[dict[str, Any]]:
     connections = (
         db.query(ChannelConnection)
-        .filter(ChannelConnection.client_id == client.id)
+        .filter(
+            ChannelConnection.client_id == client.id,
+            ChannelConnection.channel_type != "gmail",
+        )
         .order_by(ChannelConnection.channel_type.asc(), ChannelConnection.created_at.desc())
         .all()
     )
-    return [
+    rows = [
         {
             "id": str(connection.id),
             "channel": connection.channel_type,
@@ -246,7 +265,33 @@ def list_integrations(
             "metadata": connection.metadata_json or {},
         }
         for connection in connections
+        if not (connection.channel_type == "email" and (connection.metadata_json or {}).get("mode") == "imap")
     ]
+    inboxes = (
+        db.query(Inbox)
+        .filter(
+            Inbox.tenant_id == client.id,
+            Inbox.provider_type.in_(["gmail", "imap"]),
+        )
+        .order_by(Inbox.created_at.desc())
+        .all()
+    )
+    rows.extend(
+        {
+            "id": str(inbox.id),
+            "channel": "gmail" if inbox.provider_type == "gmail" else "email",
+            "status": "active" if inbox.is_active else "inactive",
+            "account_identifier": inbox.email_address,
+            "created_at": inbox.created_at.isoformat() if inbox.created_at else None,
+            "metadata": {
+                **(inbox.metadata_json or {}),
+                "provider_type": inbox.provider_type,
+                "inbox_id": str(inbox.id),
+            },
+        }
+        for inbox in inboxes
+    )
+    return rows
 
 
 @router.post("/webhooks/email/forwarded")

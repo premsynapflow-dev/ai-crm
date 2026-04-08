@@ -4,6 +4,7 @@ from typing import Dict
 
 from app.db.models import ChannelConnection, JobQueue, Complaint, Client
 from app.db.session import SessionLocal
+from app.inboxes.models import Inbox
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
 from app.billing.plans import PLANS
@@ -94,25 +95,110 @@ def process_send_slack_job(payload: Dict):
     )
 
 
+def _legacy_connection_to_inbox(db, connection: ChannelConnection) -> Inbox | None:
+    metadata = connection.metadata_json or {}
+    if connection.channel_type == "gmail":
+        email_address = (connection.account_identifier or metadata.get("email_address") or "").strip()
+        if not email_address:
+            return None
+        provider_type = "gmail"
+    elif connection.channel_type == "email" and metadata.get("mode") == "imap":
+        email_address = (
+            metadata.get("email_address")
+            or connection.account_identifier
+            or metadata.get("imap_username")
+            or ""
+        ).strip()
+        if not email_address or not metadata.get("imap_host") or not connection.access_token:
+            return None
+        provider_type = "imap"
+    else:
+        return None
+
+    inbox = (
+        db.query(Inbox)
+        .filter(
+            Inbox.tenant_id == connection.client_id,
+            Inbox.email_address == email_address,
+        )
+        .first()
+    )
+    if inbox is None:
+        inbox = Inbox(
+            tenant_id=connection.client_id,
+            email_address=email_address,
+            provider_type=provider_type,
+        )
+        db.add(inbox)
+
+    inbox.provider_type = provider_type
+    inbox.is_active = connection.status == "active"
+    inbox.metadata_json = {
+        **(inbox.metadata_json or {}),
+        **metadata,
+        "legacy_connection_id": str(connection.id),
+    }
+
+    if provider_type == "gmail":
+        inbox.access_token = connection.access_token
+        inbox.refresh_token = connection.refresh_token
+        inbox.token_expiry = connection.token_expiry
+        inbox.imap_host = None
+        inbox.imap_port = None
+        inbox.imap_username = None
+        inbox.imap_password = None
+    else:
+        inbox.access_token = None
+        inbox.refresh_token = None
+        inbox.token_expiry = None
+        inbox.imap_host = metadata.get("imap_host")
+        inbox.imap_port = int(metadata.get("imap_port") or 993)
+        inbox.imap_username = metadata.get("imap_username") or email_address
+        inbox.imap_password = connection.access_token
+        inbox.imap_use_ssl = bool(metadata.get("imap_use_ssl", inbox.imap_port == 993))
+
+    db.flush()
+    logger.info(
+        "Routed legacy %s connection=%s through inbox=%s",
+        connection.channel_type,
+        connection.id,
+        inbox.id,
+    )
+    return inbox
+
+
 def process_sync_integration_job(payload: Dict):
     db = SessionLocal()
     try:
-        connection = db.query(ChannelConnection).filter(ChannelConnection.id == payload.get("connection_id")).first()
-        if connection is None:
-            logger.warning("Integration sync skipped; connection %s not found", payload.get("connection_id"))
+        from app.services.inbox_poller import poll_inbox
+
+        inbox = None
+        if payload.get("inbox_id"):
+            inbox = db.query(Inbox).filter(Inbox.id == payload.get("inbox_id")).first()
+            if inbox is None:
+                logger.warning("Inbox sync skipped; inbox %s not found", payload.get("inbox_id"))
+                return
+        elif payload.get("connection_id"):
+            connection = db.query(ChannelConnection).filter(ChannelConnection.id == payload.get("connection_id")).first()
+            if connection is None:
+                logger.warning("Integration sync skipped; connection %s not found", payload.get("connection_id"))
+                return
+            inbox = _legacy_connection_to_inbox(db, connection)
+
+        if inbox is None:
+            logger.warning("Integration sync skipped; no inbox source in payload=%s", payload)
             return
-        if connection.channel_type == "email":
-            from app.integrations.email import poll_imap_connection
-            from app.services.unified_ingestion import process_incoming_message
 
-            for message in poll_imap_connection(connection):
-                process_incoming_message(db, message)
-            db.commit()
-        elif connection.channel_type == "gmail":
-            from app.integrations.gmail import sync_gmail_history
-
-            sync_gmail_history(db, connection)
-            db.commit()
+        result = poll_inbox(db, inbox)
+        db.commit()
+        logger.info(
+            "Inbox sync job complete inbox=%s provider=%s fetched=%s processed=%s duplicates=%s",
+            result["inbox_id"],
+            result["provider"],
+            result["fetched"],
+            result["processed"],
+            result["duplicates"],
+        )
     except Exception:
         db.rollback()
         raise

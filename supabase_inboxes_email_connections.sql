@@ -8,10 +8,13 @@ create table if not exists public.inboxes (
     access_token text null,
     refresh_token text null,
     token_expiry timestamptz null,
+    metadata jsonb not null default '{}'::jsonb,
     imap_host text null,
-    imap_port integer null,
+    imap_port integer null default 993,
     imap_username text null,
     imap_password text null,
+    imap_use_ssl boolean not null default true,
+    last_synced_at timestamptz null,
     is_active boolean not null default true,
     created_at timestamptz not null default now(),
     constraint ck_inboxes_provider_type
@@ -25,6 +28,18 @@ create index if not exists idx_inboxes_tenant_id
 
 create index if not exists idx_inboxes_email_address
     on public.inboxes (email_address);
+
+alter table public.inboxes
+    add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+alter table public.inboxes
+    add column if not exists imap_use_ssl boolean not null default true;
+
+alter table public.inboxes
+    add column if not exists last_synced_at timestamptz null;
+
+alter table public.inboxes
+    alter column imap_port set default 993;
 
 comment on table public.inboxes is
     'Stores tenant-scoped email inbox connections for Gmail OAuth and generic IMAP providers.';
@@ -40,6 +55,9 @@ comment on column public.inboxes.access_token is
 
 comment on column public.inboxes.refresh_token is
     'OAuth refresh token for provider-backed inboxes. Sensitive values should be encrypted before storage.';
+
+comment on column public.inboxes.metadata is
+    'Provider-specific inbox sync metadata such as Gmail history cursors and OAuth scopes.';
 
 comment on column public.inboxes.imap_password is
     'Encrypted IMAP password stored by the application for non-Gmail inboxes.';

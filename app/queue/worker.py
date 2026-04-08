@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import threading
-import time
 
 from app.config import get_settings
 from app.db.models import Client, Complaint, RBIComplaint
@@ -8,6 +7,7 @@ from app.db.session import SessionLocal
 from app.analytics.customer_pulse import detect_complaint_spikes
 from app.queue.simple_queue import process_jobs
 from app.replies.send_reply import send_complaint_reply
+from app.services.inbox_poller import poll_all_inboxes
 from app.services.retry_service import process_retry_queue
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
@@ -24,6 +24,7 @@ _last_sla_check_at = None
 _last_rbi_check_at = None
 _last_rbi_report_check_at = None
 _last_escalation_check_at = None
+_last_inbox_poll_at = None
 FOLLOW_UP_TEXT = "Just checking if your issue has been resolved."
 
 
@@ -236,6 +237,18 @@ def process_escalations_monitor():
         db.close()
 
 
+def process_inbox_poll():
+    global _last_inbox_poll_at
+    now = datetime.now(timezone.utc)
+    # Poll all Inbox-backed email providers every 90 seconds.
+    if _last_inbox_poll_at and (now - _last_inbox_poll_at).total_seconds() < 90:
+        return {"inboxes": 0, "fetched": 0, "processed": 0, "duplicates": 0, "errors": 0}
+
+    result = poll_all_inboxes(max_results=20)
+    _last_inbox_poll_at = now
+    return result
+
+
 def worker_loop(interval_seconds=30):
     logger.info("Simple queue worker started")
     while not _stop_event.is_set():
@@ -264,6 +277,16 @@ def worker_loop(interval_seconds=30):
             spikes = process_spike_detection()
             if spikes:
                 logger.info("Detected %s complaint spikes", spikes)
+            inbox_poll = process_inbox_poll()
+            if inbox_poll["inboxes"] or inbox_poll["fetched"] or inbox_poll["errors"]:
+                logger.info(
+                    "Polled %s inboxes fetched=%s processed=%s duplicates=%s errors=%s",
+                    inbox_poll["inboxes"],
+                    inbox_poll["fetched"],
+                    inbox_poll["processed"],
+                    inbox_poll["duplicates"],
+                    inbox_poll["errors"],
+                )
         except Exception as exc:
             logger.exception("Queue worker error: %s", exc)
         _stop_event.wait(interval_seconds)

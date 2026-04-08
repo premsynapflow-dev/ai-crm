@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import imaplib
+from email import policy
+from email.parser import BytesParser
+from email.utils import getaddresses
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -15,7 +18,7 @@ from app.auth import resolve_current_client, resolve_current_client_user
 from app.config import get_settings
 from app.db.models import Client, ClientUser
 from app.inboxes.models import Inbox
-from app.utils.crypto import encrypt_secret
+from app.utils.crypto import decrypt_secret, encrypt_secret
 from app.utils.logging import get_logger
 from app.utils.sanitize import sanitize_email
 
@@ -43,6 +46,17 @@ def _coerce_uuid(value: str | UUID):
     if isinstance(value, UUID):
         return value
     return UUID(str(value))
+
+
+def infer_imap_host(email_address: str) -> str | None:
+    domain = (email_address.split("@")[-1] if "@" in email_address else "").lower().strip()
+    if domain in {"gmail.com", "googlemail.com"}:
+        return "imap.gmail.com"
+    if domain in {"yahoo.com", "yahoo.co.in", "yahoo.in"}:
+        return "imap.mail.yahoo.com"
+    if domain in {"outlook.com", "hotmail.com", "live.com"}:
+        return "outlook.office365.com"
+    return None
 
 
 def ensure_google_oauth_config() -> str:
@@ -245,10 +259,11 @@ def upsert_gmail_inbox(
     return existing
 
 
-def test_imap_connection(*, imap_host: str, imap_port: int, username: str, password: str) -> None:
+def test_imap_connection(*, imap_host: str, imap_port: int, username: str, password: str, use_ssl: bool = True) -> None:
     mailbox: Any | None = None
     try:
-        if imap_port == 993:
+        logger.info("Testing IMAP connection host=%s port=%s ssl=%s user=%s", imap_host, imap_port, use_ssl, username)
+        if use_ssl:
             mailbox = imaplib.IMAP4_SSL(imap_host, imap_port)
         else:
             mailbox = imaplib.IMAP4(imap_host, imap_port)
@@ -261,11 +276,14 @@ def test_imap_connection(*, imap_host: str, imap_port: int, username: str, passw
         status, _ = mailbox.select("INBOX", readonly=True)
         if status != "OK":
             raise HTTPException(status_code=400, detail="IMAP connection succeeded but the inbox could not be opened")
+        logger.info("IMAP connection succeeded for host=%s user=%s", imap_host, username)
     except HTTPException:
         raise
     except imaplib.IMAP4.error as exc:
+        logger.warning("IMAP connection failed for host=%s user=%s", imap_host, username)
         raise HTTPException(status_code=400, detail="Unable to connect to the IMAP server with the provided credentials") from exc
     except Exception as exc:
+        logger.warning("IMAP connection error for host=%s user=%s", imap_host, username)
         raise HTTPException(status_code=400, detail=f"Unable to connect to the IMAP server: {exc}") from exc
     finally:
         if mailbox is not None:
@@ -282,6 +300,7 @@ def upsert_imap_inbox(
     email_address: str,
     imap_host: str,
     imap_port: int,
+    use_ssl: bool,
     username: str,
     password: str,
 ) -> Inbox:
@@ -310,10 +329,97 @@ def upsert_imap_inbox(
     existing.imap_port = imap_port
     existing.imap_username = username
     existing.imap_password = encrypt_secret(password)
+    existing.imap_use_ssl = use_ssl
     existing.is_active = True
     db.commit()
     db.refresh(existing)
     return existing
+
+
+def fetch_imap_messages(inbox: Inbox, *, max_results: int = 20) -> list["IncomingMessage"]:
+    from app.services.unified_ingestion import IncomingMessage
+    from app.integrations.email import _extract_attachments, _extract_text_part, _parse_email_timestamp
+
+    if not inbox.imap_host or not inbox.imap_password:
+        return []
+    username = inbox.imap_username or inbox.email_address
+    password = decrypt_secret(inbox.imap_password)
+    if not username or not password:
+        return []
+
+    mailbox: Any | None = None
+    messages: list[IncomingMessage] = []
+    try:
+        if inbox.imap_use_ssl:
+            mailbox = imaplib.IMAP4_SSL(inbox.imap_host, int(inbox.imap_port or 993))
+        else:
+            mailbox = imaplib.IMAP4(inbox.imap_host, int(inbox.imap_port or 993))
+            try:
+                mailbox.starttls()
+            except Exception:
+                pass
+
+        mailbox.login(username, password)
+        mailbox.select("INBOX")
+
+        status_code, data = mailbox.uid("search", None, "UNSEEN")
+        if status_code != "OK" or not data or not data[0]:
+            status_code, data = mailbox.uid("search", None, "ALL")
+        if status_code != "OK" or not data or not data[0]:
+            return []
+
+        uids = data[0].split()
+        if max_results and len(uids) > max_results:
+            uids = uids[-max_results:]
+
+        for uid in uids:
+            uid_value = uid.decode("utf-8", errors="ignore") if isinstance(uid, bytes) else str(uid)
+            fetch_status, message_data = mailbox.uid("fetch", uid, "(RFC822)")
+            if fetch_status != "OK" or not message_data:
+                continue
+            raw_bytes = message_data[0][1]
+            parsed = BytesParser(policy=policy.default).parsebytes(raw_bytes)
+
+            sender_addresses = getaddresses([parsed.get("From", "")])
+            sender_name, sender_email = sender_addresses[0] if sender_addresses else ("", "")
+            subject = str(parsed.get("Subject", "") or "").strip()
+            body = _extract_text_part(parsed)
+            snippet = (body[:200] if body else "").strip()
+            message_text = "\n\n".join(part for part in [subject, body] if part).strip()
+            external_message_id = f"imap:{inbox.id}:{uid_value}"
+            external_thread_id = str(parsed.get("Message-ID", "") or external_message_id)
+
+            messages.append(
+                IncomingMessage(
+                    client_id=inbox.tenant_id,
+                    channel="email",
+                    external_message_id=external_message_id,
+                    external_thread_id=external_thread_id,
+                    sender_id=sender_email or sender_name,
+                    sender_name=sender_name or sender_email or "IMAP Sender",
+                    message_text=message_text,
+                    attachments=_extract_attachments(parsed),
+                    timestamp=_parse_email_timestamp(parsed.get("Date")),
+                    direction="inbound",
+                    status="received",
+                    raw_payload={
+                        "headers": dict(parsed.items()),
+                        "snippet": snippet,
+                        "imap_uid": uid_value,
+                        "inbox_id": str(inbox.id),
+                        "account_identifier": inbox.email_address,
+                    },
+                )
+            )
+    finally:
+        if mailbox is not None:
+            try:
+                mailbox.logout()
+            except Exception:
+                logger.debug("IMAP logout failed for inbox %s", inbox.id)
+    if messages:
+        logger.info("Fetched %s IMAP messages for inbox=%s", len(messages), inbox.id)
+    return messages
 
 
 def normalize_email_address(email_address: str) -> str:
