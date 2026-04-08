@@ -142,60 +142,92 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         )
         .first()
     )
+    reprocessing_quota_blocked = False
     if existing is not None:
-        return {
-            "status": "duplicate",
-            "message_id": str(existing.id),
-            "external_message_id": existing.external_message_id,
-        }
+        if existing.status == "quota_blocked" and message.direction == "inbound" and can_process_ticket(existing.client_id):
+            reprocessing_quota_blocked = True
+        else:
+            return {
+                "status": "duplicate",
+                "message_id": str(existing.id),
+                "external_message_id": existing.external_message_id,
+            }
 
     conversation = _resolve_message_conversation(db, message)
-    unified_message = UnifiedMessage(
-        client_id=_as_uuid(message.client_id),
-        channel=message.channel,
-        external_message_id=message.external_message_id,
-        external_thread_id=conversation.external_thread_id,
-        sender_id=message.sender_id,
-        sender_name=message.sender_name,
-        message_text=message.message_text,
-        attachments=message.attachments,
-        timestamp=_normalize_timestamp(message.timestamp),
-        direction=message.direction,
-        status=message.status,
-        raw_payload={
+    if reprocessing_quota_blocked and existing is not None:
+        unified_message = existing
+        unified_message.external_thread_id = conversation.external_thread_id
+        unified_message.sender_id = message.sender_id
+        unified_message.sender_name = message.sender_name
+        unified_message.message_text = message.message_text
+        unified_message.attachments = message.attachments
+        unified_message.timestamp = _normalize_timestamp(message.timestamp)
+        unified_message.status = message.status
+        unified_message.raw_payload = {
+            **(unified_message.raw_payload or {}),
             **message.raw_payload,
             "conversation_id": str(conversation.id),
-        },
-    )
-    db.add(unified_message)
-    db.flush()
+        }
+        db.flush()
+    else:
+        unified_message = UnifiedMessage(
+            client_id=_as_uuid(message.client_id),
+            channel=message.channel,
+            external_message_id=message.external_message_id,
+            external_thread_id=conversation.external_thread_id,
+            sender_id=message.sender_id,
+            sender_name=message.sender_name,
+            message_text=message.message_text,
+            attachments=message.attachments,
+            timestamp=_normalize_timestamp(message.timestamp),
+            direction=message.direction,
+            status=message.status,
+            raw_payload={
+                **message.raw_payload,
+                "conversation_id": str(conversation.id),
+            },
+        )
+        db.add(unified_message)
+        db.flush()
 
     client = db.query(Client).filter(Client.id == _as_uuid(message.client_id)).first()
     if client is None:
         raise ValueError("Client not found for incoming message")
 
-    log_message_event(
-        db,
-        message=unified_message,
-        event_type="message_received",
-        payload={
-            "channel": message.channel,
-            "direction": message.direction,
-            "conversation_id": str(conversation.id),
-            "external_message_id": message.external_message_id,
-        },
-    )
-    log_event(
-        db,
-        client.id,
-        "channel_message_ingested",
-        {
-            "channel": message.channel,
-            "external_message_id": message.external_message_id,
-            "direction": message.direction,
-            "conversation_id": str(conversation.id),
-        },
-    )
+    if reprocessing_quota_blocked:
+        log_message_event(
+            db,
+            message=unified_message,
+            event_type="message_reprocessed",
+            payload={
+                "outcome": "quota_recovered",
+                "conversation_id": str(conversation.id),
+                "external_message_id": message.external_message_id,
+            },
+        )
+    else:
+        log_message_event(
+            db,
+            message=unified_message,
+            event_type="message_received",
+            payload={
+                "channel": message.channel,
+                "direction": message.direction,
+                "conversation_id": str(conversation.id),
+                "external_message_id": message.external_message_id,
+            },
+        )
+        log_event(
+            db,
+            client.id,
+            "channel_message_ingested",
+            {
+                "channel": message.channel,
+                "external_message_id": message.external_message_id,
+                "direction": message.direction,
+                "conversation_id": str(conversation.id),
+            },
+        )
 
     if message.direction != "inbound":
         conversation.last_message_at = unified_message.timestamp
@@ -246,7 +278,6 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     from app.billing.plans import PLANS
     from app.intelligence.classifier import classify_message, summarize_if_needed
     from app.utils.ticket import generate_ticket_id, generate_thread_id
-    from app.services.event_logger import log_event
     from app.workflow.dispatcher import dispatch_action
     from app.workflow.rule_engine import decide_action
     from app.services.rules_engine import get_matching_rules
