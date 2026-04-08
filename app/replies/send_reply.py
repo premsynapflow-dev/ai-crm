@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from app.config import get_settings
+from app.db.models import AIReplyQueue
 from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
 from app.services.channel_router import send_reply_via_original_channel
@@ -10,6 +11,36 @@ from app.utils.logging import get_logger
 
 settings = get_settings()
 logger = get_logger(__name__)
+REVIEWED_REPLY_QUEUE_STATUSES = {"approved", "edited"}
+
+
+def ensure_manual_reply_review(db, complaint, *, reviewer_email: str | None, reply_text: str):
+    queue_entry = getattr(complaint, "reply_queue", None)
+    if queue_entry is not None and queue_entry.status in REVIEWED_REPLY_QUEUE_STATUSES:
+        return queue_entry
+
+    normalized_reply = (reply_text or complaint.ai_reply or "").strip()
+    if queue_entry is None:
+        queue_entry = AIReplyQueue(
+            complaint_id=complaint.id,
+            client_id=complaint.client_id,
+            generated_reply=normalized_reply or "Manual reply",
+            confidence_score=1.0,
+            generation_strategy="manual",
+            generation_metadata={"source": "manual_reply"},
+        )
+        db.add(queue_entry)
+        complaint.reply_queue = queue_entry
+    else:
+        queue_entry.generated_reply = normalized_reply or queue_entry.generated_reply
+
+    queue_entry.status = "edited"
+    queue_entry.reviewed_by = reviewer_email
+    queue_entry.reviewed_at = datetime.now(timezone.utc)
+    queue_entry.edited_reply = normalized_reply or None
+    queue_entry.rejection_reason = None
+    db.flush()
+    return queue_entry
 
 
 def send_complaint_reply(
@@ -20,10 +51,11 @@ def send_complaint_reply(
     status_on_success: str = "sent",
 ):
 
-    # ENFORCEMENT: Only allow sending if reply_queue exists and is approved
-    if not hasattr(complaint, "reply_queue") or complaint.reply_queue is None or complaint.reply_queue.status != "approved":
+    # ENFORCEMENT: Only allow sending if reply_queue exists and was reviewed.
+    reply_queue = getattr(complaint, "reply_queue", None)
+    if reply_queue is None or reply_queue.status not in REVIEWED_REPLY_QUEUE_STATUSES:
         logger.warning(
-            "Blocked reply send: Complaint %s does not have approved AIReplyQueue entry.",
+            "Blocked reply send: Complaint %s does not have reviewed AIReplyQueue entry.",
             complaint.id,
         )
         complaint.ai_reply_status = "agent_review"

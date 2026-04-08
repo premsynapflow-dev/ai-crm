@@ -20,7 +20,7 @@ class _FakeDB:
 
 
 class AIReplyFlowTests(unittest.TestCase):
-    def _attach_approved_reply(self, complaint):
+    def _attach_reviewed_reply(self, complaint, *, status: str = "approved"):
         complaint.id = complaint.id or uuid.uuid4()
         complaint.client_id = complaint.client_id or uuid.uuid4()
         complaint.reply_queue = AIReplyQueue(
@@ -28,7 +28,7 @@ class AIReplyFlowTests(unittest.TestCase):
             client_id=complaint.client_id,
             generated_reply=complaint.ai_reply or "Approved reply",
             confidence_score=0.9,
-            status="approved",
+            status=status,
         )
 
     def test_reply_decision_threshold(self):
@@ -46,7 +46,7 @@ class AIReplyFlowTests(unittest.TestCase):
             ai_reply="Here is the next step for your billing question.",
         )
         complaint.created_at = datetime.now(timezone.utc)
-        self._attach_approved_reply(complaint)
+        self._attach_reviewed_reply(complaint)
 
         with patch(
             "app.replies.send_reply.send_reply_via_original_channel",
@@ -59,6 +59,29 @@ class AIReplyFlowTests(unittest.TestCase):
         self.assertIsNotNone(complaint.ai_reply_sent_at)
         self.assertIsNotNone(complaint.first_response_at)
 
+    def test_send_reply_allows_edited_reviewed_queue(self):
+        complaint = Complaint(
+            summary="Customer needs help after an edited reply",
+            category="billing",
+            ticket_id="TKT-EDITED",
+            thread_id="TH-EDITED",
+            source="gmail",
+            customer_email="customer@example.com",
+            ai_reply="Edited reply from the agent.",
+        )
+        complaint.created_at = datetime.now(timezone.utc)
+        self._attach_reviewed_reply(complaint, status="edited")
+
+        with patch(
+            "app.replies.send_reply.send_reply_via_original_channel",
+            return_value={"sent": True, "channels": ["gmail"]},
+        ):
+            result = send_complaint_reply(_FakeDB(), complaint)
+
+        self.assertTrue(result["sent"])
+        self.assertEqual(result["channels"], ["gmail"])
+        self.assertEqual(complaint.ai_reply_status, "sent")
+
     def test_send_reply_falls_back_to_agent_review_when_no_channel(self):
         complaint = Complaint(
             summary="Customer wrote from API without contact info",
@@ -69,7 +92,7 @@ class AIReplyFlowTests(unittest.TestCase):
             ai_reply="We have received your issue.",
         )
         complaint.created_at = datetime.now(timezone.utc)
-        self._attach_approved_reply(complaint)
+        self._attach_reviewed_reply(complaint)
 
         with patch(
             "app.replies.send_reply.send_reply_via_original_channel",

@@ -61,6 +61,11 @@ interface ComplaintApiPayload {
   satisfaction_score?: number | null
 }
 
+interface ComplaintReplyApiResponse extends ComplaintApiPayload {
+  complaint?: ComplaintApiPayload
+  sent?: boolean
+}
+
 export interface SuggestedResponseResult {
   suggestedResponse: string
   confidence: number
@@ -140,7 +145,11 @@ export const complaintsAPI = {
     const response = await api.post(`/api/v1/complaints/${id}/reply`, {
       reply_text: replyText,
     })
-    return normalizeComplaint(response.data.complaint ?? response.data)
+    const data = response.data as ComplaintReplyApiResponse
+    if (data.sent === false) {
+      throw new Error('Reply could not be delivered')
+    }
+    return normalizeComplaint(data.complaint ?? data)
   },
 
   markResolved: async (id: string) => {

@@ -90,6 +90,8 @@ def approve_reply(
     item = db.query(AIReplyQueue).filter(AIReplyQueue.id == parsed_id, AIReplyQueue.client_id == current_client.id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
+    if item.status != "pending":
+        raise HTTPException(status_code=400, detail="Queue item is not pending approval")
 
     reviewer_email = (request.reviewer_email or f"client-{str(current_client.id)[:8]}@system.local").strip()
     success = HardenedAutoReplyService(db).approve_reply(
@@ -99,7 +101,7 @@ def approve_reply(
         commit=True,
     )
     if not success:
-        raise HTTPException(status_code=400, detail="Queue item could not be approved")
+        raise HTTPException(status_code=502, detail="Queue item was reviewed, but the reply could not be delivered")
     db.refresh(item)
     return {"success": True, "item": _serialize_queue_item(item)}
 

@@ -39,7 +39,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.middleware.feature_gate import ensure_feature_access
 from app.intake.webhook import _process_complaint_for_client
-from app.replies.send_reply import send_complaint_reply
+from app.replies.send_reply import ensure_manual_reply_review, send_complaint_reply
 from app.services.ai import suggest_response
 from app.services.audit_logs import append_audit_log
 from app.services.auto_reply_hardened import HardenedAutoReplyService
@@ -96,6 +96,12 @@ class ComplaintUpdateRequest(BaseModel):
 
 class ComplaintReplyRequest(BaseModel):
     reply_text: str = Field(..., min_length=1)
+
+
+def _reply_delivery_failure_detail(complaint: Complaint) -> str:
+    if (complaint.source or "").lower() == "gmail":
+        return "Reply could not be delivered through Gmail. Reconnect the Gmail inbox so SynapFlow can request send permission."
+    return "Reply could not be delivered through the original channel."
 
 
 def _priority_label(priority: int | None) -> str:
@@ -512,15 +518,25 @@ def reply_to_complaint(
             commit=False,
         )
         if not approved:
-            raise HTTPException(status_code=400, detail="Queue item could not be approved")
+            db.commit()
+            raise HTTPException(status_code=502, detail=_reply_delivery_failure_detail(complaint))
         result = {"sent": complaint.ai_reply_status == "sent", "channels": []}
     else:
+        ensure_manual_reply_review(
+            db,
+            complaint,
+            reviewer_email=user.email,
+            reply_text=payload.reply_text,
+        )
         result = send_complaint_reply(
             db=db,
             complaint=complaint,
             client=client,
             reply_text=payload.reply_text,
         )
+    if not result.get("sent"):
+        db.commit()
+        raise HTTPException(status_code=502, detail=_reply_delivery_failure_detail(complaint))
     db.commit()
     db.refresh(complaint)
     return {"complaint": _serialize_complaint(complaint), **result}

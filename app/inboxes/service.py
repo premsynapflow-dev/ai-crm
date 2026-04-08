@@ -30,6 +30,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
 DEFAULT_SETTINGS_REDIRECT = "/settings?gmail_connected=true"
@@ -136,6 +137,7 @@ def build_google_redirect_url(*, tenant_id: str, redirect_path: str = DEFAULT_SE
             "response_type": "code",
             "scope": " ".join(GMAIL_SCOPES),
             "access_type": "offline",
+            "include_granted_scopes": "true",
             "prompt": "consent",
             "state": state,
         }

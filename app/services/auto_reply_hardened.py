@@ -160,7 +160,16 @@ class HardenedAutoReplyService:
         queue_entry.rejection_reason = None
         complaint.ai_reply = reply_to_send
         complaint.ai_reply_confidence = queue_entry.confidence_score
-        self._send_reply(complaint, reply_to_send, client)
+        send_result = self._send_reply(complaint, reply_to_send, client)
+        if not send_result.get("sent"):
+            queue_entry.status = "pending"
+            queue_entry.reviewed_by = None
+            queue_entry.reviewed_at = None
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
+            return False
 
         if commit:
             self.db.commit()

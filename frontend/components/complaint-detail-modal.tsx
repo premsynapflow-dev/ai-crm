@@ -51,6 +51,20 @@ const sentimentColors: Record<string, string> = {
   negative: 'bg-red-100 text-red-700',
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+  if (typeof detail === 'string') {
+    return detail
+  }
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    return String((detail as Record<string, unknown>).message)
+  }
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return fallback
+}
+
 export function ComplaintDetailModal({
   complaint,
   open,
@@ -122,8 +136,8 @@ export function ComplaintDetailModal({
       setReply('')
       toast.success('Reply sent successfully')
       onOpenChange(false)
-    } catch {
-      toast.error('Failed to send reply')
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to send reply'))
     } finally {
       setIsSending(false)
     }

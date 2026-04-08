@@ -110,6 +110,38 @@ def test_reply_queue_approve_updates_queue_and_complaint(test_db, client, test_c
     assert complaint.ai_reply_sent_at is not None
 
 
+def test_reply_queue_approve_reports_delivery_failure(test_db, client, test_client_record):
+    complaint = _create_complaint(
+        test_db,
+        test_client_record.id,
+        summary="Approve but fail delivery",
+        ticket_id="TKT-RQ-FAIL",
+    )
+    queue_item = _create_queue_item(test_db, complaint)
+
+    def fake_send_reply(db, complaint, client=None, reply_text=None, status_on_success="sent"):
+        complaint.ai_reply = reply_text
+        complaint.ai_reply_status = "agent_review"
+        return {"sent": False, "channels": []}
+
+    with patch("app.services.auto_reply_hardened.send_complaint_reply", side_effect=fake_send_reply):
+        response = client.post(
+            f"/api/v1/reply-queue/{queue_item.id}/approve",
+            headers={"x-api-key": test_client_record.api_key},
+            json={},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Queue item was reviewed, but the reply could not be delivered"
+
+    test_db.refresh(queue_item)
+    test_db.refresh(complaint)
+    assert queue_item.status == "pending"
+    assert queue_item.reviewed_by is None
+    assert queue_item.reviewed_at is None
+    assert complaint.ai_reply_status == "agent_review"
+
+
 def test_reply_queue_reject_updates_queue_state(test_db, client, test_client_record):
     complaint = _create_complaint(
         test_db,

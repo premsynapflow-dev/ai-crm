@@ -202,6 +202,9 @@ def test_inboxes_gmail_connect_derives_redirect_uri_from_app_base_url(monkeypatc
     query = parse_qs(google_url.query)
 
     assert query["redirect_uri"] == ["http://testserver/auth/gmail/callback"]
+    scopes = set(query["scope"][0].split(" "))
+    assert "https://www.googleapis.com/auth/gmail.readonly" in scopes
+    assert "https://www.googleapis.com/auth/gmail.send" in scopes
 
 
 def test_integrations_gmail_connect_derives_redirect_uri_from_app_base_url(monkeypatch, test_db, client, test_client_record):

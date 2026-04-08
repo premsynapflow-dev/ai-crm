@@ -12,7 +12,7 @@ from app.billing.usage import get_usage_summary
 from app.db.models import Client, ClientUser, Complaint, Invoice
 from app.db.session import get_db
 from app.integrations.slack import send_slack_alert
-from app.replies.send_reply import send_complaint_reply
+from app.replies.send_reply import ensure_manual_reply_review, send_complaint_reply
 from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.event_logger import log_event
 from app.services.rbi_compliance import RBIComplianceService
@@ -579,6 +579,12 @@ def approve_ai_reply(
             commit=False,
         )
     else:
+        ensure_manual_reply_review(
+            db,
+            complaint,
+            reviewer_email=user.email,
+            reply_text=complaint.ai_reply or "",
+        )
         send_complaint_reply(
             db=db,
             complaint=complaint,
@@ -619,6 +625,12 @@ def edit_ai_reply(
             commit=False,
         )
     else:
+        ensure_manual_reply_review(
+            db,
+            complaint,
+            reviewer_email=user.email,
+            reply_text=complaint.ai_reply,
+        )
         send_complaint_reply(
             db=db,
             complaint=complaint,

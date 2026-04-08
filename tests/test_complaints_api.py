@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from app.db.models import (
     AIReplyQueue,
@@ -145,3 +146,46 @@ def test_delete_complaint_removes_dependent_rows(test_db, client, test_client_re
     assert test_db.query(RBIEscalationLog).filter(RBIEscalationLog.rbi_complaint_id == rbi_complaint_id).count() == 0
     saved_interaction = test_db.query(CustomerInteraction).filter(CustomerInteraction.id == customer_interaction_id).one()
     assert saved_interaction.complaint_id is None
+
+
+def test_reply_complaint_creates_manual_review_queue(test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+    complaint_id = uuid.uuid4()
+    complaint = Complaint(
+        id=complaint_id,
+        client_id=test_client_record.id,
+        summary="Customer asked for an OAuth Gmail reply",
+        category="support",
+        sentiment=0.0,
+        priority=2,
+        source="gmail",
+        customer_email="customer@example.com",
+        ticket_id="TKT-GMAIL-REPLY",
+        ticket_number="TKT-GMAIL-REPLY",
+        thread_id="gmail-thread-1",
+        created_at=datetime.now(timezone.utc),
+    )
+    test_db.add(complaint)
+    test_db.commit()
+
+    with patch(
+        "app.replies.send_reply.send_reply_via_original_channel",
+        return_value={"sent": True, "channels": ["gmail"]},
+    ):
+        response = client.post(
+            f"/api/v1/complaints/{complaint_id}/reply",
+            headers=headers,
+            json={"reply_text": "Thanks, we are checking this now."},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["sent"] is True
+    assert response.json()["channels"] == ["gmail"]
+
+    queue_item = test_db.query(AIReplyQueue).filter(AIReplyQueue.complaint_id == complaint_id).one()
+    test_db.refresh(complaint)
+    assert queue_item.status == "edited"
+    assert queue_item.reviewed_by is not None
+    assert queue_item.edited_reply == "Thanks, we are checking this now."
+    assert complaint.ai_reply_status == "sent"
+    assert complaint.ai_reply_sent_at is not None
