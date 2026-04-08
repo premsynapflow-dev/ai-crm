@@ -16,9 +16,11 @@ from app.config import get_settings
 from app.db.models import Client, ClientUser
 from app.inboxes.models import Inbox
 from app.utils.crypto import encrypt_secret
+from app.utils.logging import get_logger
 from app.utils.sanitize import sanitize_email
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -27,7 +29,7 @@ GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
-DEFAULT_SETTINGS_REDIRECT = "/settings"
+DEFAULT_SETTINGS_REDIRECT = "/settings?gmail_connected=true"
 
 connect_token_serializer = URLSafeTimedSerializer(settings.secret_key, salt="inboxes-gmail-connect")
 oauth_state_serializer = URLSafeTimedSerializer(settings.secret_key, salt="inboxes-gmail-state")
@@ -55,7 +57,7 @@ def ensure_google_oauth_config() -> str:
         missing.append("GOOGLE_INBOXES_OAUTH_REDIRECT_URI or GOOGLE_OAUTH_REDIRECT_URI or APP_BASE_URL")
 
     if missing:
-        raise HTTPException(status_code=500, detail=f"Google OAuth is not configured. Missing: {', '.join(missing)}")
+        raise HTTPException(status_code=500, detail=f"OAuth not configured. Missing: {', '.join(missing)}")
     return redirect_uri
 
 
@@ -68,7 +70,9 @@ def create_gmail_connect_url(client: Client, user: ClientUser) -> str:
             "redirect_path": DEFAULT_SETTINGS_REDIRECT,
         }
     )
-    return f"/auth/gmail/connect?connect_token={connect_token}"
+    connect_url = f"/auth/gmail/connect?connect_token={connect_token}"
+    logger.info("Generated Gmail connect URL for tenant=%s user=%s", client.id, user.id)
+    return connect_url
 
 
 def resolve_gmail_connect_context(
@@ -154,7 +158,9 @@ def exchange_google_code(code: str) -> dict[str, Any]:
             },
         )
     if response.status_code >= 400:
+        logger.error("Gmail OAuth token exchange failed status=%s response=%s", response.status_code, response.text[:500])
         raise HTTPException(status_code=502, detail="Unable to exchange Gmail OAuth code")
+    logger.info("Gmail OAuth token exchange succeeded")
     return response.json()
 
 
@@ -165,11 +171,13 @@ def fetch_google_user_email(access_token: str) -> str:
             headers={"Authorization": f"Bearer {access_token}"},
         )
     if response.status_code >= 400:
+        logger.error("Gmail OAuth userinfo fetch failed status=%s response=%s", response.status_code, response.text[:500])
         raise HTTPException(status_code=502, detail="Unable to fetch Gmail account email")
 
     email_address = sanitize_email(response.json().get("email"))
     if not email_address:
         raise HTTPException(status_code=502, detail="Google OAuth did not return a valid email address")
+    logger.info("Gmail OAuth userinfo resolved email=%s", email_address)
     return email_address
 
 
@@ -233,6 +241,7 @@ def upsert_gmail_inbox(
     existing.is_active = True
     db.commit()
     db.refresh(existing)
+    logger.info("Upserted Gmail inbox tenant=%s email=%s", tenant_id, email_address)
     return existing
 
 

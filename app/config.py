@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
     google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
     google_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_OAUTH_REDIRECT_URI")
+    google_redirect_uri: str = Field(default="", alias="GOOGLE_REDIRECT_URI")
     google_inboxes_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_INBOXES_OAUTH_REDIRECT_URI")
     google_integrations_oauth_redirect_uri: str = Field(default="", alias="GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI")
     gmail_pubsub_topic: str = Field(default="", alias="GMAIL_PUBSUB_TOPIC")
@@ -138,6 +139,10 @@ class Settings(BaseSettings):
         if legacy_redirect_uri:
             return legacy_redirect_uri
 
+        fallback_redirect_uri = self.google_redirect_uri.strip()
+        if fallback_redirect_uri:
+            return fallback_redirect_uri
+
         base_url = self.app_base_url.strip().rstrip("/")
         if not base_url:
             return ""
@@ -194,7 +199,8 @@ def _manual_settings_data() -> dict:
         "CHANNEL_CRYPTO_KEY": os.getenv("CHANNEL_CRYPTO_KEY", ""),
         "GOOGLE_CLIENT_ID": os.getenv("GOOGLE_CLIENT_ID", ""),
         "GOOGLE_CLIENT_SECRET": os.getenv("GOOGLE_CLIENT_SECRET", ""),
-        "GOOGLE_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_OAUTH_REDIRECT_URI", ""),
+        "GOOGLE_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_OAUTH_REDIRECT_URI", os.getenv("GOOGLE_REDIRECT_URI", "")),
+        "GOOGLE_REDIRECT_URI": os.getenv("GOOGLE_REDIRECT_URI", ""),
         "GOOGLE_INBOXES_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_INBOXES_OAUTH_REDIRECT_URI", ""),
         "GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI": os.getenv("GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI", ""),
         "GMAIL_PUBSUB_TOPIC": os.getenv("GMAIL_PUBSUB_TOPIC", ""),

@@ -143,7 +143,9 @@ def _exchange_code_for_tokens(code: str) -> dict[str, Any]:
         },
     )
     if response.status_code >= 400:
+        logger.error("Gmail integration token exchange failed status=%s response=%s", response.status_code, response.text[:500])
         raise _request_error(response)
+    logger.info("Gmail integration token exchange succeeded")
     return response.json()
 
 
@@ -161,7 +163,7 @@ def _ensure_google_oauth_config() -> str:
         missing.append("GMAIL_PUBSUB_TOPIC")
 
     if missing:
-        raise HTTPException(status_code=500, detail=f"Gmail integration is not configured. Missing: {', '.join(missing)}")
+        raise HTTPException(status_code=500, detail=f"OAuth not configured. Missing: {', '.join(missing)}")
     return redirect_uri
 
 
@@ -386,6 +388,7 @@ def connect_gmail(
 
     state = state_serializer.dumps({"client_id": str(client.id)})
     auth_url = f"{GOOGLE_AUTH_URL}?{urlencode({'client_id': settings.google_client_id, 'redirect_uri': redirect_uri, 'response_type': 'code', 'scope': GOOGLE_OAUTH_SCOPE, 'access_type': 'offline', 'prompt': 'consent', 'state': state})}"
+    logger.info("Generated Gmail integration auth URL for client=%s", client.id)
     return {"auth_url": auth_url}
 
 
@@ -395,6 +398,7 @@ def gmail_callback(
     state: str = Query(...),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    logger.info("Gmail integration callback received")
     try:
         state_data = state_serializer.loads(state)
     except BadSignature as exc:
@@ -450,6 +454,7 @@ def gmail_callback(
     setup_gmail_watch(connection)
     db.commit()
     db.refresh(connection)
+    logger.info("Gmail integration connection stored client=%s connection=%s", client.id, connection.id)
     return {
         "status": "connected",
         "connection_id": str(connection.id),

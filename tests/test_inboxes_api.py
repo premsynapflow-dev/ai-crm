@@ -170,7 +170,7 @@ def test_gmail_oauth_flow_stores_inbox_and_redirects(monkeypatch, test_db, clien
     )
 
     assert callback_response.status_code == 307
-    assert callback_response.headers["location"] == "/settings"
+    assert callback_response.headers["location"] == "/settings?gmail_connected=true"
 
     saved_inbox = (
         test_db.query(Inbox)

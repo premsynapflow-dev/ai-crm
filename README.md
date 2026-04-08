@@ -203,6 +203,7 @@ Both use `pg_dump` and require `DATABASE_URL` to be set.
    - `GOOGLE_CLIENT_ID`
    - `GOOGLE_CLIENT_SECRET`
    - `APP_BASE_URL`
+   - `GOOGLE_OAUTH_REDIRECT_URI` (or legacy `GOOGLE_REDIRECT_URI`) if you do not want callbacks derived from `APP_BASE_URL`
    - `GMAIL_PUBSUB_TOPIC` for the Gmail integration flow
    - optional `GOOGLE_INBOXES_OAUTH_REDIRECT_URI` or `GOOGLE_INTEGRATIONS_OAUTH_REDIRECT_URI` overrides if you do not want the app to derive callbacks from `APP_BASE_URL`
 

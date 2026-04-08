@@ -10,8 +10,10 @@ from app.db.models import Client, ClientUser
 from app.db.session import get_db
 from app.inboxes import service as inbox_service
 from app.inboxes.schemas import ConnectImapRequest, GmailConnectUrlResponse, InboxSummary
+from app.utils.logging import get_logger
 
 router = APIRouter(tags=["inboxes"])
+logger = get_logger(__name__)
 
 
 @router.get("/inboxes", response_model=list[InboxSummary])
@@ -27,7 +29,9 @@ def get_gmail_connect_url(
     client: Client = Depends(get_current_client),
     user: ClientUser = Depends(get_current_client_user),
 ):
-    return {"connect_url": inbox_service.create_gmail_connect_url(client, user)}
+    connect_url = inbox_service.create_gmail_connect_url(client, user)
+    logger.info("Gmail connect URL requested tenant=%s user=%s", client.id, user.id)
+    return {"connect_url": connect_url, "url": connect_url}
 
 
 @router.get("/auth/gmail/connect")
@@ -53,21 +57,30 @@ def gmail_callback(
     state: str = Query(...),
     db: Session = Depends(get_db),
 ):
-    oauth_state = inbox_service.load_oauth_state(state)
-    token_payload = inbox_service.exchange_google_code(code)
-    access_token = str(token_payload.get("access_token") or "").strip()
-    if not access_token:
-        raise HTTPException(status_code=502, detail="Google OAuth token response did not include an access token")
-    email_address = inbox_service.fetch_google_user_email(access_token)
-    inbox_service.upsert_gmail_inbox(
-        db,
-        tenant_id=oauth_state["tenant_id"],
-        email_address=email_address,
-        access_token=access_token,
-        refresh_token=token_payload.get("refresh_token"),
-        token_expiry=inbox_service.build_gmail_token_expiry(token_payload),
-    )
-    return RedirectResponse(url=oauth_state["redirect_path"], status_code=307)
+    logger.info("Gmail OAuth callback received")
+    if not code.strip():
+        logger.warning("Gmail OAuth callback missing code")
+        return RedirectResponse(url="/settings?gmail_error=true", status_code=307)
+    try:
+        oauth_state = inbox_service.load_oauth_state(state)
+        token_payload = inbox_service.exchange_google_code(code)
+        access_token = str(token_payload.get("access_token") or "").strip()
+        if not access_token:
+            raise HTTPException(status_code=502, detail="Google OAuth token response did not include an access token")
+        email_address = inbox_service.fetch_google_user_email(access_token)
+        inbox_service.upsert_gmail_inbox(
+            db,
+            tenant_id=oauth_state["tenant_id"],
+            email_address=email_address,
+            access_token=access_token,
+            refresh_token=token_payload.get("refresh_token"),
+            token_expiry=inbox_service.build_gmail_token_expiry(token_payload),
+        )
+        logger.info("Gmail inbox stored for tenant=%s email=%s", oauth_state["tenant_id"], email_address)
+        return RedirectResponse(url=oauth_state["redirect_path"], status_code=307)
+    except Exception as exc:
+        logger.error("Gmail OAuth callback failed: %s", exc)
+        return RedirectResponse(url="/settings?gmail_error=true", status_code=307)
 
 
 @router.post("/inboxes/connect-imap", response_model=InboxSummary)

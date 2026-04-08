@@ -15,6 +15,7 @@ class InboxSummary(BaseModel):
 
 class GmailConnectUrlResponse(BaseModel):
     connect_url: str
+    url: str
 
 
 class ConnectImapRequest(BaseModel):
@@ -23,4 +24,3 @@ class ConnectImapRequest(BaseModel):
     imap_port: int = Field(..., ge=1, le=65535)
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
-
