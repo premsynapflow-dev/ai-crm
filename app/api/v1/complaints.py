@@ -22,7 +22,20 @@ from app.api.v1.auth import decode_token
 from app.auth import resolve_current_client_user
 from app.billing.usage import can_process_ticket, track_ticket_usage
 from app.config import get_settings
-from app.db.models import Client, ClientUser, Complaint
+from app.db.models import (
+    AIReplyQueue,
+    Client,
+    ClientUser,
+    Complaint,
+    CustomerInteraction,
+    Escalation,
+    RBIComplaint,
+    RBIEscalationLog,
+    ReplyFeedback,
+    TicketAssignment,
+    TicketComment,
+    TicketStateTransition,
+)
 from app.db.session import get_db
 from app.middleware.feature_gate import ensure_feature_access
 from app.intake.webhook import _process_complaint_for_client
@@ -47,6 +60,24 @@ def _normalize_user_id(value: str | UUID | None) -> UUID | str | None:
         return UUID(str(value))
     except (TypeError, ValueError):
         return value
+
+
+def _normalize_complaint_id(value: str) -> UUID:
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Complaint not found") from exc
+
+
+def _get_scoped_complaint(db: Session, user: ClientUser, complaint_id: str) -> Complaint | None:
+    return (
+        db.query(Complaint)
+        .filter(
+            Complaint.id == _normalize_complaint_id(complaint_id),
+            Complaint.client_id == user.client_id,
+        )
+        .first()
+    )
 
 
 class ComplaintCreateRequest(BaseModel):
@@ -168,6 +199,34 @@ def _apply_status_update(complaint: Complaint, status_value: str) -> None:
     complaint.status = status_value
 
 
+def _delete_complaint_graph(db: Session, complaint: Complaint) -> None:
+    complaint_id = complaint.id
+    rbi_complaint_ids = [
+        row.id
+        for row in db.query(RBIComplaint.id)
+        .filter(RBIComplaint.complaint_id == complaint_id)
+        .all()
+    ]
+
+    if rbi_complaint_ids:
+        db.query(RBIEscalationLog).filter(
+            RBIEscalationLog.rbi_complaint_id.in_(rbi_complaint_ids)
+        ).delete(synchronize_session=False)
+
+    db.query(ReplyFeedback).filter(ReplyFeedback.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(AIReplyQueue).filter(AIReplyQueue.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(RBIComplaint).filter(RBIComplaint.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(TicketAssignment).filter(TicketAssignment.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(TicketComment).filter(TicketComment.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(TicketStateTransition).filter(TicketStateTransition.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(Escalation).filter(Escalation.ticket_id == complaint_id).delete(synchronize_session=False)
+    db.query(CustomerInteraction).filter(CustomerInteraction.complaint_id == complaint_id).update(
+        {CustomerInteraction.complaint_id: None},
+        synchronize_session=False,
+    )
+    db.delete(complaint)
+
+
 def _get_user_from_token(db: Session, authorization: str | None):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
@@ -282,7 +341,7 @@ def get_complaint(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
     return _serialize_complaint(complaint)
@@ -325,7 +384,7 @@ def update_complaint(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
@@ -436,7 +495,7 @@ def reply_to_complaint(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
@@ -475,7 +534,7 @@ def suggest_reply_for_complaint(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
@@ -500,7 +559,7 @@ def get_suggested_response(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
@@ -519,7 +578,7 @@ def escalate_complaint(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
@@ -604,10 +663,10 @@ def delete_complaint(
     db: Session = Depends(get_db),
 ):
     user = _get_authenticated_user(request, db, authorization)
-    complaint = db.query(Complaint).filter(Complaint.id == complaint_id, Complaint.client_id == user.client_id).first()
+    complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
 
-    db.delete(complaint)
+    _delete_complaint_graph(db, complaint)
     db.commit()
     return {"ok": True, "id": complaint_id}
