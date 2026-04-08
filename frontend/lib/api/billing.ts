@@ -76,6 +76,18 @@ export interface Usage {
   overage_rate: number
 }
 
+export interface UpgradePlanResponse {
+  ok: boolean
+  status?: 'upgraded' | 'payment_pending'
+  plan_id: string
+  monthly_ticket_limit?: number
+  billing_cycle: 'monthly' | 'annual'
+  razorpay_plan_id?: string | null
+  razorpay_subscription_id?: string | null
+  payment_url?: string | null
+  plan_applied: boolean
+}
+
 export const billingAPI = {
   getPlans: async (): Promise<Record<string, Plan>> => {
     const response = await api.get('/api/plans')
@@ -87,7 +99,7 @@ export const billingAPI = {
     return response.data
   },
 
-  upgradePlan: async (planId: string, billingCycle: 'monthly' | 'annual' = 'monthly') => {
+  upgradePlan: async (planId: string, billingCycle: 'monthly' | 'annual' = 'monthly'): Promise<UpgradePlanResponse> => {
     const response = await api.post('/api/upgrade', {
       plan_id: planId,
       billing_cycle: billingCycle,

@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_client
+from app.billing.plan_application import apply_plan_to_client
 from app.billing.plans import PLANS, ALLOWED_UPGRADES, is_upgrade_allowed
 from app.billing.razorpay_service import create_payment_link, create_subscription
 from app.billing.usage import get_usage_summary
@@ -81,21 +82,6 @@ def upgrade_plan(
 
         try:
             subscription = create_subscription(client.id, payload.plan_id, payload.billing_cycle)
-            razorpay_subscription_id = subscription.get("id")
-            logger.info(
-                "Razorpay subscription created client=%s plan=%s subscription_id=%s",
-                client.id,
-                payload.plan_id,
-                razorpay_subscription_id,
-            )
-
-            client.plan_id = payload.plan_id
-            client.plan = payload.plan_id
-            client.monthly_ticket_limit = plan.get("tickets_per_month", client.monthly_ticket_limit)
-            client.trial_ends_at = None
-            db.commit()
-            db.refresh(client)
-            plan_applied = True
         except Exception:
             logger.exception(
                 "Razorpay subscription creation failed for client=%s target_plan=%s, attempting payment link fallback",
@@ -123,18 +109,29 @@ def upgrade_plan(
             except Exception as exc:
                 logger.exception("Unable to initiate Razorpay payment link for client=%s", client.id)
                 raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
+        else:
+            razorpay_subscription_id = subscription.get("id")
+            logger.info(
+                "Razorpay subscription created client=%s plan=%s subscription_id=%s",
+                client.id,
+                payload.plan_id,
+                razorpay_subscription_id,
+            )
+
+            apply_plan_to_client(client, payload.plan_id)
+            db.commit()
+            db.refresh(client)
+            plan_applied = True
     else:
         # Free or zero-cost plan: apply directly
-        client.plan_id = payload.plan_id
-        client.plan = payload.plan_id
-        client.monthly_ticket_limit = plan.get("tickets_per_month", client.monthly_ticket_limit)
-        client.trial_ends_at = None
+        apply_plan_to_client(client, payload.plan_id)
         db.commit()
         db.refresh(client)
         plan_applied = True
 
     return {
         "ok": True,
+        "status": "payment_pending" if payment_url else "upgraded",
         "plan_id": payload.plan_id,
         "monthly_ticket_limit": plan.get("tickets_per_month", client.monthly_ticket_limit),
         "billing_cycle": payload.billing_cycle,

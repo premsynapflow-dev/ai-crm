@@ -79,7 +79,7 @@ export function SettingsContent() {
     return () => {
       active = false
     }
-  }, [])
+  }, [user?.plan_id])
 
   const handleCopy = (value: string, label: string) => {
     navigator.clipboard.writeText(value)
@@ -123,7 +123,8 @@ export function SettingsContent() {
     return <div className="flex h-96 items-center justify-center">Unable to load settings.</div>
   }
 
-  const isBusinessPlan = new Set(['max', 'scale', 'enterprise']).has(summary.profile.plan_id ?? user?.plan ?? 'free')
+  const displayPlanId = user?.plan_id ?? summary.profile.plan_id ?? 'free'
+  const isBusinessPlan = new Set(['max', 'scale', 'enterprise']).has(displayPlanId)
   const isRbiEligible = isRbiEligibleCompany(summary.company.business_sector, summary.company.is_rbi_regulated)
   const initials = summary.profile.name
     .split(' ')
@@ -206,7 +207,7 @@ export function SettingsContent() {
                 <Card>
                   <CardContent className="p-4">
                     <p className="text-sm text-muted-foreground">Plan</p>
-                    <p className="mt-1 font-medium capitalize">{summary.profile.plan_id}</p>
+                    <p className="mt-1 font-medium capitalize">{displayPlanId}</p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -242,7 +243,7 @@ export function SettingsContent() {
               <Card>
                 <CardContent className="p-4">
                   <p className="text-sm text-muted-foreground">Plan</p>
-                  <p className="mt-1 font-medium capitalize">{summary.company.plan_id}</p>
+                  <p className="mt-1 font-medium capitalize">{displayPlanId}</p>
                 </CardContent>
               </Card>
               <Card>

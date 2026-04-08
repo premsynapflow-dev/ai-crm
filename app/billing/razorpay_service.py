@@ -1,9 +1,11 @@
 import hashlib
 import hmac
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from app.config import get_settings
+from app.billing.plan_application import apply_plan_to_client
 from app.billing.plans import PLANS
 from app.db.models import Client, EventLog, Invoice, Subscription
 from app.db.session import SessionLocal
@@ -140,6 +142,18 @@ def _extract_notes(payload: dict) -> dict:
     return {**payment_link_notes, **order_notes, **subscription_notes, **payment_notes}
 
 
+def _parse_client_id(value):
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        logger.warning("Ignoring invalid Razorpay client_id=%s", value)
+        return None
+
+
 def _apply_plan_after_payment(db, client_id, plan_id):
     if not client_id or plan_id not in PLANS:
         return
@@ -148,11 +162,7 @@ def _apply_plan_after_payment(db, client_id, plan_id):
     if not client:
         return
 
-    plan = PLANS[plan_id]
-    client.plan_id = plan_id
-    client.plan = plan_id
-    client.monthly_ticket_limit = plan["tickets_per_month"]
-    client.trial_ends_at = None
+    apply_plan_to_client(client, plan_id)
 
 
 def verify_payment(payment_id, signature):
@@ -168,7 +178,7 @@ def handle_webhook(payload):
     db = SessionLocal()
     try:
         notes = _extract_notes(payload)
-        client_id = notes.get("client_id") or payload.get("client_id")
+        client_id = _parse_client_id(notes.get("client_id") or payload.get("client_id"))
         plan_id = notes.get("plan_id")
         event = EventLog(
             client_id=client_id,
@@ -181,7 +191,7 @@ def handle_webhook(payload):
             _apply_plan_after_payment(db, client_id, plan_id)
 
         payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
-        if payment.get("id"):
+        if payment.get("id") and client_id:
             invoice = Invoice(
                 client_id=client_id,
                 invoice_number=f"INV-{payment['id']}",
@@ -194,6 +204,8 @@ def handle_webhook(payload):
                 paid_at=datetime.now(timezone.utc),
             )
             db.add(invoice)
+        elif payment.get("id"):
+            logger.warning("Skipping Razorpay invoice without a valid client_id payment_id=%s", payment.get("id"))
         db.commit()
         return {"status": "ok"}
     except Exception:

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.billing.plan_application import apply_plan_to_client
 from app.billing.plans import PLANS, ALLOWED_UPGRADES, is_upgrade_allowed
 from app.billing.razorpay_service import create_payment_link, create_subscription, handle_webhook
 from app.billing.usage import get_usage_summary
@@ -50,7 +51,7 @@ def billing_checkout(payload: CheckoutRequest, x_api_key: str = Header(default="
         raise HTTPException(status_code=400, detail="Selected plan does not have a fixed price; contact support")
 
     try:
-        return create_subscription(client.id, payload.plan_id, payload.billing_cycle)
+        subscription = create_subscription(client.id, payload.plan_id, payload.billing_cycle)
     except Exception:
         logger.exception("Razorpay subscription checkout failed; falling back to payment link; client=%s", client.id)
         payment_link = create_payment_link(
@@ -68,7 +69,27 @@ def billing_checkout(payload: CheckoutRequest, x_api_key: str = Header(default="
             "plan_id": payload.plan_id,
             "billing_cycle": payload.billing_cycle,
             "payment_url": payment_url,
+            "plan_applied": False,
         }
+
+    db = SessionLocal()
+    try:
+        db_client = db.query(Client).filter(Client.id == client.id).first()
+        if not db_client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        apply_plan_to_client(db_client, payload.plan_id)
+        db.commit()
+    finally:
+        db.close()
+    return {
+        "status": "upgraded",
+        "plan_id": payload.plan_id,
+        "billing_cycle": payload.billing_cycle,
+        "razorpay_plan_id": plan.get("razorpay_plan_ids", {}).get(payload.billing_cycle),
+        "razorpay_subscription_id": subscription.get("id"),
+        "payment_url": None,
+        "plan_applied": True,
+    }
 
 
 @router.post("/webhook/razorpay")
@@ -147,19 +168,6 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
             # Prefer subscription creation for plan upgrades
             try:
                 subscription = create_subscription(client.id, payload.plan_id, payload.billing_cycle)
-                logger.info(
-                    "Razorpay subscription created client=%s plan=%s subscription_id=%s",
-                    client.id,
-                    payload.plan_id,
-                    subscription.get("id"),
-                )
-
-                db_client.plan_id = payload.plan_id
-                db_client.plan = payload.plan_id
-                db_client.monthly_ticket_limit = plan.get("tickets_per_month", db_client.monthly_ticket_limit)
-                db_client.trial_ends_at = None
-                db.commit()
-                plan_applied = True
             except Exception:
                 logger.exception("Razorpay subscription creation failed; falling back to payment link; client=%s", client.id)
                 try:
@@ -177,10 +185,19 @@ def billing_upgrade(payload: UpgradeRequest, x_api_key: str = Header(default="",
                 except Exception as exc:
                     logger.exception("Unable to initiate Razorpay payment link for client=%s", client.id)
                     raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
+            else:
+                logger.info(
+                    "Razorpay subscription created client=%s plan=%s subscription_id=%s",
+                    client.id,
+                    payload.plan_id,
+                    subscription.get("id"),
+                )
+
+                apply_plan_to_client(db_client, payload.plan_id)
+                db.commit()
+                plan_applied = True
         else:
-            db_client.plan_id = payload.plan_id
-            db_client.plan = payload.plan_id
-            db_client.monthly_ticket_limit = plan.get("tickets_per_month", db_client.monthly_ticket_limit)
+            apply_plan_to_client(db_client, payload.plan_id)
             subscription = (
                 db.query(Subscription)
                 .filter(Subscription.client_id == client.id)

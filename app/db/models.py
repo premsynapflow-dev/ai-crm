@@ -664,7 +664,7 @@ class Subscription(Base):
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
-    plan = Column(String(50), nullable=False)
+    plan = Column("plan_id", String(50), nullable=False)
     status = Column(String(50), nullable=False, default="trialing")
     stripe_subscription_id = Column(String(255), nullable=True)
     razorpay_subscription_id = Column(String(255), nullable=True)

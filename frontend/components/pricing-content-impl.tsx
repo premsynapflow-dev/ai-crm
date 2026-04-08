@@ -62,7 +62,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function PricingContentImpl() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const [plans, setPlans] = useState<Record<string, Plan>>({})
   const [currentPlanId, setCurrentPlanId] = useState<string>(user?.plan_id ?? 'free')
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -127,11 +127,16 @@ export function PricingContentImpl() {
     try {
       const result = await billingAPI.upgradePlan(planId, isAnnual ? 'annual' : 'monthly')
       if (result.payment_url) {
-        toast.success('Redirecting to Razorpay checkout...')
+        toast.success(`Redirecting to Razorpay checkout. ${plans[planId]?.name ?? planId} activates after payment is confirmed.`)
         window.location.href = result.payment_url
         return
       }
-      setCurrentPlanId(planId)
+      if (!result.plan_applied) {
+        toast.info('Payment is pending. Your plan will update after Razorpay confirms the payment.')
+        return
+      }
+      const refreshedUser = await refreshUser()
+      setCurrentPlanId(refreshedUser?.plan_id ?? result.plan_id ?? planId)
       toast.success(`Plan updated to ${plans[planId]?.name ?? planId}`)
     } catch (error) {
       toast.error(getErrorMessage(error, 'Unable to start upgrade flow'))

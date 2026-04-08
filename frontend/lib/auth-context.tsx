@@ -17,6 +17,7 @@ interface AuthContextType {
   isLoading: boolean
   login: (email: string, password: string) => Promise<boolean>
   logout: () => void
+  refreshUser: () => Promise<AuthUser | null>
   updatePlan: (plan: PlanId) => Promise<void>
 }
 
@@ -26,6 +27,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
+
+  const refreshUser = async (): Promise<AuthUser | null> => {
+    const accessToken = typeof window === 'undefined'
+      ? null
+      : window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+
+    if (!accessToken) {
+      setUser(null)
+      return null
+    }
+
+    const currentUser = await authAPI.getCurrentUser()
+    setUser(currentUser)
+    return currentUser
+  }
 
   useEffect(() => {
     let active = true
@@ -93,9 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    setUser({ ...previousUser, plan, plan_id: plan })
     try {
-      await billingAPI.upgradePlan(plan)
+      const result = await billingAPI.upgradePlan(plan)
+      if (result.plan_applied) {
+        await refreshUser()
+        return
+      }
+      setUser(previousUser)
     } catch {
       setUser(previousUser)
       throw new Error('Failed to update plan')
@@ -110,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         logout,
+        refreshUser,
         updatePlan,
       }}
     >

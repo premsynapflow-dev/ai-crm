@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.billing.plan_application import apply_plan_to_client
 from app.billing.plans import PLANS
 from app.billing.usage import get_usage_summary
 from app.db.models import Client, ClientUser, Complaint, Invoice
@@ -362,10 +363,7 @@ def portal_upgrade_submit(request: Request, plan_id: str = Form(...), db: Sessio
     client = db.query(Client).filter(Client.id == user.client_id).first()
     if not client or plan_id not in PLANS:
         return RedirectResponse(url="/portal/upgrade", status_code=303)
-    plan = PLANS[plan_id]
-    client.plan_id = plan_id
-    client.plan = plan_id
-    client.monthly_ticket_limit = plan["monthly_tickets"]
+    apply_plan_to_client(client, plan_id)
     db.commit()
     return RedirectResponse(url="/portal/billing", status_code=303)
 
