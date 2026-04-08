@@ -38,6 +38,11 @@ def _latest_inbound_for_complaint(db: Session, complaint: Complaint) -> UnifiedM
     except Exception:
         logger.debug("JSON complaint lookup unavailable for complaint %s", complaint.id)
 
+    if complaint.thread_id:
+        threaded = query.filter(UnifiedMessage.external_thread_id == complaint.thread_id).first()
+        if threaded is not None:
+            return threaded
+
     sender_id = complaint.customer_email if complaint.source in {"gmail", "email"} else complaint.customer_phone
     if not sender_id:
         return query.first()
@@ -236,18 +241,19 @@ def send_reply_via_original_channel(
         elif channel == "email":
             from app.integrations.email import send_email
 
-            sent = send_email(
+            send_result = send_email(
                 to_email=complaint.customer_email or (inbound_message.sender_id if inbound_message else ""),
                 subject=f"Re: Support Ticket {complaint.ticket_id}",
                 body=reply_text,
                 in_reply_to=inbound_message.external_message_id if inbound_message else None,
                 references=inbound_message.external_message_id if inbound_message else None,
+                include_metadata=True,
             )
-            if not sent:
+            if not send_result.get("sent"):
                 raise RuntimeError("SMTP delivery unavailable")
-            external_message_id = f"email-outbound-{uuid.uuid4()}"
+            external_message_id = str(send_result.get("message_id") or f"email-outbound-{uuid.uuid4()}")
             external_thread_id = inbound_message.external_thread_id if inbound_message else complaint.thread_id
-            provider_payload = {"provider_response": {"sent": True}}
+            provider_payload = {"provider_response": send_result}
         else:
             from app.integrations.whatsapp import send_whatsapp_text_message
 

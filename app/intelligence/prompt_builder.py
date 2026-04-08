@@ -196,6 +196,64 @@ Reply:"""
     return prompt
 
 
+def build_thread_reply_prompt(
+    complaint_summary: str,
+    conversation_transcript: str,
+    config: Optional[Dict] = None,
+) -> str:
+    """Build a reply prompt using only the current complaint thread."""
+    config = config or DEFAULT_CONFIG
+
+    tone = config.get("tone", "professional")
+    reply_guidelines = config.get("reply_guidelines", {}) or {}
+    industry = config.get("industry", "general")
+
+    tone_instruction = TONE_STYLES.get(tone, TONE_STYLES["professional"])
+    industry_context = INDUSTRY_CONTEXTS.get(industry, INDUSTRY_CONTEXTS["general"])
+
+    length_map = {
+        "short": "2-3 sentences max",
+        "medium": "2-3 paragraphs",
+        "long": "detailed explanation with multiple paragraphs",
+    }
+    max_length = length_map.get(reply_guidelines.get("max_length", "medium"), length_map["medium"])
+    signature = reply_guidelines.get("signature", "Best regards,\nSupport Team")
+    include_links = reply_guidelines.get("include_policy_links", False)
+    link_instruction = "\n- Include relevant policy or help center links where appropriate" if include_links else ""
+
+    prompt = f"""You are a helpful customer service agent. Generate a professional, empathetic reply.
+
+BUSINESS CONTEXT:
+{industry_context}
+
+TONE GUIDANCE:
+{tone_instruction}
+
+LENGTH:
+Keep the response {max_length}.
+
+SOURCE OF TRUTH:
+Use ONLY the conversation thread below.
+Do NOT use information from any other ticket, customer conversation, or historical case.
+If the thread does not contain enough information, ask a concise follow-up question instead of assuming facts.
+
+Complaint summary: {complaint_summary}
+
+Conversation transcript:
+{conversation_transcript or complaint_summary}
+
+Requirements:
+- Address the latest customer message while staying consistent with the full thread
+- Be empathetic and specific to this conversation
+- Provide actionable next steps if applicable{link_instruction}
+- Do NOT make promises you can't keep
+- End with: {signature}
+
+Reply:"""
+
+    return prompt
+
+
 def get_prompt_config_for_client(client) -> Optional[Dict]:
     """Get prompt config for a client
 

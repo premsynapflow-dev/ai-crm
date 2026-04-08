@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AIReplyQueue, AutomationSetting, Client, Complaint, ReplyFeedback, ReplyTemplate
 from app.replies.send_reply import send_complaint_reply
-from app.services.customer_history import get_customer_memory
+from app.services.conversation_threads import generate_thread_reply, generate_thread_reply_async
 from app.services.reply_confidence_scorer import ReplyConfidenceScorer
 
 
@@ -258,20 +258,18 @@ class HardenedAutoReplyService:
                 },
             )
 
-        from app.intelligence.reply_engine import generate_ai_reply
-
-        customer_history = get_customer_memory(
+        client = self.db.query(Client).filter(Client.id == ticket.client_id).first()
+        generated = generate_thread_reply(
             self.db,
-            ticket.customer_email,
-            limit=5,
-            client_id=ticket.client_id,
+            ticket,
+            client=client,
         )
-        generated = generate_ai_reply(ticket, customer_history)
         return (
             generated["reply_text"],
             {
-                "strategy": "gemini",
+                "strategy": "thread_gemini",
                 "model_confidence": float(generated.get("confidence_score", 0.7) or 0.7),
+                "context_messages": int(generated.get("context_messages", 0) or 0),
             },
         )
 
@@ -303,20 +301,19 @@ class HardenedAutoReplyService:
                 },
             )
 
-        from app.intelligence.reply_engine import generate_ai_reply_async
-
-        customer_history = get_customer_memory(
+        client = self.db.query(Client).filter(Client.id == ticket.client_id).first()
+        generated = await generate_thread_reply_async(
             self.db,
-            ticket.customer_email,
-            limit=5,
-            client_id=ticket.client_id,
+            ticket,
+            client=client,
+            custom_config=custom_config,
         )
-        generated = await generate_ai_reply_async(ticket, customer_history, custom_config=custom_config)
         return (
             generated["reply_text"],
             {
-                "strategy": "gemini",
+                "strategy": "thread_gemini",
                 "model_confidence": float(generated.get("confidence_score", 0.7) or 0.7),
+                "context_messages": int(generated.get("context_messages", 0) or 0),
             },
         )
 

@@ -15,6 +15,7 @@ from app.db.models import (
     TicketAssignment,
     TicketComment,
     TicketStateTransition,
+    UnifiedMessage,
 )
 from app.security.passwords import hash_password
 
@@ -189,3 +190,63 @@ def test_reply_complaint_creates_manual_review_queue(test_db, client, test_clien
     assert queue_item.edited_reply == "Thanks, we are checking this now."
     assert complaint.ai_reply_status == "sent"
     assert complaint.ai_reply_sent_at is not None
+
+
+def test_get_complaint_returns_thread_and_summary(test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+    complaint_id = uuid.uuid4()
+    complaint = Complaint(
+        id=complaint_id,
+        client_id=test_client_record.id,
+        summary="Customer shared an order ID after the first reply",
+        category="support",
+        sentiment=0.0,
+        priority=2,
+        source="email",
+        customer_email="customer@example.com",
+        ticket_id="TKT-THREAD-1",
+        ticket_number="TKT-THREAD-1",
+        thread_id="<root-message@example.com>",
+        created_at=datetime.now(timezone.utc),
+    )
+    inbound_message = UnifiedMessage(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        channel="email",
+        external_message_id="<root-message@example.com>",
+        external_thread_id="<root-message@example.com>",
+        sender_id="customer@example.com",
+        sender_name="Customer",
+        message_text="Hi, my shipment is delayed.",
+        attachments=[],
+        timestamp=datetime.now(timezone.utc),
+        direction="inbound",
+        status="processed",
+        raw_payload={"complaint_id": str(complaint_id), "conversation_id": str(uuid.uuid4())},
+    )
+    follow_up_message = UnifiedMessage(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        channel="email",
+        external_message_id="<follow-up@example.com>",
+        external_thread_id="<root-message@example.com>",
+        sender_id="customer@example.com",
+        sender_name="Customer",
+        message_text="Here is the order ID you asked for: ORD-445566.",
+        attachments=[{"filename": "order-details.pdf", "size": 1234}],
+        timestamp=datetime.now(timezone.utc),
+        direction="inbound",
+        status="processed",
+        raw_payload={"complaint_id": str(complaint_id), "conversation_id": str(uuid.uuid4())},
+    )
+    test_db.add_all([complaint, inbound_message, follow_up_message])
+    test_db.commit()
+
+    response = client.get(f"/api/v1/complaints/{complaint_id}", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["thread_id"] == "<root-message@example.com>"
+    assert len(payload["thread_messages"]) == 2
+    assert payload["conversation_summary"]["message_count"] == 2
+    assert payload["conversation_summary"]["attachments"] == ["order-details.pdf"]

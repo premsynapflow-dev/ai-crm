@@ -3,13 +3,14 @@ from __future__ import annotations
 import base64
 import email
 import imaplib
+import re
 import smtplib
 import uuid
 from datetime import datetime, timezone
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from email.utils import getaddresses, parsedate_to_datetime
+from email.utils import getaddresses, make_msgid, parsedate_to_datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -59,14 +60,18 @@ def send_email(
     reply_to: str | None = None,
     in_reply_to: str | None = None,
     references: str | None = None,
-) -> bool:
+    include_metadata: bool = False,
+) -> bool | dict[str, Any]:
     if not settings.smtp_host:
-        return False
+        result = {"sent": False, "message_id": None}
+        return result if include_metadata else result["sent"]
 
     msg = EmailMessage()
+    message_id = make_msgid()
     msg["Subject"] = subject
     msg["From"] = from_email or settings.smtp_from
     msg["To"] = to_email
+    msg["Message-ID"] = message_id
     if reply_to:
         msg["Reply-To"] = reply_to
     if in_reply_to:
@@ -80,7 +85,8 @@ def send_email(
         if settings.smtp_user and settings.smtp_password:
             server.login(settings.smtp_user, settings.smtp_password)
         server.send_message(msg)
-    return True
+    result = {"sent": True, "message_id": message_id}
+    return result if include_metadata else result["sent"]
 
 
 def forwarding_address_for_client(client: Client) -> str:
@@ -146,6 +152,25 @@ def _extract_connection_recipient(message: email.message.Message) -> str | None:
         if candidate.lower().endswith(f"@{settings.inbound_email_domain}".lower()):
             return candidate.lower()
     return None
+
+
+def _extract_email_thread_id(message: email.message.Message, fallback: str) -> str:
+    references = str(message.get("References", "") or "").strip()
+    reference_ids = re.findall(r"<[^>]+>", references)
+    if reference_ids:
+        return reference_ids[0]
+
+    in_reply_to = str(message.get("In-Reply-To", "") or "").strip()
+    in_reply_to_ids = re.findall(r"<[^>]+>", in_reply_to)
+    if in_reply_to_ids:
+        return in_reply_to_ids[0]
+    if in_reply_to:
+        return in_reply_to
+
+    message_id = str(message.get("Message-ID", "") or "").strip()
+    if message_id:
+        return message_id
+    return fallback
 
 
 def _parse_raw_email(raw_email: str) -> tuple[email.message.Message, bytes]:
@@ -331,7 +356,7 @@ async def receive_forwarded_email(
     body = _extract_text_part(raw_message)
     message_text = "\n\n".join(part for part in [subject, body] if part).strip()
     external_message_id = str(raw_message.get("Message-ID", "") or f"email-forwarded-{uuid.uuid4()}")
-    external_thread_id = str(raw_message.get("In-Reply-To", "") or raw_message.get("References", "") or external_message_id)
+    external_thread_id = _extract_email_thread_id(raw_message, external_message_id)
 
     normalized = IncomingMessage(
         client_id=connection.client_id,
@@ -390,7 +415,7 @@ def poll_imap_connection(connection: ChannelConnection) -> list[IncomingMessage]
             subject = str(parsed.get("Subject", "") or "").strip()
             body = _extract_text_part(parsed)
             external_message_id = str(parsed.get("Message-ID", "") or f"email-imap-{uuid.uuid4()}")
-            external_thread_id = str(parsed.get("In-Reply-To", "") or parsed.get("References", "") or external_message_id)
+            external_thread_id = _extract_email_thread_id(parsed, external_message_id)
             messages.append(
                 IncomingMessage(
                     client_id=connection.client_id,

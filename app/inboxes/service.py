@@ -340,7 +340,7 @@ def upsert_imap_inbox(
 
 def fetch_imap_messages(inbox: Inbox, *, max_results: int = 20) -> list["IncomingMessage"]:
     from app.services.unified_ingestion import IncomingMessage
-    from app.integrations.email import _extract_attachments, _extract_text_part, _parse_email_timestamp
+    from app.integrations.email import _extract_attachments, _extract_email_thread_id, _extract_text_part, _parse_email_timestamp
 
     if not inbox.imap_host or not inbox.imap_password:
         return []
@@ -389,7 +389,7 @@ def fetch_imap_messages(inbox: Inbox, *, max_results: int = 20) -> list["Incomin
             snippet = (body[:200] if body else "").strip()
             message_text = "\n\n".join(part for part in [subject, body] if part).strip()
             external_message_id = f"imap:{inbox.id}:{uid_value}"
-            external_thread_id = str(parsed.get("Message-ID", "") or external_message_id)
+            external_thread_id = _extract_email_thread_id(parsed, external_message_id)
 
             messages.append(
                 IncomingMessage(

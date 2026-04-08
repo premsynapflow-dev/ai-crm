@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.billing.usage import can_process_ticket, track_ticket_usage
 from app.db.models import Client, Conversation, UnifiedMessage
+from app.services.conversation_threads import find_complaint_for_conversation
 from app.services.event_logger import log_event
 from app.services.message_events import log_message_event
 from app.utils.logging import get_logger
@@ -133,6 +134,27 @@ def _resolve_message_conversation(db: Session, message: IncomingMessage) -> Conv
     )
 
 
+def _mark_message_processed(
+    unified_message: UnifiedMessage,
+    *,
+    complaint_id: str,
+    ticket_id: str,
+    complaint_thread_id: str,
+    conversation_id: str,
+) -> None:
+    unified_message.status = "processed"
+    unified_message.retry_count = 0
+    unified_message.last_error = None
+    unified_message.next_retry_at = None
+    unified_message.raw_payload = {
+        **(unified_message.raw_payload or {}),
+        "complaint_id": complaint_id,
+        "ticket_id": ticket_id,
+        "complaint_thread_id": complaint_thread_id,
+        "conversation_id": conversation_id,
+    }
+
+
 def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str, Any]:
     existing = (
         db.query(UnifiedMessage)
@@ -238,7 +260,14 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
             "conversation_id": str(conversation.id),
         }
 
-    if not can_process_ticket(client.id):
+    existing_complaint = find_complaint_for_conversation(
+        db,
+        client_id=client.id,
+        channel=message.channel,
+        external_thread_id=conversation.external_thread_id,
+    )
+
+    if existing_complaint is None and not can_process_ticket(client.id):
         unified_message.status = "quota_blocked"
         log_message_event(
             db,
@@ -275,9 +304,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     from app.services.rbi_compliance import RBIComplianceService
     from app.services.audit_logs import append_audit_log
     from app.middleware.feature_gate import has_feature_access
-    from app.billing.plans import PLANS
     from app.intelligence.classifier import classify_message, summarize_if_needed
-    from app.utils.ticket import generate_ticket_id, generate_thread_id
+    from app.utils.ticket import generate_ticket_id
     from app.workflow.dispatcher import dispatch_action
     from app.workflow.rule_engine import decide_action
     from app.services.rules_engine import get_matching_rules
@@ -292,7 +320,6 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
     assigned_team = None
-    plan = PLANS.get(client.plan_id, PLANS["starter"])
     # Sentiment details omitted for brevity
     _ACTION_MAP = {
         "escalate": "ESCALATE_HIGH",
@@ -306,47 +333,94 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         sentiment=sentiment_score,
         urgency=urgency,
     )
-    ticket_id = generate_ticket_id()
-    thread_id = generate_thread_id()
     from app.db.models import Complaint
-    complaint = Complaint(
+    is_new_complaint = existing_complaint is None
+    complaint = existing_complaint or Complaint(
         client_id=client.id,
-        summary=summary,
+        ticket_id=generate_ticket_id(),
+        thread_id=conversation.external_thread_id,
         source=message.channel or "api",
-        customer_email=customer_email,
-        customer_phone=customer_phone,
-        intent=intent,
-        recommended_action=recommended_action,
-        confidence=confidence,
-        priority=priority,
-        category=category,
-        sentiment=sentiment_score,
-        urgency_score=urgency,
-        assigned_team=assigned_team,
-        assigned_to=assigned_team,
-        ticket_id=ticket_id,
-        thread_id=thread_id,
-        status=action,
         state="new",
     )
-    db.add(complaint)
+    if is_new_complaint:
+        db.add(complaint)
+
+    was_resolved = complaint.resolution_status == "resolved"
+    previous_reply_sent_at = complaint.ai_reply_sent_at
+
+    complaint.thread_id = conversation.external_thread_id
+    complaint.summary = summary
+    complaint.source = message.channel or complaint.source or "api"
+    complaint.customer_email = customer_email or complaint.customer_email
+    complaint.customer_phone = customer_phone or complaint.customer_phone
+    complaint.intent = intent
+    complaint.recommended_action = recommended_action
+    complaint.confidence = confidence
+    complaint.priority = priority
+    complaint.category = category
+    complaint.sentiment = sentiment_score
+    complaint.urgency_score = urgency
+    complaint.assigned_team = assigned_team or complaint.assigned_team
+    complaint.assigned_to = assigned_team or complaint.assigned_to
+    complaint.status = action
+    complaint.resolution_status = "open"
+    complaint.resolved_at = None
     db.flush()
-    append_audit_log(
-        db,
-        entity_type="ticket",
-        entity_id=complaint.id,
-        action="ticket_created",
-        performed_by=client.name,
-        old_value=None,
-        new_value={
-            "ticket_id": complaint.ticket_id,
-            "status": complaint.status,
-            "resolution_status": complaint.resolution_status,
-            "source": complaint.source,
-            "rbi_category_code": complaint.rbi_category_code,
-            "tat_status": complaint.tat_status,
-        },
-    )
+
+    if is_new_complaint:
+        append_audit_log(
+            db,
+            entity_type="ticket",
+            entity_id=complaint.id,
+            action="ticket_created",
+            performed_by=client.name,
+            old_value=None,
+            new_value={
+                "ticket_id": complaint.ticket_id,
+                "status": complaint.status,
+                "resolution_status": complaint.resolution_status,
+                "source": complaint.source,
+                "rbi_category_code": complaint.rbi_category_code,
+                "tat_status": complaint.tat_status,
+            },
+        )
+    else:
+        if was_resolved:
+            complaint.reopened_count = int(complaint.reopened_count or 0) + 1
+            complaint.last_reopened_at = datetime.now(timezone.utc)
+            log_event(
+                db,
+                client.id,
+                "complaint_reopened",
+                {
+                    "ticket_id": complaint.ticket_id,
+                    "complaint_id": str(complaint.id),
+                    "summary": complaint.summary,
+                },
+            )
+        append_audit_log(
+            db,
+            entity_type="ticket",
+            entity_id=complaint.id,
+            action="ticket_customer_reply_received",
+            performed_by=message.sender_id or message.sender_name or "customer",
+            old_value=None,
+            new_value={
+                "ticket_id": complaint.ticket_id,
+                "status": complaint.status,
+                "resolution_status": complaint.resolution_status,
+                "thread_id": complaint.thread_id,
+            },
+        )
+        if previous_reply_sent_at is not None:
+            response_gap_seconds = int(max((unified_message.timestamp - previous_reply_sent_at).total_seconds(), 0))
+            HardenedAutoReplyService(db).record_feedback(
+                complaint,
+                customer_responded=True,
+                customer_response_sentiment=sentiment_score,
+                time_to_customer_response_seconds=response_gap_seconds,
+                commit=False,
+            )
     CustomerProfileService(db).sync_customer_for_complaint(
         complaint,
         interaction_type="ticket",
@@ -374,22 +448,26 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         metadata={"source": message.channel or "api"},
         commit=False,
     )
-    log_event(
-        db,
-        client.id,
-        "complaint_received",
-        {
-            "ticket_id": complaint.ticket_id,
-            "complaint_id": str(complaint.id),
-            "summary": complaint.summary,
-            "category": complaint.category,
-            "priority": complaint.priority,
-            "source": complaint.source,
-            "status": complaint.status,
-        },
-    )
+    if is_new_complaint:
+        log_event(
+            db,
+            client.id,
+            "complaint_received",
+            {
+                "ticket_id": complaint.ticket_id,
+                "complaint_id": str(complaint.id),
+                "summary": complaint.summary,
+                "category": complaint.category,
+                "priority": complaint.priority,
+                "source": complaint.source,
+                "status": complaint.status,
+            },
+        )
     if client.is_rbi_regulated and has_feature_access(client, "rbi_compliance", db=db):
-        RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
+        if complaint.rbi_complaint is None:
+            RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
+        else:
+            RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
     queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(complaint, commit=False)
     if queue_entry.status in {"pending", "rejected"}:
         log_event(
@@ -418,31 +496,16 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         customer_email=customer_email,
         customer_phone=customer_phone,
     )
-    unified_message.status = "processed"
-    unified_message.retry_count = 0
-    unified_message.last_error = None
-    unified_message.next_retry_at = None
-    unified_message.raw_payload = {
-        **(unified_message.raw_payload or {}),
-        "complaint_id": str(complaint.id),
-        "ticket_id": complaint.ticket_id,
-        "complaint_thread_id": complaint.thread_id,
-        "conversation_id": str(conversation.id),
-    }
-
-    unified_message.status = "processed"
-    unified_message.retry_count = 0
-    unified_message.last_error = None
-    unified_message.next_retry_at = None
-    unified_message.raw_payload = {
-        **(unified_message.raw_payload or {}),
-        "complaint_id": str(complaint.id),
-        "ticket_id": complaint.ticket_id,
-        "complaint_thread_id": complaint.thread_id,
-        "conversation_id": str(conversation.id),
-    }
+    _mark_message_processed(
+        unified_message,
+        complaint_id=str(complaint.id),
+        ticket_id=complaint.ticket_id,
+        complaint_thread_id=complaint.thread_id,
+        conversation_id=str(conversation.id),
+    )
     conversation.last_message_at = unified_message.timestamp
-    track_ticket_usage(client.id)
+    if is_new_complaint:
+        track_ticket_usage(client.id)
 
     log_message_event(
         db,

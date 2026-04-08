@@ -40,9 +40,14 @@ from app.db.session import get_db
 from app.middleware.feature_gate import ensure_feature_access
 from app.intake.webhook import _process_complaint_for_client
 from app.replies.send_reply import ensure_manual_reply_review, send_complaint_reply
-from app.services.ai import suggest_response
 from app.services.audit_logs import append_audit_log
 from app.services.auto_reply_hardened import HardenedAutoReplyService
+from app.services.conversation_threads import (
+    build_conversation_summary,
+    generate_thread_reply,
+    get_thread_messages,
+    serialize_thread_message,
+)
 from app.services.customer_profile import CustomerProfileService
 from app.services.event_logger import log_event
 from app.services.rbi_compliance import RBIComplianceService
@@ -179,7 +184,28 @@ def _serialize_complaint(complaint: Complaint) -> dict[str, object]:
         "sentiment_indicators": complaint.sentiment_indicators or [],
         "assigned_to": complaint.assigned_to or complaint.assigned_team,
         "satisfaction_score": complaint.satisfaction_score or complaint.customer_satisfaction_score,
+        "thread_id": complaint.thread_id,
     }
+
+
+def _serialize_complaint_detail(db: Session, complaint: Complaint) -> dict[str, object]:
+    payload = _serialize_complaint(complaint)
+    thread_messages = get_thread_messages(db, complaint)
+    conversation_summary = build_conversation_summary(complaint, thread_messages)
+    conversation_id = None
+    for message in thread_messages:
+        raw_payload = message.raw_payload or {}
+        if raw_payload.get("conversation_id"):
+            conversation_id = str(raw_payload["conversation_id"])
+            break
+    payload.update(
+        {
+            "conversation_id": conversation_id,
+            "thread_messages": [serialize_thread_message(message) for message in thread_messages],
+            "conversation_summary": conversation_summary,
+        }
+    )
+    return payload
 
 
 def _apply_status_update(complaint: Complaint, status_value: str) -> None:
@@ -260,25 +286,13 @@ def _get_authenticated_user(request: Request, db: Session, authorization: str | 
 
 def _generate_suggested_response(db: Session, complaint: Complaint, client: Client) -> dict:
     ensure_feature_access(client, "ai_suggested_responses")
-    similar = (
-        db.query(Complaint)
-        .filter(
-            Complaint.client_id == client.id,
-            Complaint.category == complaint.category,
-            Complaint.resolution_status == "resolved",
-            Complaint.ai_reply.isnot(None),
-        )
-        .limit(5)
-        .all()
-    )
-    similar_data = [
-        {
-            "complaint_text": item.summary,
-            "resolution": item.ai_reply,
-        }
-        for item in similar
-    ]
-    return suggest_response(complaint.summary, complaint.category, similar_data)
+    generated = generate_thread_reply(db, complaint, client=client)
+    return {
+        "suggested_response": generated["reply_text"],
+        "confidence": generated.get("confidence_score", 0.0),
+        "based_on_similar_cases": 0,
+        "context_messages": generated.get("context_messages", 0),
+    }
 
 
 @router.get("")
@@ -350,7 +364,7 @@ def get_complaint(
     complaint = _get_scoped_complaint(db, user, complaint_id)
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
-    return _serialize_complaint(complaint)
+    return _serialize_complaint_detail(db, complaint)
 
 
 @router.post("")
@@ -539,7 +553,7 @@ def reply_to_complaint(
         raise HTTPException(status_code=502, detail=_reply_delivery_failure_detail(complaint))
     db.commit()
     db.refresh(complaint)
-    return {"complaint": _serialize_complaint(complaint), **result}
+    return {"complaint": _serialize_complaint_detail(db, complaint), **result}
 
 
 @router.post("/{complaint_id}/suggest-reply")
@@ -564,7 +578,7 @@ def suggest_reply_for_complaint(
     complaint.ai_reply_status = "pending"
     db.commit()
     db.refresh(complaint)
-    return _serialize_complaint(complaint)
+    return _serialize_complaint_detail(db, complaint)
 
 
 @router.get("/{complaint_id}/suggest-response")
