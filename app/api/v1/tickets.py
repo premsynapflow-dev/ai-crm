@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,14 +10,10 @@ from app.db.models import Complaint, TicketAssignment, TicketComment, TicketStat
 from app.db.session import get_db
 from app.dependencies.auth import require_api_key
 from app.middleware.feature_gate import ensure_feature_access
+from app.services.routing_service import RoutingService
 from app.services.ticket_state_machine import TicketStateMachine
 
 router = APIRouter(prefix="/api/v1/tickets", tags=["tickets-v1"])
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
 
 def _default_actor(client) -> str:
     return (client.name or "").strip() or f"client:{client.id}"
@@ -35,6 +30,13 @@ def _parse_ticket_id(ticket_id: str) -> uuid.UUID:
         raise HTTPException(status_code=400, detail="Invalid ticket id") from exc
 
 
+def _parse_uuid_value(value: str, *, detail: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+
 def _serialize_ticket(ticket: Complaint) -> dict[str, Any]:
     return {
         "id": str(ticket.id),
@@ -44,7 +46,9 @@ def _serialize_ticket(ticket: Complaint) -> dict[str, Any]:
         "state": ticket.state,
         "state_changed_at": ticket.state_changed_at.isoformat() if ticket.state_changed_at else None,
         "assigned_to": ticket.assigned_to,
+        "assigned_user_id": str(ticket.assigned_user_id) if ticket.assigned_user_id else None,
         "assigned_team": ticket.assigned_team,
+        "team_id": str(ticket.team_id) if ticket.team_id else None,
         "sla_due_at": ticket.sla_due_at.isoformat() if ticket.sla_due_at else None,
         "sla_status": ticket.sla_status,
         "escalation_level": ticket.escalation_level,
@@ -109,6 +113,7 @@ class CommentCreateRequest(BaseModel):
 
 class AssignmentRequest(BaseModel):
     assigned_to: str = Field(..., min_length=1)
+    team_id: Optional[str] = None
     assigned_by: Optional[str] = None
     assignment_reason: Optional[str] = None
     transition_to_assigned: bool = True
@@ -242,26 +247,14 @@ def assign_ticket(
     ensure_feature_access(current_client, "ticketing_state_machine")
     ticket = _get_ticket_or_404(db, _parse_ticket_id(ticket_id), current_client.id)
     actor = request.assigned_by or _default_actor(current_client)
-
-    active_assignments = (
-        db.query(TicketAssignment)
-        .filter(
-            TicketAssignment.complaint_id == ticket.id,
-            TicketAssignment.unassigned_at.is_(None),
-        )
-        .all()
-    )
-    for active in active_assignments:
-        active.unassigned_at = _utcnow()
-
-    assignment = TicketAssignment(
-        complaint_id=ticket.id,
+    routing_result = RoutingService(db).assign_ticket_to_user(
+        ticket,
         assigned_to=request.assigned_to.strip(),
         assigned_by=actor,
         assignment_reason=request.assignment_reason,
+        team_id=_parse_uuid_value(request.team_id, detail="Invalid team id") if request.team_id else None,
+        commit=False,
     )
-    db.add(assignment)
-    ticket.assigned_to = request.assigned_to.strip()
 
     state_machine = TicketStateMachine(db)
     current_state = (ticket.state or "new").strip().lower()
@@ -271,7 +264,11 @@ def assign_ticket(
             "assigned",
             actor,
             reason=request.assignment_reason or "Ticket assigned",
-            metadata={"assigned_to": ticket.assigned_to},
+            metadata={
+                "assigned_to": ticket.assigned_to,
+                "assigned_user_id": str(ticket.assigned_user_id) if ticket.assigned_user_id else None,
+                "team_id": str(ticket.team_id) if ticket.team_id else None,
+            },
             commit=False,
         )
         if not success:
@@ -281,22 +278,34 @@ def assign_ticket(
             ticket,
             transitioned_by=actor,
             reason=request.assignment_reason or "Ticket assignment updated",
-            metadata={"assigned_to": ticket.assigned_to},
+            metadata={
+                "assigned_to": ticket.assigned_to,
+                "assigned_user_id": str(ticket.assigned_user_id) if ticket.assigned_user_id else None,
+                "team_id": str(ticket.team_id) if ticket.team_id else None,
+            },
             commit=False,
         )
 
     db.commit()
     db.refresh(ticket)
-    db.refresh(assignment)
+    assignment = (
+        db.query(TicketAssignment)
+        .filter(
+            TicketAssignment.complaint_id == ticket.id,
+            TicketAssignment.unassigned_at.is_(None),
+        )
+        .order_by(TicketAssignment.assigned_at.desc())
+        .first()
+    )
     return {
         "success": True,
         "ticket": _serialize_ticket(ticket),
         "assignment": {
-            "id": str(assignment.id),
-            "assigned_to": assignment.assigned_to,
-            "assigned_by": assignment.assigned_by,
-            "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
-            "assignment_reason": assignment.assignment_reason,
+            "id": str(assignment.id) if assignment else None,
+            "assigned_to": assignment.assigned_to if assignment else routing_result.assigned_user,
+            "assigned_by": assignment.assigned_by if assignment else actor,
+            "assigned_at": assignment.assigned_at.isoformat() if assignment and assignment.assigned_at else None,
+            "assignment_reason": assignment.assignment_reason if assignment else request.assignment_reason,
         },
     }
 
@@ -309,18 +318,12 @@ def clear_ticket_assignment(
 ):
     ensure_feature_access(current_client, "ticketing_state_machine")
     ticket = _get_ticket_or_404(db, _parse_ticket_id(ticket_id), current_client.id)
-    active_assignments = (
-        db.query(TicketAssignment)
-        .filter(
-            TicketAssignment.complaint_id == ticket.id,
-            TicketAssignment.unassigned_at.is_(None),
-        )
-        .all()
+    RoutingService(db).clear_ticket_assignment(
+        ticket,
+        unassigned_by=_default_actor(current_client),
+        reason="Ticket unassigned",
+        commit=False,
     )
-    for active in active_assignments:
-        active.unassigned_at = _utcnow()
-
-    ticket.assigned_to = None
     TicketStateMachine(db).sync_from_legacy(
         ticket,
         transitioned_by=_default_actor(current_client),

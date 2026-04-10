@@ -128,6 +128,7 @@ class TicketStateMachine:
     ) -> Tuple[bool, Optional[str]]:
         current_state = self.derive_state_from_legacy(ticket, preserve_existing=True).value
         to_state_norm = self._normalize_value(to_state)
+        was_resolved = self._is_resolved(ticket, current_state)
 
         can_transition, error = self.can_transition(current_state, to_state_norm)
         if not can_transition:
@@ -148,6 +149,7 @@ class TicketStateMachine:
         ticket.state_changed_at = utcnow()
 
         self._handle_state_side_effects(ticket, to_state_norm, sync_legacy=True)
+        self._sync_assignment_workload(ticket, was_resolved=was_resolved, current_state=to_state_norm)
         self._refresh_sla_tracking(ticket)
 
         if commit:
@@ -169,6 +171,7 @@ class TicketStateMachine:
         actor = self.default_actor(transitioned_by)
         current_state = self.derive_state_from_legacy(ticket, preserve_existing=True).value
         target_state = self.derive_state_from_legacy(ticket, preserve_existing=False).value
+        was_resolved = self._is_resolved(ticket, current_state)
 
         self._ensure_ticket_number(ticket)
         if current_state == target_state:
@@ -176,6 +179,7 @@ class TicketStateMachine:
             if not ticket.state_changed_at:
                 ticket.state_changed_at = utcnow()
             self._handle_state_side_effects(ticket, target_state, sync_legacy=False)
+            self._sync_assignment_workload(ticket, was_resolved=was_resolved, current_state=target_state)
             self._refresh_sla_tracking(ticket)
             if commit:
                 self.db.commit()
@@ -197,6 +201,7 @@ class TicketStateMachine:
             ticket.state = target_state
             ticket.state_changed_at = utcnow()
             self._handle_state_side_effects(ticket, target_state, sync_legacy=False)
+            self._sync_assignment_workload(ticket, was_resolved=was_resolved, current_state=target_state)
             self._refresh_sla_tracking(ticket)
             if commit:
                 self.db.commit()
@@ -217,6 +222,7 @@ class TicketStateMachine:
         ticket.state = target_state
         ticket.state_changed_at = utcnow()
         self._handle_state_side_effects(ticket, target_state, sync_legacy=False)
+        self._sync_assignment_workload(ticket, was_resolved=was_resolved, current_state=target_state)
         self._refresh_sla_tracking(ticket)
         if commit:
             self.db.commit()
@@ -301,6 +307,24 @@ class TicketStateMachine:
             legacy_status = self.LEGACY_STATUS_BY_STATE.get(TicketState(new_state))
             if legacy_status:
                 ticket.status = legacy_status
+
+    def _is_resolved(self, ticket: Complaint, state: str | None = None) -> bool:
+        normalized_state = self._normalize_value(state or ticket.state)
+        return (
+            ticket.resolution_status == "resolved"
+            or ticket.resolved_at is not None
+            or normalized_state in {TicketState.RESOLVED.value, TicketState.CLOSED.value}
+        )
+
+    def _sync_assignment_workload(self, ticket: Complaint, *, was_resolved: bool, current_state: str) -> None:
+        from app.services.routing_service import RoutingService
+
+        RoutingService(self.db).sync_workload_for_resolution_change(
+            ticket,
+            was_resolved=was_resolved,
+            is_resolved=self._is_resolved(ticket, current_state),
+            commit=False,
+        )
 
     def _refresh_sla_tracking(self, ticket: Complaint) -> None:
         from app.services.sla_manager import SLAManager

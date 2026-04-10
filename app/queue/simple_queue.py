@@ -9,12 +9,12 @@ from app.integrations.email import send_email
 from app.integrations.slack import send_slack_alert
 from app.billing.plans import PLANS
 from app.intelligence.classifier import classify_message_async
-from app.intelligence.prompt_builder import get_prompt_config_for_client
 from app.middleware.feature_gate import has_feature_access
-from app.services.assignment import assign_team
 from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.channel_router import process_outbound_retry
+from app.services.classification_service import build_client_classification_config
 from app.services.customer_profile import CustomerProfileService
+from app.services.routing_service import RoutingService
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
 from app.services.sentiment import analyze_sentiment
@@ -233,19 +233,14 @@ async def process_complaint_ai_job(payload: Dict):
             logger.error(f"Client {complaint.client_id} not found")
             return
         
-        # NEW: Get custom prompt config for this client
-        custom_config = get_prompt_config_for_client(client)
-        
-        # Run AI classification with custom config
-        classification = await classify_message_async(message, custom_config)
+        client_config = build_client_classification_config(db, client)
+        classification = await classify_message_async(message, client_config)
         
         # Update complaint
         TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
         complaint.intent = classification["intent"]
         complaint.category = classification["category"]
         complaint.sentiment = classification["sentiment"]
-        complaint.assigned_to = assign_team(complaint.category, complaint.intent)
-        complaint.assigned_team = complaint.assigned_to
         complaint.urgency_score = classification["urgency_score"]
         complaint.priority = classification["priority"]
         complaint.recommended_action = classification["recommended_action"]
@@ -260,7 +255,13 @@ async def process_complaint_ai_job(payload: Dict):
         complaint.sentiment_score = sentiment_details.get("score")
         complaint.sentiment_label = sentiment_details.get("label")
         complaint.sentiment_indicators = sentiment_details.get("indicators")
-        
+        RoutingService(db).route_ticket(
+            complaint,
+            classification,
+            commit=False,
+            routed_by=client.name or "system:routing",
+        )
+
         # Generate AI reply
         CustomerProfileService(db).sync_customer_for_complaint(
             complaint,
@@ -274,7 +275,7 @@ async def process_complaint_ai_job(payload: Dict):
 
         await HardenedAutoReplyService(db).generate_and_queue_reply_async(
             complaint,
-            custom_config=custom_config,
+            custom_config=client_config,
             commit=False,
         )
 
@@ -289,7 +290,12 @@ async def process_complaint_ai_job(payload: Dict):
         )
         db.commit()
         
-        logger.info(f"Processed complaint {complaint_id} in background (custom_prompt={custom_config is not None})")
+        logger.info(
+            "Processed complaint %s in background (custom_prompt=%s escalation_rules=%s)",
+            complaint_id,
+            bool(getattr(client, "custom_prompt_enabled", False)),
+            len(client_config.get("escalation_rules", [])),
+        )
         
     except Exception as e:
         logger.exception(f"Failed to process complaint AI job: {e}")

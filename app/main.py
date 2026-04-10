@@ -32,6 +32,7 @@ from app.api.settings import router as settings_router
 from app.api.session_auth import router as session_auth_router
 from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
+from app.api.v1.compliance_escalation import router as compliance_escalation_router
 from app.api.v1.customers import router as customers_v1_router
 from app.api.v1.me import router as me_router
 from app.api.v1.notifications import router as notifications_v1_router
@@ -252,6 +253,7 @@ app.include_router(session_auth_router)
 app.include_router(public_api_router)
 app.include_router(auth_v1_router)
 app.include_router(complaints_v1_router)
+app.include_router(compliance_escalation_router)
 app.include_router(customers_v1_router)
 app.include_router(me_router)
 app.include_router(notifications_v1_router)

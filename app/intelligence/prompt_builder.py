@@ -13,6 +13,7 @@ DEFAULT_CONFIG = {
         "prioritize_refunds": False,
         "auto_escalate_legal": True,
     },
+    "escalation_rules": [],
     "reply_guidelines": {
         "max_length": "medium",
         "include_policy_links": False,
@@ -56,6 +57,7 @@ def build_classification_prompt(message: str, config: Optional[Dict] = None) -> 
     tone = config.get("tone", "professional")
     focus_areas = config.get("focus_areas", ["general support"]) or ["general support"]
     classification_rules = config.get("classification_rules", {}) or {}
+    escalation_rules = config.get("escalation_rules", []) or []
     industry = config.get("industry", "general")
 
     # Build prompt
@@ -75,6 +77,30 @@ def build_classification_prompt(message: str, config: Optional[Dict] = None) -> 
         rules_text.append("- Technical bugs should be classified as high priority")
 
     rules_section = "\n".join(rules_text) if rules_text else "- Follow standard classification rules"
+    escalation_text = []
+    for rule in escalation_rules[:10]:
+        rule_name = str(rule.get("name") or "Unnamed rule").strip()
+        trigger_condition = str(rule.get("trigger_condition") or "custom").strip()
+        category_code = str(rule.get("category_code") or "").strip()
+        escalation_level = rule.get("escalation_level")
+        trigger_after_hours = rule.get("trigger_after_hours")
+        escalate_to = str(rule.get("escalate_to") or "configured escalation owner").strip()
+
+        parts = [f"{rule_name}: trigger={trigger_condition}"]
+        if category_code:
+            parts.append(f"category={category_code}")
+        if escalation_level is not None:
+            parts.append(f"level={escalation_level}")
+        if trigger_after_hours is not None:
+            parts.append(f"after_hours={trigger_after_hours}")
+        parts.append(f"target={escalate_to}")
+        escalation_text.append(f"- {', '.join(parts)}")
+
+    escalation_section = (
+        "\n".join(escalation_text)
+        if escalation_text
+        else "- No client-specific escalation rules configured."
+    )
 
     prompt = f"""Classify this customer message and return ONLY valid JSON, no markdown.
 
@@ -90,21 +116,26 @@ Pay special attention to issues related to: {focus_text}
 CLASSIFICATION RULES:
 {rules_section}
 
+CLIENT ESCALATION RULES:
+{escalation_section}
+
 Message: \"{message}\"
 
 Rules for recommended_action:
 - Use 'escalate' when: refund request, fraud claim, urgent complaint, legal threat, abuse, or sentiment is very negative (below -0.7)
+- If a configured client escalation rule clearly applies based on the message, use 'escalate'
 - Use 'notify_sales' when: pricing inquiry, enterprise/bulk question, upgrade interest, or sales opportunity
 - Use 'support_ticket' when: general help, order status, technical issue
 - Use 'auto_reply' when: simple FAQ, easily resolved automatically
 - Use 'product_feedback' when: feature request or product suggestion
+- Classify obvious phishing, unsolicited promotions, or junk outreach as category 'spam'
 
 Also include a short concise summary of the message.
 
 Return exactly this structure:
 {{
   "intent": "one of: complaint/refund_request/sales_lead/support/order_status/feature_request",
-  "category": "one of: refund/billing/technical/abuse/general/sales",
+  "category": "one of: refund/billing/technical/abuse/general/sales/spam",
   "sentiment": <float -1.0 to 1.0>,
   "urgency_score": <float 0.0 to 1.0>,
   "priority": <integer 1-5>,

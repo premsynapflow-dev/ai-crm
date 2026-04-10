@@ -54,11 +54,18 @@ class Client(Base):
     automation_rules = relationship("AutomationRule", back_populates="client", cascade="all, delete-orphan")
     rbi_tat_rules = relationship("RBITATRule", back_populates="client", cascade="all, delete-orphan")
     escalation_level_definitions = relationship("EscalationLevelDefinition", back_populates="client", cascade="all, delete-orphan")
+    teams = relationship("Team", back_populates="client", cascade="all, delete-orphan")
+    team_members = relationship("TeamMember", back_populates="client", cascade="all, delete-orphan")
+    routing_rules = relationship("RoutingRule", back_populates="client", cascade="all, delete-orphan")
 
 
 class Complaint(Base):
     __tablename__ = "complaints"
-    __table_args__ = (Index("idx_complaints_response_time", "response_time_seconds"),)
+    __table_args__ = (
+        Index("idx_complaints_response_time", "response_time_seconds"),
+        Index("idx_complaints_team", "client_id", "team_id"),
+        Index("idx_complaints_assigned_user", "client_id", "assigned_user_id"),
+    )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
@@ -77,7 +84,9 @@ class Complaint(Base):
     sentiment_label = Column(String(50), nullable=True)
     sentiment_indicators = Column(JSON, nullable=True)
     urgency_score = Column(Float, nullable=False, default=0.0)
+    team_id = Column(Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=True, index=True)
     assigned_team = Column(String(50), nullable=True)
+    assigned_user_id = Column(Uuid(as_uuid=True), ForeignKey("client_users.id"), nullable=True, index=True)
     assigned_to = Column(String(255), nullable=True)
     ticket_id = Column(String(50), nullable=False, index=True)
     thread_id = Column(String(50), nullable=False, index=True)
@@ -111,9 +120,72 @@ class Complaint(Base):
 
     client = relationship("Client", back_populates="complaints")
     customer = relationship("Customer", back_populates="complaints")
+    team = relationship("Team", back_populates="complaints")
+    assigned_user = relationship("ClientUser", foreign_keys=[assigned_user_id], back_populates="assigned_complaints")
     reply_queue = relationship("AIReplyQueue", back_populates="complaint", uselist=False)
     rbi_complaint = relationship("RBIComplaint", back_populates="complaint", uselist=False)
     escalations = relationship("Escalation", back_populates="ticket", cascade="all, delete-orphan")
+
+
+class Team(Base):
+    __tablename__ = "teams"
+    __table_args__ = (
+        UniqueConstraint("client_id", "name", name="uq_teams_client_name"),
+        Index("idx_teams_client_name", "client_id", "name"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    client = relationship("Client", back_populates="teams")
+    complaints = relationship("Complaint", back_populates="team")
+    members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
+    routing_rules = relationship("RoutingRule", back_populates="team", cascade="all, delete-orphan")
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    __table_args__ = (
+        UniqueConstraint("client_id", "team_id", "user_id", name="uq_team_members_client_team_user"),
+        Index("idx_team_members_lookup", "client_id", "team_id", "role", "is_active"),
+        Index("idx_team_members_capacity", "team_id", "is_active", "role", "active_tasks", "updated_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    team_id = Column(Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("client_users.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False, default="agent")
+    capacity = Column(Integer, nullable=False, default=10)
+    active_tasks = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    client = relationship("Client", back_populates="team_members")
+    team = relationship("Team", back_populates="members")
+    user = relationship("ClientUser", back_populates="team_memberships")
+
+
+class RoutingRule(Base):
+    __tablename__ = "routing_rules"
+    __table_args__ = (
+        UniqueConstraint("client_id", "category", name="uq_routing_rules_client_category"),
+        Index("idx_routing_rules_client_category", "client_id", "category"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    category = Column(String(100), nullable=False)
+    team_id = Column(Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    client = relationship("Client", back_populates="routing_rules")
+    team = relationship("Team", back_populates="routing_rules")
 
 
 class Customer(Base):
@@ -632,6 +704,9 @@ class ClientUser(Base):
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    team_memberships = relationship("TeamMember", back_populates="user")
+    assigned_complaints = relationship("Complaint", foreign_keys="Complaint.assigned_user_id", back_populates="assigned_user")
 
 
 class EventLog(Base):

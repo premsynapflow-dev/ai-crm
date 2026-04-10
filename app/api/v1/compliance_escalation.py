@@ -15,7 +15,7 @@ from app.db.models import Complaint, Escalation
 from app.db.session import get_db
 from app.dependencies.auth import require_api_key
 from app.middleware.feature_gate import ensure_feature_access
-from app.services.escalation_engine import EscalationEngine
+from app.services.escalation_engine import EscalationEngine, EscalationTriggerReason
 
 router = APIRouter(prefix="/api/v1/compliance", tags=["compliance"])
 
@@ -370,9 +370,10 @@ def manual_escalation(
 
     try:
         engine = EscalationEngine(db)
+        engine.get_or_create_escalation_levels(current_client.id)
         escalation = engine.escalate(
             complaint,
-            reason="manual",
+            reason=EscalationTriggerReason.MANUAL,
             escalated_by=f"{current_client.name}",
             metadata={"user_reason": reason},
         )

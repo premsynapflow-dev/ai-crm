@@ -16,10 +16,10 @@ def _cache_key(message, context, history):
     return hashlib.sha256(source.encode()).hexdigest()
 
 
-def generate_reply(message, context=None, conversation_history=None):
+def generate_reply(message, context=None, conversation_history=None, classification=None, client_config=None):
     context = context or {}
     conversation_history = conversation_history or []
-    classification = classify_message(message)
+    classification = classification or classify_message(message, client_config)
     escalate = classification.get("priority", 1) >= 4 or classification.get("recommended_action") == "escalate"
     cache_key = _cache_key(message, context, conversation_history)
 

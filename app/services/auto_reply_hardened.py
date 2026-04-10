@@ -24,9 +24,10 @@ class HardenedAutoReplyService:
         self,
         ticket: Complaint,
         force_human_review: bool = False,
+        custom_config: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> AIReplyQueue:
-        reply_text, generation_meta = self._generate_reply(ticket)
+        reply_text, generation_meta = self._generate_reply(ticket, custom_config=custom_config)
         return self._store_queue_decision(ticket, reply_text, generation_meta, force_human_review, commit)
 
     async def generate_and_queue_reply_async(
@@ -233,7 +234,11 @@ class HardenedAutoReplyService:
             self.db.flush()
         return feedback
 
-    def _generate_reply(self, ticket: Complaint) -> tuple[str, dict[str, Any]]:
+    def _generate_reply(
+        self,
+        ticket: Complaint,
+        custom_config: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         template = (
             self.db.query(ReplyTemplate)
             .filter(
@@ -263,6 +268,7 @@ class HardenedAutoReplyService:
             self.db,
             ticket,
             client=client,
+            custom_config=custom_config,
         )
         return (
             generated["reply_text"],

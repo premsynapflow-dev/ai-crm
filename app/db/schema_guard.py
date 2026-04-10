@@ -23,6 +23,9 @@ REQUIRED_TABLES = [
     "escalation_rules",
     "ticket_comments",
     "ticket_assignments",
+    "teams",
+    "team_members",
+    "routing_rules",
     "customers",
     "customer_merge_history",
     "customer_interactions",
@@ -199,6 +202,8 @@ def _ensure_required_columns():
                 "sentiment_label",
                 "sentiment_indicators",
                 "assigned_to",
+                "team_id",
+                "assigned_user_id",
                 "state",
                 "state_changed_at",
                 "ticket_number",
@@ -275,7 +280,11 @@ def _ensure_required_columns():
             "complaints",
             Complaint,
             complaint_columns,
-            extra_sql=["CREATE INDEX IF NOT EXISTS ix_complaints_customer_id ON complaints(customer_id)"],
+            extra_sql=[
+                "CREATE INDEX IF NOT EXISTS ix_complaints_customer_id ON complaints(customer_id)",
+                "CREATE INDEX IF NOT EXISTS idx_complaints_team ON complaints(client_id, team_id)",
+                "CREATE INDEX IF NOT EXISTS idx_complaints_assigned_user ON complaints(client_id, assigned_user_id)",
+            ],
         )
         if added_complaint_columns:
             added_summary["complaints"] = added_complaint_columns

@@ -28,10 +28,22 @@ from app.db.models import (
 )
 from app.services.audit_logs import append_audit_log
 from app.config import get_settings
+from app.utils.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class EscalationTriggerReason(str, Enum):
@@ -206,9 +218,12 @@ class EscalationEngine:
 
     def calculate_hours_since_creation(self, complaint: Complaint) -> float:
         """Calculate hours since ticket creation."""
-        if not complaint.created_at:
-            return 0
-        return (complaint.created_at.replace(tzinfo=timezone.utc) - _utcnow()).total_seconds() / 3600
+        created_at = _as_utc(complaint.created_at)
+        if created_at is None:
+            return 0.0
+
+        hours_open = (_utcnow() - created_at).total_seconds() / 3600
+        return max(0.0, hours_open)
 
     def calculate_next_escalation_eta(
         self,
@@ -222,10 +237,11 @@ class EscalationEngine:
         if not next_level:
             return None
 
-        if not complaint.created_at:
+        created_at = _as_utc(complaint.created_at)
+        if created_at is None:
             return None
 
-        eta = complaint.created_at.replace(tzinfo=timezone.utc) + timedelta(
+        eta = created_at + timedelta(
             hours=next_level.trigger_after_hours
         )
         return eta
@@ -371,6 +387,15 @@ class EscalationEngine:
                 )
 
                 if should_escalate_bool and next_level:
+                    logger.info(
+                        "Escalation trigger matched for ticket %s: hours_open=%.2f threshold=%s current_level=%s next_level=%s reason=%s",
+                        complaint.id,
+                        hours_open,
+                        next_level.trigger_after_hours,
+                        current_level,
+                        next_level.level_code,
+                        reason_msg,
+                    )
                     if not dry_run:
                         escalation = self.escalate(
                             complaint,

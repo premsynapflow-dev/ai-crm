@@ -9,10 +9,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.billing.usage import can_process_ticket, track_ticket_usage
-from app.db.models import Client, Conversation, UnifiedMessage
+from app.db.models import Client, Complaint, Conversation, UnifiedMessage
 from app.services.conversation_threads import find_complaint_for_conversation
 from app.services.event_logger import log_event
 from app.services.message_events import log_message_event
+from app.services.routing_service import RoutingService
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -137,21 +138,44 @@ def _resolve_message_conversation(db: Session, message: IncomingMessage) -> Conv
 def _mark_message_processed(
     unified_message: UnifiedMessage,
     *,
-    complaint_id: str,
-    ticket_id: str,
-    complaint_thread_id: str,
+    complaint_id: str | None,
+    ticket_id: str | None,
+    complaint_thread_id: str | None,
     conversation_id: str,
+    team_id: str | None = None,
+    assigned_team: str | None = None,
+    assigned_user: str | None = None,
+    assigned_user_id: str | None = None,
+    classification_category: str | None = None,
+    status: str = "processed",
 ) -> None:
-    unified_message.status = "processed"
+    unified_message.status = status
     unified_message.retry_count = 0
     unified_message.last_error = None
     unified_message.next_retry_at = None
+    payload_updates = {
+        "message_id": str(unified_message.id),
+        "conversation_id": conversation_id,
+    }
+    if complaint_id is not None:
+        payload_updates["complaint_id"] = complaint_id
+    if ticket_id is not None:
+        payload_updates["ticket_id"] = ticket_id
+    if complaint_thread_id is not None:
+        payload_updates["complaint_thread_id"] = complaint_thread_id
+    if team_id is not None:
+        payload_updates["team_id"] = team_id
+    if assigned_team is not None:
+        payload_updates["assigned_team"] = assigned_team
+    if assigned_user is not None:
+        payload_updates["assigned_user"] = assigned_user
+    if assigned_user_id is not None:
+        payload_updates["assigned_user_id"] = assigned_user_id
+    if classification_category is not None:
+        payload_updates["classification_category"] = classification_category
     unified_message.raw_payload = {
         **(unified_message.raw_payload or {}),
-        "complaint_id": complaint_id,
-        "ticket_id": ticket_id,
-        "complaint_thread_id": complaint_thread_id,
-        "conversation_id": conversation_id,
+        **payload_updates,
     }
 
 
@@ -303,14 +327,15 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     from app.services.auto_reply_hardened import HardenedAutoReplyService
     from app.services.rbi_compliance import RBIComplianceService
     from app.services.audit_logs import append_audit_log
+    from app.services.classification_service import build_client_classification_config, classification_to_action
     from app.middleware.feature_gate import has_feature_access
     from app.intelligence.classifier import classify_message, summarize_if_needed
     from app.utils.ticket import generate_ticket_id
     from app.workflow.dispatcher import dispatch_action
-    from app.workflow.rule_engine import decide_action
     from app.services.rules_engine import get_matching_rules
     # ---
-    classification = classify_message(message.message_text)
+    client_config = build_client_classification_config(db, client)
+    classification = classify_message(message.message_text, client_config)
     summary = summarize_if_needed(message.message_text, classification)
     intent = classification["intent"]
     recommended_action = classification["recommended_action"]
@@ -319,21 +344,38 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
-    assigned_team = None
-    # Sentiment details omitted for brevity
-    _ACTION_MAP = {
-        "escalate": "ESCALATE_HIGH",
-        "notify_sales": "NOTIFY_SALES",
-        "support_ticket": "AUTO_REPLY",
-        "auto_reply": "AUTO_REPLY",
-        "product_feedback": "PRODUCT_FEEDBACK",
-    }
-    action = _ACTION_MAP.get(recommended_action) or decide_action(
-        category=category,
-        sentiment=sentiment_score,
-        urgency=urgency,
-    )
-    from app.db.models import Complaint
+    spam_filtered = str(category or "").strip().lower() == "spam" and existing_complaint is None
+
+    if spam_filtered:
+        _mark_message_processed(
+            unified_message,
+            complaint_id=None,
+            ticket_id=None,
+            complaint_thread_id=None,
+            conversation_id=str(conversation.id),
+            classification_category=category,
+            status="spam_filtered",
+        )
+        conversation.last_message_at = unified_message.timestamp
+        log_message_event(
+            db,
+            message=unified_message,
+            event_type="message_processed",
+            payload={
+                "outcome": "spam_filtered",
+                "message_id": str(unified_message.id),
+                "conversation_id": str(conversation.id),
+                "category": category,
+            },
+        )
+        db.flush()
+        return {
+            "status": "spam_filtered",
+            "message_id": str(unified_message.id),
+            "conversation_id": str(conversation.id),
+        }
+
+    action = classification_to_action(classification)
     is_new_complaint = existing_complaint is None
     complaint = existing_complaint or Complaint(
         client_id=client.id,
@@ -360,12 +402,18 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     complaint.category = category
     complaint.sentiment = sentiment_score
     complaint.urgency_score = urgency
-    complaint.assigned_team = assigned_team or complaint.assigned_team
-    complaint.assigned_to = assigned_team or complaint.assigned_to
     complaint.status = action
     complaint.resolution_status = "open"
     complaint.resolved_at = None
     db.flush()
+    routing_result = RoutingService(db).route_ticket(
+        complaint,
+        classification,
+        commit=False,
+        routed_by=client.name or "system:routing",
+    )
+    if routing_result.assigned_user_id is not None:
+        conversation.assigned_to = routing_result.assigned_user_id
 
     if is_new_complaint:
         append_audit_log(
@@ -468,7 +516,11 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
             RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
         else:
             RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
-    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(complaint, commit=False)
+    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(
+        complaint,
+        custom_config=client_config,
+        commit=False,
+    )
     if queue_entry.status in {"pending", "rejected"}:
         log_event(
             db,
@@ -502,6 +554,11 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         ticket_id=complaint.ticket_id,
         complaint_thread_id=complaint.thread_id,
         conversation_id=str(conversation.id),
+        team_id=str(routing_result.team_id) if routing_result.team_id else None,
+        assigned_team=routing_result.team_name,
+        assigned_user=routing_result.assigned_user,
+        assigned_user_id=str(routing_result.assigned_user_id) if routing_result.assigned_user_id else None,
+        classification_category=category,
     )
     conversation.last_message_at = unified_message.timestamp
     if is_new_complaint:
@@ -511,12 +568,16 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         db,
         message=unified_message,
         event_type="message_processed",
-        payload={
-            "conversation_id": str(conversation.id),
-            "complaint_id": str(complaint.id),
-            "ticket_id": complaint.ticket_id,
-        },
-    )
+            payload={
+                "conversation_id": str(conversation.id),
+                "message_id": str(unified_message.id),
+                "complaint_id": str(complaint.id),
+                "ticket_id": complaint.ticket_id,
+                "team_id": str(routing_result.team_id) if routing_result.team_id else None,
+                "assigned_team": routing_result.team_name,
+                "assigned_user": routing_result.assigned_user,
+            },
+        )
     if complaint.ai_reply:
         log_message_event(
             db,

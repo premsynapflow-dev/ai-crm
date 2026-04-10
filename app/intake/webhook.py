@@ -16,9 +16,10 @@ from app.middleware.feature_gate import has_feature_access
 from app.services.action_executor import execute_action
 from app.services.audit_logs import append_audit_log
 from app.services.auto_reply_hardened import HardenedAutoReplyService
-from app.services.assignment import assign_team
+from app.services.classification_service import build_client_classification_config, classification_to_action
 from app.services.customer_profile import CustomerProfileService
 from app.services.event_logger import log_event
+from app.services.routing_service import RoutingService
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
 from app.services.ticket_state_machine import TicketStateMachine
@@ -28,7 +29,6 @@ from app.utils.logging import get_logger
 from app.utils.sanitize import sanitize_email, sanitize_message, sanitize_phone
 from app.utils.ticket import generate_thread_id, generate_ticket_id
 from app.workflow.dispatcher import dispatch_action
-from app.workflow.rule_engine import decide_action
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
 logger = get_logger(__name__)
@@ -80,8 +80,8 @@ def _process_complaint_for_client(
     incoming_ticket_id: Optional[str] = None,
     return_complaint: bool = False,
 ) -> str | Complaint:
-    # Single unified AI classification call (Gemini - free tier)
-    classification = classify_message(message)
+    client_config = build_client_classification_config(db, client)
+    classification = classify_message(message, client_config)
     summary = summarize_if_needed(message, classification)
 
     intent = classification["intent"]
@@ -91,7 +91,6 @@ def _process_complaint_for_client(
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
-    assigned_team = assign_team(category, intent)
     plan = PLANS.get(client.plan_id, PLANS["starter"])
     sentiment_details = _fallback_sentiment_details(sentiment_score)
     if plan.get("feature_flags", {}).get("sentiment_analysis"):
@@ -100,19 +99,7 @@ def _process_complaint_for_client(
             **analyze_sentiment(summary or message),
         }
 
-    # Decide final workflow action (ESCALATE_HIGH or AUTO_REPLY)
-    _ACTION_MAP = {
-        "escalate": "ESCALATE_HIGH",
-        "notify_sales": "NOTIFY_SALES",
-        "support_ticket": "AUTO_REPLY",
-        "auto_reply": "AUTO_REPLY",
-        "product_feedback": "PRODUCT_FEEDBACK",
-    }
-    action = _ACTION_MAP.get(recommended_action) or decide_action(
-        category=category,
-        sentiment=sentiment_score,
-        urgency=urgency,
-    )
+    action = classification_to_action(classification)
     ticket_id = incoming_ticket_id or generate_ticket_id()
     thread_id = generate_thread_id()
 
@@ -132,8 +119,6 @@ def _process_complaint_for_client(
         sentiment_label=sentiment_details.get("label"),
         sentiment_indicators=sentiment_details.get("indicators"),
         urgency_score=urgency,
-        assigned_team=assigned_team,
-        assigned_to=assigned_team,
         ticket_id=ticket_id,
         thread_id=thread_id,
         status=action,
@@ -141,6 +126,12 @@ def _process_complaint_for_client(
     )
     db.add(complaint)
     db.flush()
+    RoutingService(db).route_ticket(
+        complaint,
+        classification,
+        commit=False,
+        routed_by=client.name or "system:routing",
+    )
     append_audit_log(
         db,
         entity_type="ticket",
@@ -205,7 +196,11 @@ def _process_complaint_for_client(
     if client.is_rbi_regulated and has_feature_access(client, "rbi_compliance", db=db):
         RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
 
-    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(complaint, commit=False)
+    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(
+        complaint,
+        custom_config=client_config,
+        commit=False,
+    )
     if queue_entry.status in {"pending", "rejected"}:
         log_event(
             db,

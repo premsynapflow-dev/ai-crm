@@ -276,6 +276,9 @@ def _serialize_complaint(complaint: Complaint, *, subject_override: str | None =
         "sentiment_label": complaint.sentiment_label,
         "sentiment_indicators": complaint.sentiment_indicators or [],
         "assigned_to": complaint.assigned_to or complaint.assigned_team,
+        "assigned_user_id": str(complaint.assigned_user_id) if complaint.assigned_user_id else None,
+        "assigned_team": complaint.assigned_team,
+        "team_id": str(complaint.team_id) if complaint.team_id else None,
         "satisfaction_score": complaint.satisfaction_score or complaint.customer_satisfaction_score,
         "thread_id": complaint.thread_id,
     }

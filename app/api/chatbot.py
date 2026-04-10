@@ -7,6 +7,7 @@ from app.db.models import Client, Complaint
 from app.db.session import get_db
 from app.intelligence.chatbot import generate_reply
 from app.intelligence.classifier import classify_message, summarize_if_needed
+from app.services.classification_service import build_client_classification_config
 from app.services.response_tracking import mark_first_response
 from app.utils.ticket import generate_thread_id, generate_ticket_id
 
@@ -32,9 +33,16 @@ def chat_endpoint(payload: ChatRequest, x_api_key: str = Header(default="", alia
     if not can_process_ticket(client.id):
         raise HTTPException(status_code=402, detail="Usage limit exceeded")
 
-    classification = classify_message(payload.message)
+    client_config = build_client_classification_config(db, client)
+    classification = classify_message(payload.message, client_config)
     summary = summarize_if_needed(payload.message, classification)
-    ai_result = generate_reply(payload.message, payload.context, payload.conversation_history)
+    ai_result = generate_reply(
+        payload.message,
+        payload.context,
+        payload.conversation_history,
+        classification=classification,
+        client_config=client_config,
+    )
 
     complaint = Complaint(
         client_id=client.id,
