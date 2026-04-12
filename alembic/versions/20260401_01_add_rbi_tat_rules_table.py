@@ -18,33 +18,52 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create rbi_tat_rules table (idempotent - skip if exists)
+    # Create rbi_tat_rules table using alembic operations (idempotent)
     from sqlalchemy import text
     
-    # Check if table exists before creating
-    try:
-        connection = op.get_bind()
-        connection.execute(text("""
-            CREATE TABLE IF NOT EXISTS rbi_tat_rules (
-                id UUID NOT NULL PRIMARY KEY,
-                client_id UUID NOT NULL,
-                category_code VARCHAR(20) NOT NULL,
-                tat_days INTEGER NOT NULL,
-                is_active BOOLEAN NOT NULL DEFAULT true,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT fk_tat_rules_client FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-                CONSTRAINT unique_client_tat_rule UNIQUE (client_id, category_code)
+    # Check if table already exists
+    connection = op.get_bind()
+    result = connection.execute(text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'rbi_tat_rules')"))
+    table_exists = result.fetchone()[0]
+    
+    if not table_exists:
+        # Create table using alembic operations
+        try:
+            op.create_table(
+                "rbi_tat_rules",
+                sa.Column("id", sa.UUID(), nullable=False),
+                sa.Column("client_id", sa.UUID(), nullable=False),
+                sa.Column("category_code", sa.String(length=20), nullable=False),
+                sa.Column("tat_days", sa.Integer(), nullable=False),
+                sa.Column("is_active", sa.Boolean(), nullable=False, default=True),
+                sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+                sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+                sa.PrimaryKeyConstraint("id"),
+                sa.ForeignKeyConstraint(["client_id"], ["clients.id"], ondelete="CASCADE"),
+                sa.UniqueConstraint("client_id", "category_code", name="unique_client_tat_rule"),
             )
-        """))
-        # Create indexes if they don't exist
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_tat_rules_client ON rbi_tat_rules(client_id)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_tat_rules_category ON rbi_tat_rules(category_code)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_tat_rules_lookup ON rbi_tat_rules(client_id, category_code, is_active)"))
-        connection.commit()
-    except Exception as e:
-        print(f"Warning: Error creating rbi_tat_rules table: {e}")
-        # Continue silently - table may already exist
+        except Exception:
+            # Table may already exist, skip silently
+            pass
+        
+        # Create indexes
+        op.create_index("idx_tat_rules_client", "rbi_tat_rules", ["client_id"])
+        op.create_index("idx_tat_rules_category", "rbi_tat_rules", ["category_code"])
+        op.create_index("idx_tat_rules_lookup", "rbi_tat_rules", ["client_id", "category_code", "is_active"])
+    else:
+        # Table exists, ensure indexes exist (idempotent)
+        try:
+            op.create_index("idx_tat_rules_client", "rbi_tat_rules", ["client_id"], unique=False)
+        except:
+            pass  # Index may already exist
+        try:
+            op.create_index("idx_tat_rules_category", "rbi_tat_rules", ["category_code"], unique=False)
+        except:
+            pass  # Index may already exist
+        try:
+            op.create_index("idx_tat_rules_lookup", "rbi_tat_rules", ["client_id", "category_code", "is_active"], unique=False)
+        except:
+            pass  # Index may already exist
 
 
 def downgrade() -> None:
