@@ -270,7 +270,7 @@ export function AssignmentDashboard() {
                             <div>
                               <p className="text-sm font-medium text-slate-900">{member.name}</p>
                               <p className="text-xs text-muted-foreground">
-                                {member.role} · {member.isActive ? 'active' : 'inactive'}
+                                {member.role} - {member.isActive ? 'active' : 'inactive'}
                               </p>
                             </div>
                             <Badge
@@ -416,7 +416,7 @@ export function AssignmentDashboard() {
                         <SelectContent>
                           {assignableUsers.map(({ team, member }) => (
                             <SelectItem key={member.userId} value={member.userId}>
-                              {member.name} · {team.name}
+                              {member.name} - {team.name}
                             </SelectItem>
                           ))}
                         </SelectContent>

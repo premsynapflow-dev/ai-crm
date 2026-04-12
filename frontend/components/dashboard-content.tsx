@@ -289,6 +289,81 @@ export function DashboardContent() {
         />
       </section>
 
+      <section>
+        <Card className="overflow-hidden border-white/70 bg-white/90 shadow-[0_25px_80px_-50px_rgba(15,23,42,0.55)]">
+          <CardHeader className="border-b bg-slate-50/70">
+            <CardTitle>Recent complaints</CardTitle>
+            <CardDescription>Fresh complaints from the inbox, pulled directly from the complaints API.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Sentiment</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {complaints.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="h-28 text-center text-muted-foreground">
+                        No complaints found yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    complaints.map((complaint) => (
+                      <TableRow key={complaint.id}>
+                        <TableCell className="font-medium">{complaint.customerName}</TableCell>
+                        <TableCell className="max-w-[220px] truncate">{complaint.subject}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {complaint.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={cn('capitalize', priorityColors[complaint.priority])}>
+                            {complaint.priority}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={cn('capitalize', statusColors[complaint.status])}>
+                            {complaint.status.replace('-', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={cn('capitalize', sentimentBadgeColors[complaint.sentiment])}>
+                            {complaint.sentimentLabel ?? complaint.sentiment}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(complaint.createdAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="gap-2" onClick={() => handleViewDetails(complaint)}>
+                            <Eye className="h-4 w-4" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
       <AssignmentDashboard />
 
       <section className="grid gap-6 xl:grid-cols-[1.7fr_1fr]">
@@ -491,81 +566,6 @@ export function DashboardContent() {
             </CardContent>
           </Card>
         </div>
-      </section>
-
-      <section>
-        <Card className="overflow-hidden border-white/70 bg-white/90 shadow-[0_25px_80px_-50px_rgba(15,23,42,0.55)]">
-          <CardHeader className="border-b bg-slate-50/70">
-            <CardTitle>Recent complaints</CardTitle>
-            <CardDescription>Fresh complaints from the inbox, pulled directly from the complaints API.</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Sentiment</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {complaints.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="h-28 text-center text-muted-foreground">
-                        No complaints found yet.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    complaints.map((complaint) => (
-                      <TableRow key={complaint.id}>
-                        <TableCell className="font-medium">{complaint.customerName}</TableCell>
-                        <TableCell className="max-w-[220px] truncate">{complaint.subject}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {complaint.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn('capitalize', priorityColors[complaint.priority])}>
-                            {complaint.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn('capitalize', statusColors[complaint.status])}>
-                            {complaint.status.replace('-', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={cn('capitalize', sentimentBadgeColors[complaint.sentiment])}>
-                            {complaint.sentimentLabel ?? complaint.sentiment}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(complaint.createdAt).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                          })}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="gap-2" onClick={() => handleViewDetails(complaint)}>
-                            <Eye className="h-4 w-4" />
-                            View
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
       </section>
 
       <ComplaintDetailModal
