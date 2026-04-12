@@ -8,4 +8,4 @@ fi
 
 "$PYTHON_BIN" -m app.db.schema_guard
 
-exec "$PYTHON_BIN" -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec "$PYTHON_BIN" -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 4

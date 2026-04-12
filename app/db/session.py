@@ -2,7 +2,7 @@ from contextvars import ContextVar
 from typing import Generator
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
@@ -13,13 +13,10 @@ _current_client_id: ContextVar[str | None] = ContextVar("current_client_id", def
 engine = create_engine(
     settings.database_url,
     connect_args={"sslmode": "require"} if "postgresql" in settings.database_url else {},
-    poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
+    poolclass=NullPool,
     pool_pre_ping=True,
-    pool_recycle=3600,
-    pool_timeout=30,
     echo=False,
+    future=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=Session)
