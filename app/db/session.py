@@ -1,3 +1,4 @@
+import os
 from contextvars import ContextVar
 from typing import Generator
 
@@ -10,9 +11,18 @@ from app.config import get_settings
 settings = get_settings()
 _current_client_id: ContextVar[str | None] = ContextVar("current_client_id", default=None)
 
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    # Try pydantic settings as fallback just in case
+    db_url = getattr(settings, "database_url", None)
+    if not db_url:
+        raise RuntimeError("DATABASE_URL is not set")
+
+print("Using DATABASE_URL:", db_url[:30], "...")
+
 engine = create_engine(
-    settings.database_url,
-    connect_args={"sslmode": "require"} if "postgresql" in settings.database_url else {},
+    db_url,
+    connect_args={"sslmode": "require"} if "postgresql" in db_url else {},
     poolclass=NullPool,
     pool_pre_ping=True,
     echo=False,
