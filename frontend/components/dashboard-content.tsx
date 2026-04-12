@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   LineChart,
   Line,
@@ -31,8 +32,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AssignmentDashboard } from '@/components/assignment-dashboard'
 import { ComplaintDetailModal } from '@/components/complaint-detail-modal'
 import { UpgradePrompt } from '@/components/upgrade-prompt'
 import { useAuth } from '@/lib/auth-context'
@@ -44,6 +51,12 @@ import {
   type RootCauseAnalysisResponse,
   type SentimentDistributionResponse,
 } from '@/lib/api/analytics'
+import {
+  assignmentDashboardAPI,
+  type AssignmentTeam,
+  type AssignmentTeamMember,
+  type AssignmentTicket,
+} from '@/lib/api/assignment-dashboard'
 import { complaintsAPI, type Complaint } from '@/lib/api/complaints'
 import { planIncludesFeature } from '@/lib/plan-features'
 import { cn } from '@/lib/utils'
@@ -111,9 +124,12 @@ export function DashboardContent() {
   const [sentimentDistribution, setSentimentDistribution] = useState<SentimentDistributionResponse | null>(null)
   const [churnRiskCustomers, setChurnRiskCustomers] = useState<ChurnRiskCustomer[]>([])
   const [rootCause, setRootCause] = useState<RootCauseAnalysisResponse | null>(null)
+  const [assignmentTeams, setAssignmentTeams] = useState<AssignmentTeam[]>([])
+  const [assignmentTickets, setAssignmentTickets] = useState<AssignmentTicket[]>([])
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [reassigningComplaintId, setReassigningComplaintId] = useState<string | null>(null)
   const [sentimentLocked, setSentimentLocked] = useState(false)
   const [churnLocked, setChurnLocked] = useState(false)
   const [rootCauseLocked, setRootCauseLocked] = useState(false)
@@ -129,6 +145,7 @@ export function DashboardContent() {
         const hasRootCause = planIncludesFeature(user?.plan_id, 'root_cause_analysis')
         const overviewPromise = analyticsAPI.getOverview(30)
         const complaintsPromise = complaintsAPI.list({ page: 1, pageSize: 8 })
+        const assignmentsPromise = assignmentDashboardAPI.getAssignments()
         const sentimentPromise = hasSentiment
           ? analyticsAPI.getSentimentDistribution()
           : Promise.resolve(null)
@@ -139,9 +156,10 @@ export function DashboardContent() {
           ? analyticsAPI.getRootCauseAnalysis(30)
           : Promise.resolve(null)
 
-        const [overviewResult, complaintsResult, sentimentResult, churnResult, rootCauseResult] = await Promise.allSettled([
+        const [overviewResult, complaintsResult, assignmentsResult, sentimentResult, churnResult, rootCauseResult] = await Promise.allSettled([
           overviewPromise,
           complaintsPromise,
+          assignmentsPromise,
           sentimentPromise,
           churnPromise,
           rootCausePromise,
@@ -153,6 +171,13 @@ export function DashboardContent() {
 
         setAnalytics(overviewResult.status === 'fulfilled' ? overviewResult.value : null)
         setComplaints(complaintsResult.status === 'fulfilled' ? complaintsResult.value.items : [])
+        if (assignmentsResult.status === 'fulfilled') {
+          setAssignmentTeams(assignmentsResult.value.teams)
+          setAssignmentTickets(assignmentsResult.value.tickets)
+        } else {
+          setAssignmentTeams([])
+          setAssignmentTickets([])
+        }
 
         if (sentimentResult.status === 'fulfilled') {
           setSentimentDistribution(sentimentResult.value)
@@ -199,6 +224,64 @@ export function DashboardContent() {
   const handleComplaintUpdated = (updatedComplaint: Complaint) => {
     setComplaints((current) => current.map((item) => (item.id === updatedComplaint.id ? updatedComplaint : item)))
     setSelectedComplaint(updatedComplaint)
+  }
+
+  const teamMembersByUserId = useMemo(() => {
+    const map = new Map<string, { team: AssignmentTeam; member: AssignmentTeamMember }>()
+    assignmentTeams.forEach((team) => {
+      team.members.forEach((member) => {
+        if (!member.isActive) {
+          return
+        }
+        if (!map.has(member.userId)) {
+          map.set(member.userId, { team, member })
+        }
+      })
+    })
+    return map
+  }, [assignmentTeams])
+
+  const assignableUsers = useMemo(() => Array.from(teamMembersByUserId.values()), [teamMembersByUserId])
+
+  const assignmentByTicketId = useMemo(() => {
+    const map = new Map<string, AssignmentTicket>()
+    assignmentTickets.forEach((ticket) => {
+      if (ticket.ticketId) {
+        map.set(ticket.ticketId, ticket)
+      }
+      map.set(ticket.id, ticket)
+    })
+    return map
+  }, [assignmentTickets])
+
+  const handleAssignComplaint = async (complaint: Complaint, userId: string) => {
+    const ticket = assignmentByTicketId.get(complaint.ticketId ?? complaint.id)
+    const ticketId = ticket?.id ?? complaint.ticketId ?? complaint.id
+    const selection = teamMembersByUserId.get(userId)
+    if (!ticketId || !selection) {
+      return
+    }
+
+    setReassigningComplaintId(complaint.id)
+    try {
+      const updatedTicket = await assignmentDashboardAPI.reassignTicket(ticketId, userId)
+      setAssignmentTickets((current) => {
+        const index = current.findIndex((item) => item.id === updatedTicket.id)
+        if (index === -1) {
+          return [...current, updatedTicket]
+        }
+        return current.map((item) => (item.id === updatedTicket.id ? { ...item, ...updatedTicket } : item))
+      })
+      setComplaints((current) =>
+        current.map((item) =>
+          item.id === complaint.id
+            ? { ...item, assignedTo: selection.member.name }
+            : item,
+        ),
+      )
+    } finally {
+      setReassigningComplaintId(null)
+    }
   }
 
   const trendChange = analytics?.trend.previous
@@ -292,8 +375,15 @@ export function DashboardContent() {
       <section>
         <Card className="overflow-hidden border-white/70 bg-white/90 shadow-[0_25px_80px_-50px_rgba(15,23,42,0.55)]">
           <CardHeader className="border-b bg-slate-50/70">
-            <CardTitle>Recent complaints</CardTitle>
-            <CardDescription>Fresh complaints from the inbox, pulled directly from the complaints API.</CardDescription>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle>Recent complaints</CardTitle>
+                <CardDescription>Fresh complaints from the inbox, pulled directly from the complaints API.</CardDescription>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/assignments">Open assignment board</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
@@ -307,13 +397,15 @@ export function DashboardContent() {
                     <TableHead>Status</TableHead>
                     <TableHead>Sentiment</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead>Assigned</TableHead>
+                    <TableHead className="w-[190px]">Assign</TableHead>
                     <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {complaints.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-28 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="h-28 text-center text-muted-foreground">
                         No complaints found yet.
                       </TableCell>
                     </TableRow>
@@ -348,6 +440,37 @@ export function DashboardContent() {
                             month: 'short',
                           })}
                         </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const ticket = assignmentByTicketId.get(complaint.ticketId ?? complaint.id)
+                            const assignedLabel = ticket?.assignedTo ?? complaint.assignedTo ?? 'Unassigned'
+                            const assignedTeam = ticket?.teamName
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-sm font-medium text-slate-900">{assignedLabel}</p>
+                                <p className="text-xs text-muted-foreground">{assignedTeam ?? 'No team'}</p>
+                              </div>
+                            )
+                          })()}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={assignmentByTicketId.get(complaint.ticketId ?? complaint.id)?.assignedUserId ?? undefined}
+                            onValueChange={(value) => void handleAssignComplaint(complaint, value)}
+                            disabled={assignableUsers.length === 0 || reassigningComplaintId === complaint.id}
+                          >
+                            <SelectTrigger className="w-full bg-white">
+                              <SelectValue placeholder={assignableUsers.length === 0 ? 'No active team' : 'Pick teammate'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {assignableUsers.map(({ team, member }) => (
+                                <SelectItem key={member.userId} value={member.userId}>
+                                  {member.name} - {team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button variant="ghost" size="sm" className="gap-2" onClick={() => handleViewDetails(complaint)}>
                             <Eye className="h-4 w-4" />
@@ -363,8 +486,6 @@ export function DashboardContent() {
           </CardContent>
         </Card>
       </section>
-
-      <AssignmentDashboard />
 
       <section className="grid gap-6 xl:grid-cols-[1.7fr_1fr]">
         <Card className="overflow-hidden border-white/70 bg-white/90 shadow-[0_25px_80px_-50px_rgba(15,23,42,0.55)]">

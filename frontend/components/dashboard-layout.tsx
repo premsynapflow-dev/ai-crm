@@ -41,6 +41,7 @@ import {
   ChevronLeft,
   User,
   Users,
+  FolderKanban,
   Sparkles,
   ShieldCheck,
 } from 'lucide-react'
@@ -124,7 +125,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
-    { href: '/customers', icon: Users, label: 'Customer 360' },
+    { href: '/customers', icon: User, label: 'Customer 360' },
+    { href: '/assignments', icon: FolderKanban, label: 'Assignments' },
+    { href: '/settings/teams', icon: Users, label: 'Teams' },
     { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
     ...(canAccessRbiCompliance ? [{ href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' }] : []),
     { href: '/analytics', icon: BarChart3, label: 'Analytics' },
