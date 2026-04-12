@@ -15,6 +15,7 @@ from app.services.customer_profile import (
     CustomerProfileService,
     serialize_customer,
     serialize_customer_interaction,
+    serialize_customer_message,
     serialize_customer_note,
     serialize_customer_relationship,
     serialize_customer_ticket,
@@ -61,6 +62,12 @@ class CustomerRelationshipRequest(BaseModel):
     is_primary_contact: bool = False
 
 
+class UpdateCustomerRequest(BaseModel):
+    name: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+
 @router.get("")
 def list_customers(
     skip: int = Query(0, ge=0),
@@ -75,6 +82,7 @@ def list_customers(
         pattern = f"%{search.strip()}%"
         query = query.filter(
             or_(
+                Customer.name.ilike(pattern),
                 Customer.full_name.ilike(pattern),
                 Customer.primary_email.ilike(pattern),
                 Customer.company_name.ilike(pattern),
@@ -83,7 +91,7 @@ def list_customers(
         )
 
     total = query.count()
-    customers = query.order_by(Customer.last_interaction_at.desc(), Customer.created_at.desc()).offset(skip).limit(limit).all()
+    customers = query.order_by(Customer.last_contacted_at.desc(), Customer.updated_at.desc()).offset(skip).limit(limit).all()
     return {"total": total, "items": [serialize_customer(customer) for customer in customers]}
 
 
@@ -130,13 +138,56 @@ def get_customer_360(
     return {
         "profile": serialize_customer(profile),
         "recent_tickets": [serialize_customer_ticket(ticket) for ticket in data["recent_tickets"]],
+        "recent_messages": [serialize_customer_message(message) for message in data.get("recent_messages", [])],
+        "active_tickets": [serialize_customer_ticket(ticket) for ticket in data.get("active_tickets", [])],
         "interaction_timeline": [serialize_customer_interaction(item) for item in data["interaction_timeline"]],
+        "timeline": data.get("timeline", []),
         "notes": [serialize_customer_note(item) for item in data["notes"]],
         "relationships": [serialize_customer_relationship(item) for item in data["relationships"]],
         "satisfaction_trend": data["satisfaction_trend"],
         "churn_indicators": data["churn_indicators"],
+        "sentiment": data.get("sentiment"),
+        "insights": data.get("insights", []),
         "stats": data["stats"],
     }
+
+
+@router.get("/{customer_id}/360")
+def get_customer_360_snapshot(
+    customer_id: str,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    ensure_feature_access(current_client, "customer_360", db=db)
+    customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
+    snapshot = CustomerProfileService(db).get_customer_360_snapshot(str(customer.id))
+    if snapshot["identity"]["client_id"] != str(current_client.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return snapshot
+
+
+@router.patch("/{customer_id}")
+def update_customer(
+    customer_id: str,
+    request: UpdateCustomerRequest,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    ensure_feature_access(current_client, "customer_360", db=db)
+    customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
+    update_data = request.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        normalized_name = (request.name or "").strip() or None
+        customer.name = normalized_name
+        customer.full_name = normalized_name
+    if "notes" in update_data:
+        customer.notes = (request.notes or "").strip() or None
+    if "tags" in update_data and request.tags is not None:
+        customer.tags = [tag for tag in dict.fromkeys((tag or "").strip() for tag in request.tags) if tag]
+    CustomerProfileService(db).refresh_customer_metrics(customer, commit=False)
+    db.commit()
+    db.refresh(customer)
+    return {"success": True, "customer": serialize_customer(customer)}
 
 
 @router.get("/{customer_id}/duplicates")

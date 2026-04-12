@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_client_user
 from app.db.models import Complaint, TicketAssignment, TicketComment, TicketStateTransition
 from app.db.session import get_db
 from app.dependencies.auth import require_api_key
@@ -43,6 +44,9 @@ def _serialize_ticket(ticket: Complaint) -> dict[str, Any]:
         "ticket_id": ticket.ticket_id,
         "ticket_number": ticket.ticket_number or ticket.ticket_id,
         "summary": ticket.summary,
+        "category": ticket.category,
+        "priority": ticket.priority,
+        "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
         "state": ticket.state,
         "state_changed_at": ticket.state_changed_at.isoformat() if ticket.state_changed_at else None,
         "assigned_to": ticket.assigned_to,
@@ -117,6 +121,10 @@ class AssignmentRequest(BaseModel):
     assigned_by: Optional[str] = None
     assignment_reason: Optional[str] = None
     transition_to_assigned: bool = True
+
+
+class ManualAssignmentRequest(BaseModel):
+    user_id: str = Field(..., min_length=1)
 
 
 @router.get("/{ticket_id}")
@@ -331,6 +339,59 @@ def clear_ticket_assignment(
         metadata={},
         commit=False,
     )
+    db.commit()
+    db.refresh(ticket)
+    return {"success": True, "ticket": _serialize_ticket(ticket)}
+
+
+@router.patch("/{ticket_id}/assign")
+def assign_ticket_for_dashboard(
+    ticket_id: str,
+    request: ManualAssignmentRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_client_user),
+):
+    ticket = _get_ticket_or_404(db, _parse_ticket_id(ticket_id), current_user.client_id)
+    actor = current_user.email
+
+    RoutingService(db).assign_ticket_to_user(
+        ticket,
+        assigned_to=request.user_id.strip(),
+        assigned_by=actor,
+        assignment_reason="Manual reassignment via assignment dashboard",
+        commit=False,
+    )
+
+    state_machine = TicketStateMachine(db)
+    current_state = (ticket.state or "new").strip().lower()
+    if current_state in {"new", "reopened"}:
+        success, error = state_machine.transition(
+            ticket,
+            "assigned",
+            actor,
+            reason="Manual reassignment via assignment dashboard",
+            metadata={
+                "assigned_to": ticket.assigned_to,
+                "assigned_user_id": str(ticket.assigned_user_id) if ticket.assigned_user_id else None,
+                "team_id": str(ticket.team_id) if ticket.team_id else None,
+            },
+            commit=False,
+        )
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+    else:
+        state_machine.sync_from_legacy(
+            ticket,
+            transitioned_by=actor,
+            reason="Manual reassignment via assignment dashboard",
+            metadata={
+                "assigned_to": ticket.assigned_to,
+                "assigned_user_id": str(ticket.assigned_user_id) if ticket.assigned_user_id else None,
+                "team_id": str(ticket.team_id) if ticket.team_id else None,
+            },
+            commit=False,
+        )
+
     db.commit()
     db.refresh(ticket)
     return {"success": True, "ticket": _serialize_ticket(ticket)}

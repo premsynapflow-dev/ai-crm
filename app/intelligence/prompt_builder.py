@@ -285,6 +285,69 @@ Reply:"""
     return prompt
 
 
+def build_auto_reply_generation_prompt(context: Dict[str, Any], config: Optional[Dict] = None) -> str:
+    """Build a structured prompt for approval-gated auto-reply drafts."""
+    config = config or DEFAULT_CONFIG
+
+    tone = config.get("tone", "professional")
+    reply_guidelines = config.get("reply_guidelines", {}) or {}
+    industry = config.get("industry", "general")
+
+    tone_instruction = TONE_STYLES.get(tone, TONE_STYLES["professional"])
+    industry_context = INDUSTRY_CONTEXTS.get(industry, INDUSTRY_CONTEXTS["general"])
+
+    history_lines = context.get("customer_history") or ["- No prior customer history available."]
+    message_lines = context.get("recent_messages") or ["- No previous conversation available."]
+    signature = reply_guidelines.get("signature", "Best regards,\nSupport Team")
+
+    prompt = f"""You are a customer support agent writing a draft reply that MUST be reviewed by a human before sending.
+
+BUSINESS CONTEXT:
+{industry_context}
+
+TONE GUIDANCE:
+{tone_instruction}
+
+TICKET CONTEXT:
+- Ticket number: {context.get("ticket_number") or "Not assigned"}
+- Category: {context.get("category") or "general"}
+- Sentiment: {context.get("sentiment_label") or "neutral"} ({context.get("sentiment_score")})
+- Priority: {context.get("priority") or "unknown"}
+- Channel: {context.get("source") or "unknown"}
+- Summary: {context.get("summary") or "No summary provided"}
+
+CUSTOMER CONTEXT:
+- Customer name: {context.get("customer_name") or "Customer"}
+- Company: {context.get("company_name") or "Unknown"}
+- Total tickets: {context.get("total_tickets") if context.get("total_tickets") is not None else "Unknown"}
+- Average satisfaction: {context.get("avg_satisfaction_score") if context.get("avg_satisfaction_score") is not None else "Unknown"}
+- Churn risk score: {context.get("churn_risk_score") if context.get("churn_risk_score") is not None else "Unknown"}
+
+CUSTOMER HISTORY:
+{chr(10).join(history_lines)}
+
+PREVIOUS CONVERSATION:
+{chr(10).join(message_lines)}
+
+INSTRUCTIONS:
+- Write a professional, empathetic response tailored to the customer context above
+- Use only the facts in the context and conversation
+- Do not promise refunds, credits, or outcomes unless the context explicitly supports that
+- If the context is incomplete, acknowledge the issue and explain the next review step instead of guessing
+- The body should be concise, practical, and ready for agent review
+- End the body with this signature exactly:
+{signature}
+
+Return ONLY valid JSON with this shape:
+{{
+  "subject": "Email subject line",
+  "body": "Email body",
+  "confidence_score": 0.0
+}}"""
+
+    return prompt
+
+
 def get_prompt_config_for_client(client) -> Optional[Dict]:
     """Get prompt config for a client
 

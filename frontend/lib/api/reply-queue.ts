@@ -5,6 +5,11 @@ export interface ReplyQueueItem {
   ticket_id: string
   ticket_number: string | null
   ticket_summary: string | null
+  draft_id: string | null
+  draft_subject: string | null
+  draft_body: string | null
+  draft_status: string | null
+  customer_id: string | null
   generated_reply: string
   edited_reply: string | null
   confidence_score: number | null
@@ -27,8 +32,9 @@ export const replyQueueAPI = {
     return response.data as { items: ReplyQueueItem[] }
   },
 
-  approve: async (queueId: string, editedReply?: string) => {
+  approve: async (queueId: string, editedSubject?: string, editedReply?: string) => {
     const response = await api.post(`/api/v1/reply-queue/${queueId}/approve`, {
+      edited_subject: editedSubject,
       edited_reply: editedReply,
     })
     return response.data as { success: boolean; item: ReplyQueueItem }

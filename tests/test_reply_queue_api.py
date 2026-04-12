@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from app.db.models import AIReplyQueue, Complaint
+from app.db.models import AIReplyQueue, Complaint, ReplyDraft
 
 
 def _create_complaint(test_db, client_id, *, summary: str, ticket_id: str) -> Complaint:
@@ -46,6 +46,24 @@ def _create_queue_item(test_db, complaint, *, status: str = "pending", expires_i
     return queue_item
 
 
+def _create_reply_draft(test_db, complaint, *, status: str = "pending") -> ReplyDraft:
+    draft = ReplyDraft(
+        id=uuid.uuid4(),
+        complaint_id=complaint.id,
+        client_id=complaint.client_id,
+        ticket_id=complaint.ticket_id,
+        customer_id=complaint.customer_id,
+        subject=f"Re: {complaint.ticket_id}",
+        body=f"Draft body for {complaint.ticket_id}",
+        status=status,
+        confidence_score=0.87,
+        generation_metadata={"strategy": "test"},
+    )
+    test_db.add(draft)
+    test_db.commit()
+    return draft
+
+
 def test_reply_queue_listing_returns_only_pending_items(test_db, client, test_client_record):
     complaint_pending = _create_complaint(
         test_db,
@@ -73,6 +91,7 @@ def test_reply_queue_listing_returns_only_pending_items(test_db, client, test_cl
     assert body["items"][0]["id"] == str(pending_item.id)
     assert body["items"][0]["ticket_number"] == complaint_pending.ticket_number
     assert body["items"][0]["status"] == "pending"
+    assert body["items"][0]["draft_body"] == pending_item.generated_reply
 
 
 def test_reply_queue_approve_updates_queue_and_complaint(test_db, client, test_client_record):
@@ -82,12 +101,17 @@ def test_reply_queue_approve_updates_queue_and_complaint(test_db, client, test_c
         summary="Approve this AI reply",
         ticket_id="TKT-RQ-3",
     )
+    draft = _create_reply_draft(test_db, complaint)
     queue_item = _create_queue_item(test_db, complaint)
+    queue_item.reply_draft_id = draft.id
+    test_db.commit()
 
-    def fake_send_reply(db, complaint, client=None, reply_text=None, status_on_success="sent"):
+    def fake_send_reply(db, complaint, client=None, reply_text=None, status_on_success="sent", reply_subject=None):
         complaint.ai_reply = reply_text
         complaint.ai_reply_status = status_on_success
         complaint.ai_reply_sent_at = datetime.now(timezone.utc)
+        complaint.last_replied_at = complaint.ai_reply_sent_at
+        complaint.status = "RESPONDED"
         return {"sent": True, "channels": ["email"]}
 
     with patch("app.services.auto_reply_hardened.send_complaint_reply", side_effect=fake_send_reply):
@@ -104,10 +128,14 @@ def test_reply_queue_approve_updates_queue_and_complaint(test_db, client, test_c
     assert body["item"]["reviewed_by"] == f"client-{str(test_client_record.id)[:8]}@system.local"
 
     test_db.refresh(queue_item)
+    test_db.refresh(draft)
     test_db.refresh(complaint)
     assert queue_item.status == "approved"
+    assert draft.status == "approved"
     assert complaint.ai_reply_status == "sent"
     assert complaint.ai_reply_sent_at is not None
+    assert complaint.last_replied_at is not None
+    assert complaint.status == "RESPONDED"
 
 
 def test_reply_queue_approve_reports_delivery_failure(test_db, client, test_client_record):
@@ -119,7 +147,7 @@ def test_reply_queue_approve_reports_delivery_failure(test_db, client, test_clie
     )
     queue_item = _create_queue_item(test_db, complaint)
 
-    def fake_send_reply(db, complaint, client=None, reply_text=None, status_on_success="sent"):
+    def fake_send_reply(db, complaint, client=None, reply_text=None, status_on_success="sent", reply_subject=None):
         complaint.ai_reply = reply_text
         complaint.ai_reply_status = "agent_review"
         return {"sent": False, "channels": []}
@@ -149,7 +177,10 @@ def test_reply_queue_reject_updates_queue_state(test_db, client, test_client_rec
         summary="Reject this AI reply",
         ticket_id="TKT-RQ-4",
     )
+    draft = _create_reply_draft(test_db, complaint)
     queue_item = _create_queue_item(test_db, complaint)
+    queue_item.reply_draft_id = draft.id
+    test_db.commit()
 
     response = client.post(
         f"/api/v1/reply-queue/{queue_item.id}/reject",
@@ -164,6 +195,8 @@ def test_reply_queue_reject_updates_queue_state(test_db, client, test_client_rec
     assert body["item"]["rejection_reason"] == "Needs human review"
 
     test_db.refresh(queue_item)
+    test_db.refresh(draft)
     test_db.refresh(complaint)
     assert queue_item.status == "rejected"
+    assert draft.status == "rejected"
     assert complaint.ai_reply_status == "agent_review"

@@ -8,6 +8,7 @@ import { UpgradePrompt } from '@/components/upgrade-prompt'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getFeatureGateDetail } from '@/lib/api-error'
@@ -28,6 +29,7 @@ function formatDate(value?: string | null) {
 export function ReplyQueueContent() {
   const [status, setStatus] = useState('pending')
   const [items, setItems] = useState<ReplyQueueItem[]>([])
+  const [subjectDrafts, setSubjectDrafts] = useState<Record<string, string>>({})
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -44,9 +46,14 @@ export function ReplyQueueContent() {
           return
         }
         setItems(response.items)
+        setSubjectDrafts(
+          Object.fromEntries(
+            response.items.map((item) => [item.id, item.draft_subject || item.ticket_summary || ''])
+          )
+        )
         setDrafts(
           Object.fromEntries(
-            response.items.map((item) => [item.id, item.edited_reply || item.generated_reply || ''])
+            response.items.map((item) => [item.id, item.edited_reply || item.draft_body || item.generated_reply || ''])
           )
         )
         setFeatureLocked(false)
@@ -73,7 +80,7 @@ export function ReplyQueueContent() {
   const handleApprove = async (item: ReplyQueueItem) => {
     setProcessingId(item.id)
     try {
-      await replyQueueAPI.approve(item.id, drafts[item.id])
+      await replyQueueAPI.approve(item.id, subjectDrafts[item.id], drafts[item.id])
       toast.success('AI reply approved and dispatched')
       setItems((current) => current.filter((entry) => entry.id !== item.id))
     } catch {
@@ -160,6 +167,15 @@ export function ReplyQueueContent() {
                           {item.hallucination_check_passed ? 'Passed hallucination checks' : 'Needs review'}
                         </p>
                       </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-slate-900">Draft subject</p>
+                      <Input
+                        value={subjectDrafts[item.id] ?? ''}
+                        onChange={(event) => setSubjectDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
+                        disabled={status !== 'pending'}
+                      />
                     </div>
 
                     <div>

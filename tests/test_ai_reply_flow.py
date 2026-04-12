@@ -32,7 +32,7 @@ class AIReplyFlowTests(unittest.TestCase):
         )
 
     def test_reply_decision_threshold(self):
-        self.assertEqual(decide_reply_action(0.9), "auto_send_reply")
+        self.assertEqual(decide_reply_action(0.9), "mark_for_agent_review")
         self.assertEqual(decide_reply_action(0.85), "mark_for_agent_review")
 
     def test_send_reply_marks_complaint_sent(self):
@@ -57,7 +57,9 @@ class AIReplyFlowTests(unittest.TestCase):
         self.assertTrue(result["sent"])
         self.assertEqual(complaint.ai_reply_status, "sent")
         self.assertIsNotNone(complaint.ai_reply_sent_at)
+        self.assertIsNotNone(complaint.last_replied_at)
         self.assertIsNotNone(complaint.first_response_at)
+        self.assertEqual(complaint.status, "RESPONDED")
 
     def test_send_reply_allows_edited_reviewed_queue(self):
         complaint = Complaint(
@@ -81,6 +83,7 @@ class AIReplyFlowTests(unittest.TestCase):
         self.assertTrue(result["sent"])
         self.assertEqual(result["channels"], ["gmail"])
         self.assertEqual(complaint.ai_reply_status, "sent")
+        self.assertEqual(complaint.status, "RESPONDED")
 
     def test_send_reply_falls_back_to_agent_review_when_no_channel(self):
         complaint = Complaint(

@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { AssignmentDashboard } from '@/components/assignment-dashboard'
 import { ComplaintDetailModal } from '@/components/complaint-detail-modal'
 import { UpgradePrompt } from '@/components/upgrade-prompt'
 import { useAuth } from '@/lib/auth-context'
@@ -287,6 +288,8 @@ export function DashboardContent() {
           icon={CheckCircle2}
         />
       </section>
+
+      <AssignmentDashboard />
 
       <section className="grid gap-6 xl:grid-cols-[1.7fr_1fr]">
         <Card className="overflow-hidden border-white/70 bg-white/90 shadow-[0_25px_80px_-50px_rgba(15,23,42,0.55)]">

@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.sql.sqltypes import Boolean, DateTime, Float, Integer
 
 from app.db.session import SessionLocal
-from app.db.models import Client, Complaint, Customer, CustomerInteraction, EventLog
+from app.db.models import AIReplyQueue, Client, Complaint, Customer, CustomerInteraction, EventLog
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ REQUIRED_TABLES = [
     "customer_notes",
     "customer_relationships",
     "reply_templates",
+    "reply_drafts",
     "ai_reply_queue",
     "reply_feedback",
     "reply_ab_tests",
@@ -226,6 +227,7 @@ def _ensure_required_columns():
                 "ai_reply_confidence",
                 "ai_reply_status",
                 "ai_reply_sent_at",
+                "last_replied_at",
             ]
         client_columns = [
             "contact_phone",
@@ -271,6 +273,9 @@ def _ensure_required_columns():
             "payload",
             "created_at",
         ]
+        reply_queue_columns = [
+            "reply_draft_id",
+        ]
 
         added_client_columns = _sync_missing_model_columns("clients", Client, client_columns)
         if added_client_columns:
@@ -300,6 +305,14 @@ def _ensure_required_columns():
         )
         if added_interaction_columns:
             added_summary["customer_interactions"] = added_interaction_columns
+
+        added_reply_queue_columns = _sync_missing_model_columns(
+            "ai_reply_queue",
+            AIReplyQueue,
+            reply_queue_columns,
+        )
+        if added_reply_queue_columns:
+            added_summary["ai_reply_queue"] = added_reply_queue_columns
 
         added_event_log_columns = _sync_missing_model_columns("event_logs", EventLog, event_log_columns)
         if added_event_log_columns:

@@ -142,6 +142,9 @@ def _mark_message_processed(
     ticket_id: str | None,
     complaint_thread_id: str | None,
     conversation_id: str,
+    customer_id: str | None = None,
+    sentiment: float | None = None,
+    sentiment_label: str | None = None,
     team_id: str | None = None,
     assigned_team: str | None = None,
     assigned_user: str | None = None,
@@ -157,6 +160,12 @@ def _mark_message_processed(
         "message_id": str(unified_message.id),
         "conversation_id": conversation_id,
     }
+    if customer_id is not None:
+        payload_updates["customer_id"] = customer_id
+    if sentiment is not None:
+        payload_updates["sentiment"] = sentiment
+    if sentiment_label is not None:
+        payload_updates["sentiment_label"] = sentiment_label
     if complaint_id is not None:
         payload_updates["complaint_id"] = complaint_id
     if ticket_id is not None:
@@ -344,6 +353,16 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
+    resolved_customer = CustomerProfileService(db).resolve_customer(
+        client_id=client.id,
+        email=customer_email,
+        name=message.sender_name,
+        phone=customer_phone,
+        commit=False,
+    )
+    if resolved_customer is not None:
+        unified_message.customer_id = resolved_customer.id
+        conversation.customer_id = str(resolved_customer.id)
     spam_filtered = str(category or "").strip().lower() == "spam" and existing_complaint is None
 
     if spam_filtered:
@@ -353,6 +372,9 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
             ticket_id=None,
             complaint_thread_id=None,
             conversation_id=str(conversation.id),
+            customer_id=str(resolved_customer.id) if resolved_customer else None,
+            sentiment=sentiment_score,
+            sentiment_label="negative" if sentiment_score < -0.2 else "positive" if sentiment_score > 0.2 else "neutral",
             classification_category=category,
             status="spam_filtered",
         )
@@ -379,6 +401,7 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     is_new_complaint = existing_complaint is None
     complaint = existing_complaint or Complaint(
         client_id=client.id,
+        customer_id=resolved_customer.id if resolved_customer else None,
         ticket_id=generate_ticket_id(),
         thread_id=conversation.external_thread_id,
         source=message.channel or "api",
@@ -473,6 +496,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         complaint,
         interaction_type="ticket",
         interaction_channel=message.channel or "api",
+        name=message.sender_name,
+        source_message=unified_message,
         commit=False,
     )
     TicketStateMachine(db).ensure_ticket_number(complaint, commit=False)
@@ -521,7 +546,7 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         custom_config=client_config,
         commit=False,
     )
-    if queue_entry.status in {"pending", "rejected"}:
+    if queue_entry and queue_entry.status in {"pending", "rejected"}:
         log_event(
             db,
             client.id,
@@ -554,6 +579,9 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         ticket_id=complaint.ticket_id,
         complaint_thread_id=complaint.thread_id,
         conversation_id=str(conversation.id),
+        customer_id=str(complaint.customer_id) if complaint.customer_id else None,
+        sentiment=sentiment_score,
+        sentiment_label="negative" if sentiment_score < -0.2 else "positive" if sentiment_score > 0.2 else "neutral",
         team_id=str(routing_result.team_id) if routing_result.team_id else None,
         assigned_team=routing_result.team_name,
         assigned_user=routing_result.assigned_user,
@@ -572,6 +600,7 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "conversation_id": str(conversation.id),
                 "message_id": str(unified_message.id),
                 "complaint_id": str(complaint.id),
+                "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
                 "ticket_id": complaint.ticket_id,
                 "team_id": str(routing_result.team_id) if routing_result.team_id else None,
                 "assigned_team": routing_result.team_name,

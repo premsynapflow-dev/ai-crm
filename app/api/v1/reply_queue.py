@@ -25,11 +25,17 @@ def _parse_queue_id(queue_id: str) -> uuid.UUID:
 
 def _serialize_queue_item(item: AIReplyQueue) -> dict[str, Any]:
     complaint = item.complaint
+    draft = item.reply_draft
     return {
         "id": str(item.id),
         "ticket_id": str(item.complaint_id),
         "ticket_number": complaint.ticket_number if complaint else None,
         "ticket_summary": complaint.summary if complaint else None,
+        "draft_id": str(draft.id) if draft else None,
+        "draft_subject": draft.subject if draft else None,
+        "draft_body": draft.body if draft else item.generated_reply,
+        "draft_status": draft.status if draft else item.status,
+        "customer_id": str(draft.customer_id) if draft and draft.customer_id else (str(complaint.customer_id) if complaint and complaint.customer_id else None),
         "generated_reply": item.generated_reply,
         "edited_reply": item.edited_reply,
         "confidence_score": item.confidence_score,
@@ -48,6 +54,7 @@ def _serialize_queue_item(item: AIReplyQueue) -> dict[str, Any]:
 
 
 class ReplyApprovalRequest(BaseModel):
+    edited_subject: Optional[str] = Field(default=None)
     edited_reply: Optional[str] = Field(default=None)
     reviewer_email: Optional[str] = Field(default=None)
 
@@ -98,6 +105,7 @@ def approve_reply(
         str(item.id),
         reviewer_email=reviewer_email,
         edited_reply=request.edited_reply,
+        edited_subject=request.edited_subject,
         commit=True,
     )
     if not success:

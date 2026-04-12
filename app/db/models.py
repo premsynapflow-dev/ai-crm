@@ -48,6 +48,7 @@ class Client(Base):
 
     complaints = relationship("Complaint", back_populates="client", cascade="all, delete-orphan")
     customers = relationship("Customer", back_populates="client", cascade="all, delete-orphan")
+    reply_drafts = relationship("ReplyDraft", back_populates="client", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="client", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="client", cascade="all, delete-orphan")
     usage_records = relationship("UsageRecord", back_populates="client", cascade="all, delete-orphan")
@@ -116,6 +117,7 @@ class Complaint(Base):
     ai_reply_confidence = Column(Float, nullable=True)
     ai_reply_status = Column(String(50), nullable=False, default="pending")
     ai_reply_sent_at = Column(DateTime(timezone=True), nullable=True)
+    last_replied_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), server_default=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="complaints")
@@ -123,6 +125,7 @@ class Complaint(Base):
     team = relationship("Team", back_populates="complaints")
     assigned_user = relationship("ClientUser", foreign_keys=[assigned_user_id], back_populates="assigned_complaints")
     reply_queue = relationship("AIReplyQueue", back_populates="complaint", uselist=False)
+    reply_draft = relationship("ReplyDraft", back_populates="complaint", uselist=False)
     rbi_complaint = relationship("RBIComplaint", back_populates="complaint", uselist=False)
     escalations = relationship("Escalation", back_populates="ticket", cascade="all, delete-orphan")
 
@@ -191,6 +194,7 @@ class RoutingRule(Base):
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (
+        UniqueConstraint("client_id", "primary_email", name="uq_customers_client_primary_email"),
         Index("idx_customers_client", "client_id", postgresql_where=text("is_master = true")),
         Index("idx_customers_company", "client_id", "company_name"),
         Index("idx_customers_churn_risk", "client_id", "churn_risk_score"),
@@ -200,18 +204,28 @@ class Customer(Base):
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
     primary_email = Column(String(255), nullable=True, index=True)
+    name = Column(String(255), nullable=True)
     primary_phone = Column(String(50), nullable=True, index=True)
     full_name = Column(String(255), nullable=True)
     company_name = Column(String(255), nullable=True)
     emails = Column(JSON, nullable=False, default=list)
+    merged_emails = Column(JSON, nullable=False, default=list)
     phones = Column(JSON, nullable=False, default=list)
     customer_type = Column(String(50), nullable=False, default="individual")
     status = Column(String(50), nullable=False, default="active")
     tags = Column(JSON, nullable=False, default=list)
+    notes = Column(Text, nullable=True)
+    total_messages = Column(Integer, nullable=False, default=0)
     total_tickets = Column(Integer, nullable=False, default=0)
+    open_tickets = Column(Integer, nullable=False, default=0)
     total_interactions = Column(Integer, nullable=False, default=0)
     first_interaction_at = Column(DateTime(timezone=True), nullable=True)
     last_interaction_at = Column(DateTime(timezone=True), nullable=True)
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True)
+    avg_response_time = Column(Float, nullable=True)
+    sentiment_score = Column(Float, nullable=True)
+    sentiment_label = Column(String(50), nullable=True)
+    churn_risk = Column(String(20), nullable=False, default="low")
     avg_satisfaction_score = Column(Float, nullable=True)
     churn_risk_score = Column(Float, nullable=False, default=0.0)
     lifetime_value = Column(Float, nullable=False, default=0.0)
@@ -225,6 +239,8 @@ class Customer(Base):
 
     client = relationship("Client", back_populates="customers")
     complaints = relationship("Complaint", back_populates="customer")
+    reply_drafts = relationship("ReplyDraft", back_populates="customer")
+    messages = relationship("UnifiedMessage", back_populates="customer")
 
 
 class CustomerMergeHistory(Base):
@@ -440,10 +456,43 @@ class ReplyTemplate(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class ReplyDraft(Base):
+    __tablename__ = "reply_drafts"
+    __table_args__ = (
+        UniqueConstraint("complaint_id", name="uq_reply_drafts_complaint"),
+        UniqueConstraint("client_id", "ticket_id", name="uq_reply_drafts_client_ticket"),
+        Index("idx_reply_drafts_status", "client_id", "status", "created_at"),
+        Index("idx_reply_drafts_customer", "client_id", "customer_id", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    ticket_id = Column(String(50), nullable=False, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
+    subject = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    confidence_score = Column(Float, nullable=True)
+    prompt_version = Column(String(50), nullable=False, default="auto_reply_with_hitl_v1")
+    generation_metadata = Column(JSON, nullable=False, default=dict)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    complaint = relationship("Complaint", back_populates="reply_draft")
+    client = relationship("Client", back_populates="reply_drafts")
+    customer = relationship("Customer", back_populates="reply_drafts")
+    queue_entry = relationship("AIReplyQueue", back_populates="reply_draft", uselist=False)
+
+
 class AIReplyQueue(Base):
     __tablename__ = "ai_reply_queue"
     __table_args__ = (
         UniqueConstraint("complaint_id", name="unique_complaint_queue"),
+        UniqueConstraint("reply_draft_id", name="uq_ai_reply_queue_draft"),
         Index("idx_reply_queue_status", "client_id", "status", "created_at"),
         Index("idx_reply_queue_confidence", "client_id", "confidence_score"),
     )
@@ -451,6 +500,7 @@ class AIReplyQueue(Base):
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=False, index=True)
     client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    reply_draft_id = Column(Uuid(as_uuid=True), ForeignKey("reply_drafts.id", ondelete="SET NULL"), nullable=True, index=True)
     generated_reply = Column(Text, nullable=False)
     confidence_score = Column(Float, nullable=False)
     generation_strategy = Column(String(50), nullable=True)
@@ -467,6 +517,7 @@ class AIReplyQueue(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
 
     complaint = relationship("Complaint", back_populates="reply_queue")
+    reply_draft = relationship("ReplyDraft", back_populates="queue_entry")
 
 
 class ReplyFeedback(Base):
@@ -897,6 +948,7 @@ class UnifiedMessage(Base):
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
     channel = Column(String(50), nullable=False)
     external_message_id = Column(String(255), nullable=False)
     external_thread_id = Column(String(255), nullable=True)
@@ -912,6 +964,8 @@ class UnifiedMessage(Base):
     last_error = Column(Text, nullable=True)
     next_retry_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    customer = relationship("Customer", back_populates="messages")
 
 
 class Conversation(Base):

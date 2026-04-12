@@ -34,11 +34,13 @@ from app.api.v1.auth import router as auth_v1_router
 from app.api.v1.complaints import router as complaints_v1_router
 from app.api.v1.compliance_escalation import router as compliance_escalation_router
 from app.api.v1.customers import router as customers_v1_router
+from app.api.v1.dashboard_assignments import router as dashboard_assignments_router
 from app.api.v1.me import router as me_router
 from app.api.v1.notifications import router as notifications_v1_router
 from app.api.v1.rbi_compliance import router as rbi_compliance_v1_router
 from app.api.v1.reply_queue import router as reply_queue_v1_router
 from app.api.v1.security_test import router as security_test_router
+from app.api.v1.teams import router as teams_v1_router
 from app.api.v1.tickets import router as tickets_v1_router
 from app.api.admin_prompts import router as admin_prompts_router
 from app.billing.router import router as billing_router
@@ -255,11 +257,13 @@ app.include_router(auth_v1_router)
 app.include_router(complaints_v1_router)
 app.include_router(compliance_escalation_router)
 app.include_router(customers_v1_router)
+app.include_router(dashboard_assignments_router)
 app.include_router(me_router)
 app.include_router(notifications_v1_router)
 app.include_router(reply_queue_v1_router)
 app.include_router(rbi_compliance_v1_router)
 app.include_router(security_test_router)
+app.include_router(teams_v1_router)
 app.include_router(tickets_v1_router)
 app.include_router(plans_router)
 app.include_router(invoices_router)

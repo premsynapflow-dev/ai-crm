@@ -1,5 +1,6 @@
 ﻿"use client"
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -437,8 +438,15 @@ export function SettingsContent() {
           <TabsContent value="team">
             <Card>
               <CardHeader>
-                <CardTitle>Team Members</CardTitle>
-                <CardDescription>Users currently associated with this client account</CardDescription>
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <CardTitle>Team Members</CardTitle>
+                    <CardDescription>Users currently associated with this client account</CardDescription>
+                  </div>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/settings/teams">Open teams workspace</Link>
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <Table>

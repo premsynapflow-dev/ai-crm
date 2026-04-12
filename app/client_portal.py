@@ -531,6 +531,14 @@ async def suggest_ai_reply(
         force_human_review=True,
         commit=False,
     )
+    if queue_entry is None:
+        db.commit()
+        return {
+            "reply_text": complaint.ai_reply or "",
+            "confidence_score": complaint.ai_reply_confidence,
+            "status": "skipped",
+            "queue_id": None,
+        }
     log_event(
         db,
         complaint.client_id,

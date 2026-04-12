@@ -47,6 +47,16 @@ def test_customer_list_and_360_endpoint(test_db, client, test_client_record):
     assert len(detail_body["recent_tickets"]) == 1
     assert len(detail_body["interaction_timeline"]) == 1
 
+    snapshot_response = client.get(
+        f"/api/v1/customers/{customer.id}/360",
+        headers={"x-api-key": test_client_record.api_key},
+    )
+    assert snapshot_response.status_code == 200
+    snapshot_body = snapshot_response.json()
+    assert snapshot_body["identity"]["primary_email"] == "owner@example.com"
+    assert snapshot_body["metrics"]["total_tickets"] == 1
+    assert snapshot_body["churn_risk"] in {"low", "medium", "high"}
+
 
 def test_customer_duplicates_and_merge_endpoint(test_db, client, test_client_record):
     test_client_record.plan_id = "pro"
@@ -143,3 +153,31 @@ def test_customer_notes_and_relationships_endpoints(test_db, client, test_client
     )
     assert list_relationships.status_code == 200
     assert len(list_relationships.json()["items"]) == 1
+
+
+def test_customer_update_endpoint_supports_tags_and_notes(test_db, client, test_client_record):
+    test_client_record.plan_id = "pro"
+    test_client_record.plan = "pro"
+    test_db.commit()
+
+    customer = Customer(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        primary_email="vip@example.com",
+        emails=["vip@example.com"],
+        full_name="VIP Customer",
+    )
+    test_db.add(customer)
+    test_db.commit()
+
+    response = client.patch(
+        f"/api/v1/customers/{customer.id}",
+        json={"tags": ["VIP", "risky"], "notes": "Retention watch", "name": "VIP Customer"},
+        headers={"x-api-key": test_client_record.api_key},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["customer"]["tags"] == ["VIP", "risky"]
+    assert body["customer"]["notes"] == "Retention watch"
+    assert body["customer"]["name"] == "VIP Customer"

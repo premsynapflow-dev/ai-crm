@@ -13,6 +13,7 @@ from app.db.models import (
     CustomerMergeHistory,
     CustomerNote,
     CustomerRelationship,
+    UnifiedMessage,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class CustomerDeduplicator:
         customer_emails = set(self._emails_for(customer))
         customer_phones = set(self._phones_for(customer))
         customer_domain = self._email_domain(customer.primary_email)
-        customer_name = (customer.full_name or "").strip().lower()
+        customer_name = self._display_name(customer)
         customer_company = (customer.company_name or "").strip().lower()
 
         for candidate in candidates:
@@ -58,7 +59,7 @@ class CustomerDeduplicator:
             if customer_company and customer_company == (candidate.company_name or "").strip().lower():
                 score = max(score, 0.8)
 
-            candidate_name = (candidate.full_name or "").strip().lower()
+            candidate_name = self._display_name(candidate)
             candidate_domain = self._email_domain(candidate.primary_email)
             if customer_name and candidate_name and customer_domain and customer_domain == candidate_domain:
                 similarity = SequenceMatcher(None, customer_name, candidate_name).ratio()
@@ -101,13 +102,19 @@ class CustomerDeduplicator:
 
         master.primary_email = master.primary_email or duplicate.primary_email
         master.primary_phone = master.primary_phone or duplicate.primary_phone
+        master.name = master.name or duplicate.name or duplicate.full_name
         master.full_name = master.full_name or duplicate.full_name
         master.company_name = master.company_name or duplicate.company_name
         master.customer_type = master.customer_type or duplicate.customer_type or "individual"
         master.status = master.status or duplicate.status or "active"
         master.emails = self._merge_unique(self._emails_for(master), self._emails_for(duplicate))
+        master.merged_emails = self._merge_unique(
+            self._merged_emails_for(master),
+            [email for email in self._emails_for(duplicate) if email != self._normalize_email(master.primary_email)],
+        )
         master.phones = self._merge_unique(self._phones_for(master), self._phones_for(duplicate))
         master.tags = self._merge_unique(master.tags or [], duplicate.tags or [])
+        master.notes = self._merge_text(master.notes, duplicate.notes)
         master.custom_fields = {**(duplicate.custom_fields or {}), **(master.custom_fields or {})}
         master.enrichment_data = {**(duplicate.enrichment_data or {}), **(master.enrichment_data or {})}
         master.lifetime_value = float(master.lifetime_value or 0.0) + float(duplicate.lifetime_value or 0.0)
@@ -116,12 +123,14 @@ class CustomerDeduplicator:
         self.db.query(Complaint).filter(Complaint.customer_id == duplicate.id).update({"customer_id": master.id})
         self.db.query(CustomerInteraction).filter(CustomerInteraction.customer_id == duplicate.id).update({"customer_id": master.id})
         self.db.query(CustomerNote).filter(CustomerNote.customer_id == duplicate.id).update({"customer_id": master.id})
+        self.db.query(UnifiedMessage).filter(UnifiedMessage.customer_id == duplicate.id).update({"customer_id": master.id})
 
         self._merge_relationships(master, duplicate)
 
         duplicate.is_master = False
         duplicate.merged_into = master.id
         duplicate.status = "inactive"
+        duplicate.primary_email = None
 
         self.db.add(
             CustomerMergeHistory(
@@ -228,12 +237,22 @@ class CustomerDeduplicator:
     @classmethod
     def _emails_for(cls, customer: Customer) -> list[str]:
         values = list(customer.emails or [])
+        values.extend(customer.merged_emails or [])
         if customer.primary_email:
             values.append(customer.primary_email)
         normalized: list[str] = []
         for value in values:
             email = cls._normalize_email(value)
             if email and email not in normalized:
+                normalized.append(email)
+        return normalized
+
+    @classmethod
+    def _merged_emails_for(cls, customer: Customer) -> list[str]:
+        normalized: list[str] = []
+        for value in customer.merged_emails or []:
+            email = cls._normalize_email(value)
+            if email and email != cls._normalize_email(customer.primary_email) and email not in normalized:
                 normalized.append(email)
         return normalized
 
@@ -256,6 +275,10 @@ class CustomerDeduplicator:
             return ""
         return value.split("@", 1)[1]
 
+    @classmethod
+    def _display_name(cls, customer: Customer) -> str:
+        return (customer.name or customer.full_name or "").strip().lower()
+
     @staticmethod
     def _merge_unique(primary: list, secondary: list) -> list:
         merged: list = []
@@ -263,3 +286,13 @@ class CustomerDeduplicator:
             if value not in merged:
                 merged.append(value)
         return merged
+
+    @staticmethod
+    def _merge_text(primary: str | None, secondary: str | None) -> str | None:
+        first = (primary or "").strip()
+        second = (secondary or "").strip()
+        if not first:
+            return second or None
+        if not second or second == first:
+            return first
+        return f"{first}\n\n{second}"

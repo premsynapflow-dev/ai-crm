@@ -27,6 +27,28 @@ def test_get_or_create_customer_dedupes_exact_email(test_db, test_client_record)
     assert second.emails == ["customer@example.com"]
 
 
+def test_resolve_customer_matches_alias_and_name_domain(test_db, test_client_record):
+    service = CustomerProfileService(test_db)
+
+    customer = service.get_or_create_customer(
+        client_id=test_client_record.id,
+        email="owner@acme.com",
+        name="Owner Name",
+        commit=True,
+    )
+    resolved = service.resolve_customer(
+        client_id=test_client_record.id,
+        email="billing@acme.com",
+        name="Owner Name",
+        commit=True,
+    )
+
+    assert customer is not None
+    assert resolved is not None
+    assert resolved.id == customer.id
+    assert "billing@acme.com" in resolved.merged_emails
+
+
 def test_find_duplicates_with_fuzzy_name_and_domain(test_db, test_client_record):
     first = Customer(
         id=uuid.uuid4(),

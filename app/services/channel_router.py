@@ -49,6 +49,29 @@ def _latest_inbound_for_complaint(db: Session, complaint: Complaint) -> UnifiedM
     return query.filter(UnifiedMessage.sender_id == sender_id).first()
 
 
+def _header_subject(raw_payload: dict[str, Any] | None) -> str | None:
+    headers = raw_payload.get("headers") if isinstance(raw_payload, dict) else None
+    if not isinstance(headers, dict):
+        return None
+    for key, value in headers.items():
+        if str(key).lower() != "subject":
+            continue
+        subject = " ".join(str(value or "").split()).strip()
+        if subject:
+            return subject
+    return None
+
+
+def _reply_subject(complaint: Complaint, inbound_message: UnifiedMessage | None, reply_subject: str | None) -> str:
+    preferred = " ".join(str(reply_subject or "").split()).strip()
+    if preferred:
+        return preferred
+    original_subject = _header_subject(inbound_message.raw_payload if inbound_message else None)
+    if original_subject:
+        return original_subject if original_subject.lower().startswith("re:") else f"Re: {original_subject}"
+    return f"Re: Support Ticket {complaint.ticket_id}"
+
+
 def _resolve_connection(db: Session, inbound_message: UnifiedMessage | None, complaint: Complaint) -> ChannelConnection | Inbox | None:
     connection_id = None
     inbox_id = None
@@ -99,6 +122,7 @@ def _persist_outbound_message(
     client: Client | None,
     inbound_message: UnifiedMessage | None,
     message_text: str,
+    subject: str | None = None,
     outbound_message: UnifiedMessage | None = None,
     status: str = "pending",
 ) -> UnifiedMessage:
@@ -108,13 +132,16 @@ def _persist_outbound_message(
         client_id=complaint.client_id,
         channel=complaint.source,
         external_thread_id=external_thread_id,
-        customer_id=complaint.customer_email if complaint.source in {"gmail", "email"} else complaint.customer_phone,
+        customer_id=str(complaint.customer_id) if complaint.customer_id else (
+            complaint.customer_email if complaint.source in {"gmail", "email"} else complaint.customer_phone
+        ),
         timestamp=datetime.now(timezone.utc),
     )
 
     if outbound_message is None:
         outbound_message = UnifiedMessage(
             client_id=complaint.client_id,
+            customer_id=complaint.customer_id,
             channel=complaint.source,
             external_message_id=f"pending-{uuid.uuid4()}",
             external_thread_id=conversation.external_thread_id,
@@ -130,6 +157,7 @@ def _persist_outbound_message(
         db.add(outbound_message)
 
     outbound_message.external_thread_id = conversation.external_thread_id
+    outbound_message.customer_id = complaint.customer_id
     outbound_message.message_text = message_text
     outbound_message.status = status
     outbound_message.timestamp = datetime.now(timezone.utc)
@@ -137,12 +165,14 @@ def _persist_outbound_message(
         **(outbound_message.raw_payload or {}),
         "conversation_id": str(conversation.id),
         "complaint_id": str(complaint.id),
+        "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
         "ticket_id": complaint.ticket_id,
         "source": complaint.source,
         "direction": "outbound",
         "customer_email": complaint.customer_email,
         "customer_phone": complaint.customer_phone,
         "sender_name": client.name if client else "SynapFlow",
+        "subject": subject,
     }
     conversation.last_message_at = outbound_message.timestamp
     db.flush()
@@ -181,6 +211,7 @@ def send_reply_via_original_channel(
     complaint: Complaint,
     client: Client | None,
     reply_text: str,
+    reply_subject: str | None = None,
     *,
     allow_retry_enqueue: bool = True,
     outbound_message: UnifiedMessage | None = None,
@@ -190,12 +221,14 @@ def send_reply_via_original_channel(
         return {"sent": False, "channels": []}
 
     inbound_message = _latest_inbound_for_complaint(db, complaint)
+    subject = _reply_subject(complaint, inbound_message, reply_subject)
     outbound_message = _persist_outbound_message(
         db,
         complaint=complaint,
         client=client,
         inbound_message=inbound_message,
         message_text=reply_text,
+        subject=subject,
         outbound_message=outbound_message,
         status="pending",
     )
@@ -230,7 +263,7 @@ def send_reply_via_original_channel(
             send_result = send_gmail_reply(
                 connection=connection,
                 to_email=complaint.customer_email or (inbound_message.sender_id if inbound_message else ""),
-                subject=f"Re: Support Ticket {complaint.ticket_id}",
+                subject=subject,
                 body=reply_text,
                 thread_id=inbound_message.external_thread_id if inbound_message else None,
                 references=inbound_message.external_message_id if inbound_message else None,
@@ -243,7 +276,7 @@ def send_reply_via_original_channel(
 
             send_result = send_email(
                 to_email=complaint.customer_email or (inbound_message.sender_id if inbound_message else ""),
-                subject=f"Re: Support Ticket {complaint.ticket_id}",
+                subject=subject,
                 body=reply_text,
                 in_reply_to=inbound_message.external_message_id if inbound_message else None,
                 references=inbound_message.external_message_id if inbound_message else None,

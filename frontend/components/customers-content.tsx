@@ -1,7 +1,8 @@
 "use client"
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Loader2, Mail, Phone, Search, StickyNote } from 'lucide-react'
+import { ArrowRight, Loader2, Mail, Phone, Search, StickyNote } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { UpgradePrompt } from '@/components/upgrade-prompt'
@@ -205,7 +206,7 @@ export function CustomersContent() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-slate-900">{customer.full_name || customer.primary_email || 'Customer'}</p>
+                        <p className="font-semibold text-slate-900">{customer.name || customer.full_name || customer.primary_email || 'Customer'}</p>
                         <p className="text-sm text-muted-foreground">{customer.company_name || 'Individual profile'}</p>
                       </div>
                       <Badge className={riskTone(customer.churn_risk_score)}>
@@ -268,12 +269,20 @@ export function CustomersContent() {
                 </div>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>{detail.profile.full_name || detail.profile.primary_email || 'Customer profile'}</CardTitle>
-                    <CardDescription>
-                      Last activity {formatDate(detail.profile.last_interaction_at)}
-                    </CardDescription>
-                  </CardHeader>
+                    <CardHeader className="flex flex-row items-start justify-between gap-4">
+                      <div>
+                        <CardTitle>{detail.profile.name || detail.profile.full_name || detail.profile.primary_email || 'Customer profile'}</CardTitle>
+                        <CardDescription>
+                          Last activity {formatDate(detail.profile.last_contacted_at || detail.profile.last_interaction_at)}
+                        </CardDescription>
+                      </div>
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/customers/${detail.profile.id}`}>
+                          Open 360
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </CardHeader>
                   <CardContent className="grid gap-4 md:grid-cols-2">
                     <div>
                       <p className="text-sm text-muted-foreground">Primary email</p>

@@ -201,7 +201,7 @@ def _process_complaint_for_client(
         custom_config=client_config,
         commit=False,
     )
-    if queue_entry.status in {"pending", "rejected"}:
+    if queue_entry and queue_entry.status in {"pending", "rejected"}:
         log_event(
             db,
             client.id,

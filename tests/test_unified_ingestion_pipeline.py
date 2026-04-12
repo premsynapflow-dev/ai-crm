@@ -113,8 +113,11 @@ def test_incoming_message_creates_complaint_links_assignment_and_sla(test_db, te
     assert complaint.assigned_team == "finance"
     assert complaint.assigned_user_id == user.id
     assert complaint.assigned_to == "owner@example.com"
+    assert complaint.customer_id is not None
     assert complaint.sla_due_at is not None
+    assert stored_message.customer_id == complaint.customer_id
     assert stored_message.raw_payload["complaint_id"] == str(complaint.id)
+    assert stored_message.raw_payload["customer_id"] == str(complaint.customer_id)
     assert stored_message.raw_payload["message_id"] == str(stored_message.id)
     assert stored_message.raw_payload["team_id"] == str(finance_team.id)
     assert stored_message.raw_payload["assigned_team"] == "finance"

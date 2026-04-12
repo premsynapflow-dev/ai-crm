@@ -95,7 +95,7 @@ class TicketStateMachine:
             return TicketState.INVALID
         if status in {"RESOLVED", "CLOSED"}:
             return TicketState.RESOLVED
-        if status in {"ESCALATE_HIGH", "PROCESSING", "PROCESSED", "IN_PROGRESS", "REPLIED", "SENT"}:
+        if status in {"ESCALATE_HIGH", "PROCESSING", "PROCESSED", "IN_PROGRESS", "REPLIED", "RESPONDED", "SENT"}:
             return TicketState.IN_PROGRESS
         if ticket.assigned_to or ticket.assigned_team:
             return TicketState.ASSIGNED

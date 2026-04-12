@@ -4,7 +4,7 @@ import uuid
 import app.intelligence.chatbot as chatbot_module
 from app.db.models import Complaint, EscalationRule
 from app.intelligence.classifier import classify_message_async, normalize_classification_output
-from app.intelligence.prompt_builder import build_classification_prompt, build_reply_prompt
+from app.intelligence.prompt_builder import build_auto_reply_generation_prompt, build_classification_prompt, build_reply_prompt
 from app.intelligence.reply_engine import generate_ai_reply_async
 from app.services.classification_service import build_client_classification_config
 
@@ -65,6 +65,33 @@ def test_reply_prompt_accepts_string_customer_history():
 
     assert "Previous refund issue" in prompt
     assert "Earlier integration delay" in prompt
+
+
+def test_auto_reply_prompt_includes_required_context_sections():
+    prompt = build_auto_reply_generation_prompt(
+        {
+            "ticket_number": "TKT-AR-1",
+            "category": "refund",
+            "sentiment_label": "negative",
+            "sentiment_score": -0.6,
+            "priority": 2,
+            "source": "email",
+            "summary": "Customer requested a refund after duplicate billing",
+            "customer_name": "Taylor",
+            "company_name": "Acme",
+            "total_tickets": 4,
+            "avg_satisfaction_score": 3.5,
+            "churn_risk_score": 28,
+            "customer_history": ["- TKT-OLD-1: billing / open / Duplicate charge last month"],
+            "recent_messages": ["- Customer (Taylor, 2026-04-12T10:00:00+00:00): I need a refund."],
+        }
+    )
+
+    assert "Category: refund" in prompt
+    assert "Sentiment: negative (-0.6)" in prompt
+    assert "CUSTOMER HISTORY" in prompt
+    assert "PREVIOUS CONVERSATION" in prompt
+    assert '"subject": "Email subject line"' in prompt
 
 
 def test_client_classification_config_merges_prompt_and_escalation_rules(test_db, test_client_record):

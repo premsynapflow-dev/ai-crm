@@ -14,6 +14,38 @@ logger = get_logger(__name__)
 REVIEWED_REPLY_QUEUE_STATUSES = {"approved", "edited"}
 
 
+def _extract_original_subject(raw_payload: dict | None) -> str | None:
+    headers = raw_payload.get("headers") if isinstance(raw_payload, dict) else None
+    if not isinstance(headers, dict):
+        return None
+    for key, value in headers.items():
+        if str(key).lower() != "subject":
+            continue
+        subject = " ".join(str(value or "").split()).strip()
+        if subject:
+            return subject
+    return None
+
+
+def _preferred_reply_subject(complaint, reply_subject: str | None = None) -> str:
+    preferred = " ".join(str(reply_subject or "").split()).strip()
+    if preferred:
+        return preferred
+
+    queue_entry = getattr(complaint, "reply_queue", None)
+    draft = getattr(queue_entry, "reply_draft", None) if queue_entry is not None else None
+    if draft is not None and draft.subject:
+        subject = " ".join(str(draft.subject).split()).strip()
+        if subject:
+            return subject
+
+    original_subject = _extract_original_subject(getattr(complaint, "raw_payload", None))
+    if original_subject:
+        return original_subject if original_subject.lower().startswith("re:") else f"Re: {original_subject}"
+
+    return f"Re: Support Ticket {complaint.ticket_id}"
+
+
 def ensure_manual_reply_review(db, complaint, *, reviewer_email: str | None, reply_text: str):
     queue_entry = getattr(complaint, "reply_queue", None)
     if queue_entry is not None and queue_entry.status in REVIEWED_REPLY_QUEUE_STATUSES:
@@ -49,6 +81,7 @@ def send_complaint_reply(
     client=None,
     reply_text: str | None = None,
     status_on_success: str = "sent",
+    reply_subject: str | None = None,
 ):
 
     # ENFORCEMENT: Only allow sending if reply_queue exists and was reviewed.
@@ -71,11 +104,13 @@ def send_complaint_reply(
         db.flush()
         return {"sent": False, "channels": channels_sent}
 
+    subject_to_send = _preferred_reply_subject(complaint, reply_subject)
     native_send_result = send_reply_via_original_channel(
         db=db,
         complaint=complaint,
         client=client,
         reply_text=text_to_send,
+        reply_subject=subject_to_send,
     )
     if native_send_result["sent"]:
         channels_sent.extend(native_send_result["channels"])
@@ -86,7 +121,7 @@ def send_complaint_reply(
     if complaint.customer_email and not delivered_to_customer and legacy_fallback_allowed:
         email_sent = send_email(
             to_email=complaint.customer_email,
-            subject=f"Support Ticket {complaint.ticket_id}",
+            subject=subject_to_send,
             body=text_to_send,
         )
         if email_sent and "email" not in channels_sent:
@@ -147,6 +182,18 @@ def send_complaint_reply(
     complaint.ai_reply_status = status_on_success
     if complaint.ai_reply_sent_at is None:
         complaint.ai_reply_sent_at = sent_at
+    complaint.last_replied_at = sent_at
+    if complaint.resolution_status != "resolved":
+        complaint.status = "RESPONDED"
+        if getattr(complaint, "state", None) in {None, "", "new", "assigned"}:
+            complaint.state = "in_progress"
+            complaint.state_changed_at = sent_at
+    queue_entry = getattr(complaint, "reply_queue", None)
+    draft = getattr(queue_entry, "reply_draft", None) if queue_entry is not None else None
+    if draft is not None:
+        draft.sent_at = sent_at
+        draft.status = "approved"
+        draft.approved_at = draft.approved_at or sent_at
     mark_first_response(db, complaint, responded_at=sent_at)
     log_event(
         db,
@@ -156,6 +203,7 @@ def send_complaint_reply(
             "ticket_id": complaint.ticket_id,
             "complaint_id": str(complaint.id),
             "summary": text_to_send,
+            "subject": subject_to_send,
             "channels": channels_sent,
             "status": status_on_success,
         },
