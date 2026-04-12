@@ -4,7 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "preDeployCommand": "alembic upgrade head",
     "startCommand": "bash start.sh",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",

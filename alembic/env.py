@@ -16,8 +16,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+import os
+
 def get_url() -> str:
-    return get_settings().database_url
+    return os.getenv("DATABASE_URL") or get_settings().database_url
 
 
 def run_migrations_offline() -> None:
