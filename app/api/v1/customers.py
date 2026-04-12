@@ -76,7 +76,6 @@ def list_customers(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     query = db.query(Customer).filter(Customer.client_id == current_client.id, Customer.is_master == True)
     if search:
         pattern = f"%{search.strip()}%"
@@ -101,7 +100,6 @@ def merge_customers(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     master = _get_customer_or_404(db, _parse_customer_id(request.master_customer_id), current_client.id)
     duplicate = _get_customer_or_404(db, _parse_customer_id(request.duplicate_customer_id), current_client.id)
     try:
@@ -124,7 +122,6 @@ def get_customer_360(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     parsed_customer_id = _parse_customer_id(customer_id)
     customer = _get_customer_or_404(db, parsed_customer_id, current_client.id)
 
@@ -158,7 +155,6 @@ def get_customer_360_snapshot(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     snapshot = CustomerProfileService(db).get_customer_360_snapshot(str(customer.id))
     if snapshot["identity"]["client_id"] != str(current_client.id):
@@ -173,7 +169,6 @@ def update_customer(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     update_data = request.model_dump(exclude_unset=True)
     if "name" in update_data:
@@ -196,7 +191,6 @@ def find_duplicates(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     duplicates = CustomerDeduplicator(db).find_duplicates(customer, limit=10)
     return {
@@ -217,7 +211,6 @@ def list_customer_notes(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     notes = (
         db.query(CustomerNote)
@@ -235,7 +228,6 @@ def create_customer_note(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     note = CustomerNote(
         customer_id=customer.id,
@@ -256,7 +248,6 @@ def list_customer_relationships(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     relationships = (
         db.query(CustomerRelationship)
@@ -279,7 +270,6 @@ def create_customer_relationship(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    ensure_feature_access(current_client, "customer_360", db=db)
     parent_customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     child_customer = _get_customer_or_404(db, _parse_customer_id(request.child_customer_id), current_client.id)
     if parent_customer.id == child_customer.id:
