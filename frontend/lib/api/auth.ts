@@ -1,6 +1,7 @@
 import Cookies from 'js-cookie'
 
-import api, { ACCESS_TOKEN_STORAGE_KEY } from '../api'
+import api from '../api'
+import { setToken, clearToken } from '../auth'
 import type { PlanId } from '../plan-features'
 
 export type { PlanId } from '../plan-features'
@@ -58,8 +59,10 @@ export const authAPI = {
       },
     })
 
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
+    if (response.data?.access_token) {
+      setToken(response.data.access_token)
+    } else if (response.data?.user?.access_token) {
+      setToken(response.data.user.access_token)
     }
 
     return normalizeUser(response.data?.user)
@@ -69,9 +72,7 @@ export const authAPI = {
     try {
       await api.post('/auth/logout')
     } finally {
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
-      }
+      clearToken()
       Cookies.remove('session_token')
       Cookies.remove('portal_session')
     }

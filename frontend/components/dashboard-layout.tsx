@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, redirect } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { getToken } from '@/lib/auth'
 import { isRbiEligibleCompany } from '@/lib/company-profile'
 import { planIncludesFeature } from '@/lib/plan-features'
 import { Logo } from '@/components/logo'
@@ -58,6 +59,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [lastReadAt, setLastReadAt] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const token = getToken()
+  if (!token && typeof window !== 'undefined') {
+    redirect('/login')
+  }
 
   const notificationStorageKey = useMemo(() => {
     if (!user?.id) {
@@ -261,6 +267,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
     </div>
   )
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.08),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(241,245,249,1))]">

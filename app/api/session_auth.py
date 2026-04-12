@@ -37,10 +37,16 @@ def login(
         raise HTTPException(status_code=404, detail="Client not found")
 
     request.session["client_user_id"] = str(user.id)
-    response = JSONResponse({"user": serialize_client_user(user, client)})
+    
+    session_token = create_session(str(user.id))
+    response = JSONResponse({
+        "user": serialize_client_user(user, client),
+        "access_token": session_token
+    })
+    
     response.set_cookie(
         key="session_token",
-        value=create_session(str(user.id)),
+        value=session_token,
         httponly=True,
         secure=settings.is_production() or request.url.scheme == "https",
         samesite="lax",

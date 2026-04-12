@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { CustomerListSkeleton } from '@/components/ui/skeletons'
 import { getFeatureGateDetail } from '@/lib/api-error'
 import { customersAPI, type CustomerDetailResponse, type CustomerDuplicateCandidate, type CustomerSummary } from '@/lib/api/customers'
 
@@ -186,10 +187,7 @@ export function CustomersContent() {
             </CardHeader>
             <CardContent className="space-y-3">
               {isLoading ? (
-                <div className="flex h-48 items-center justify-center gap-3 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading customers...
-                </div>
+                <CustomerListSkeleton />
               ) : customers.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                   No customer profiles matched this search yet.

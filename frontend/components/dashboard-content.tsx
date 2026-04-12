@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -42,6 +42,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ComplaintDetailModal } from '@/components/complaint-detail-modal'
 import { UpgradePrompt } from '@/components/upgrade-prompt'
+import { DashboardSkeleton } from '@/components/ui/skeletons'
 import { useAuth } from '@/lib/auth-context'
 import { getFeatureGateDetail } from '@/lib/api-error'
 import {
@@ -309,14 +310,7 @@ export function DashboardContent() {
     : []
 
   if (isLoading) {
-    return (
-      <div className="flex h-[65vh] items-center justify-center">
-        <div className="flex items-center gap-3 rounded-full border bg-white px-5 py-3 shadow-sm">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          <span className="text-sm font-medium text-muted-foreground">Loading live dashboard...</span>
-        </div>
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   return (

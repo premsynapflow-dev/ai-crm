@@ -1,6 +1,5 @@
 import axios from 'axios'
-
-export const ACCESS_TOKEN_STORAGE_KEY = 'access_token'
+import { getToken, clearToken } from './auth'
 
 const AUTH_REDIRECT_EXEMPT_PATHS = new Set(['/', '/login', '/signup', '/admin/login'])
 
@@ -12,21 +11,7 @@ function normalizePathname(pathname: string): string {
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
 }
 
-function getStoredAccessToken(): string | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
 
-  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
-}
-
-function clearStoredAccessToken() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
-}
 
 const api = axios.create({
   baseURL: '',
@@ -37,7 +22,7 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = getStoredAccessToken()
+  const token = getToken()
 
   console.log('[auth] Authorization header before API call:', token)
 
@@ -62,7 +47,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       console.warn('Unauthorized - clearing token')
-      clearStoredAccessToken()
+      clearToken()
 
       if (!AUTH_REDIRECT_EXEMPT_PATHS.has(normalizePathname(window.location.pathname))) {
         window.location.href = '/login'

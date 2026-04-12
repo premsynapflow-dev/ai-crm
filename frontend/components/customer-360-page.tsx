@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Customer360Skeleton } from '@/components/ui/skeletons'
 import { customersAPI, type Customer360Response, type CustomerTimelineItem } from '@/lib/api/customers'
 
 function formatDate(value?: string | null) {
@@ -157,12 +158,7 @@ export function Customer360Page({ customerId }: Customer360PageProps) {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center gap-3 rounded-3xl border bg-card">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm text-muted-foreground">Loading customer intelligence...</span>
-      </div>
-    )
+    return <Customer360Skeleton />
   }
 
   if (!data) {
