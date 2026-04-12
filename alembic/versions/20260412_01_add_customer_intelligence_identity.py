@@ -124,7 +124,7 @@ def upgrade() -> None:
                 SELECT jsonb_agg(value)
                 FROM (
                     SELECT DISTINCT value
-                    FROM jsonb_array_elements_text(COALESCE(emails, '[]'::jsonb)) AS value
+                    FROM jsonb_array_elements_text(COALESCE(emails::jsonb, '[]'::jsonb)) AS value
                     WHERE value IS NOT NULL
                       AND BTRIM(value) <> ''
                       AND LOWER(BTRIM(value)) <> LOWER(COALESCE(primary_email, ''))
@@ -132,7 +132,7 @@ def upgrade() -> None:
             ),
             '[]'::jsonb
         )
-        WHERE merged_emails IS NULL OR merged_emails = '[]'::jsonb
+        WHERE merged_emails IS NULL OR merged_emails::jsonb = '[]'::jsonb
         """
     )
     op.execute(
