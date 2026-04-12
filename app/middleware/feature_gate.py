@@ -112,7 +112,6 @@ def require_feature(feature_flag: str):
 
 class FeatureGateMiddleware(BaseHTTPMiddleware):
     FEATURE_MAP = {
-        "/api/v1/customers": "customer_360",
         "/api/v1/reply-queue": "auto_reply_approval_queue",
         "/api/v1/rbi-compliance": "rbi_compliance",
     }

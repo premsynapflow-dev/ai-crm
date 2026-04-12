@@ -936,10 +936,11 @@ def serialize_customer_message(message: UnifiedMessage) -> dict[str, Any]:
 
 def serialize_customer_timeline_message(message: UnifiedMessage) -> dict[str, Any]:
     serialized = serialize_customer_message(message)
+    channel_str = message.channel or "Unknown"
     return {
         "id": f"message:{serialized['id']}",
         "type": "message",
-        "title": f"{message.channel.title()} message",
+        "title": f"{channel_str.title()} message",
         "body": serialized["message_text"] or "No message content available",
         "channel": message.channel,
         "direction": message.direction,
