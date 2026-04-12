@@ -3,6 +3,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 try:
     import sentry_sdk
@@ -279,6 +280,10 @@ if (frontend_dir / "_next").exists():
 
 
 if frontend_dir.exists():
+    @app.api_route("/customers/{customer_id}", methods=["GET", "HEAD"], include_in_schema=False)
+    async def redirect_legacy_customer_route(customer_id: str):
+        return RedirectResponse(url=f"/customer/?id={quote(customer_id, safe='')}", status_code=307)
+
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_frontend(full_path: str):
         reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "webhooks", "integrations", "metrics", "docs", "redoc", "openapi.json"}

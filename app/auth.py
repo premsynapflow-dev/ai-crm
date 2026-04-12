@@ -51,49 +51,56 @@ def resolve_current_client_user(
     authorization: str | None = None,
     required: bool = True,
 ) -> ClientUser | None:
-    user_id = _normalize_user_id(request.session.get("client_user_id"))
     session_token = x_session_token or request.cookies.get("session_token") or request.cookies.get("portal_session")
+    candidate_user_ids: list[UUID | str] = []
 
-    if not user_id and session_token:
+    session_user_id = _normalize_user_id(request.session.get("client_user_id"))
+    if session_user_id:
+        candidate_user_ids.append(session_user_id)
+
+    if session_token:
         try:
             data = decode_session(session_token)
-        except BadSignature as exc:
-            if not required:
-                return None
-            raise HTTPException(status_code=401, detail="Invalid session") from exc
+        except BadSignature:
+            data = None
 
-        user_id = _normalize_user_id(data.get("user_id"))
-        if user_id:
-            request.session["client_user_id"] = str(user_id)
+        session_cookie_user_id = _normalize_user_id((data or {}).get("user_id"))
+        if session_cookie_user_id and session_cookie_user_id not in candidate_user_ids:
+            candidate_user_ids.append(session_cookie_user_id)
 
-    if not user_id and authorization and authorization.lower().startswith("bearer "):
+    if authorization and authorization.lower().startswith("bearer "):
         from app.api.v1.auth import decode_token
 
         token = authorization.split(" ", 1)[1]
         try:
             data = decode_token(token, "access", settings.access_token_expire_minutes * 60)
-        except Exception as exc:
-            if not required:
-                return None
-            raise HTTPException(status_code=401, detail="Invalid token") from exc
+        except Exception:
+            data = None
 
-        user_id = _normalize_user_id(data.get("sub"))
+        bearer_user_id = _normalize_user_id((data or {}).get("sub"))
+        if bearer_user_id and bearer_user_id not in candidate_user_ids:
+            candidate_user_ids.append(bearer_user_id)
 
-    if not user_id:
+    for user_id in candidate_user_ids:
+        user = db.query(ClientUser).filter(ClientUser.id == user_id).first()
+        if not user:
+            continue
+
+        request.session["client_user_id"] = str(user.id)
+        request.state.client_user_id = str(user.id)
+        request.state.client_id = str(user.client_id)
+        return user
+
+    request.session.pop("client_user_id", None)
+
+    if not candidate_user_ids:
         if required:
             raise HTTPException(status_code=401, detail="Not authenticated")
         return None
 
-    user = db.query(ClientUser).filter(ClientUser.id == user_id).first()
-    if not user:
-        request.session.pop("client_user_id", None)
-        if required:
-            raise HTTPException(status_code=401, detail="User not found")
-        return None
-
-    request.state.client_user_id = str(user.id)
-    request.state.client_id = str(user.client_id)
-    return user
+    if required:
+        raise HTTPException(status_code=401, detail="User not found")
+    return None
 
 
 def resolve_current_client(

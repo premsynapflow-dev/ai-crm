@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { ACCESS_TOKEN_STORAGE_KEY } from '@/lib/api'
 import { authAPI, type PlanId, type User } from '@/lib/api/auth'
 import { billingAPI } from '@/lib/api/billing'
 
@@ -29,36 +28,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
 
   const refreshUser = async (): Promise<AuthUser | null> => {
-    const accessToken = typeof window === 'undefined'
-      ? null
-      : window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
-
-    if (!accessToken) {
+    try {
+      const currentUser = await authAPI.getCurrentUser()
+      setUser(currentUser)
+      return currentUser
+    } catch {
       setUser(null)
       return null
     }
-
-    const currentUser = await authAPI.getCurrentUser()
-    setUser(currentUser)
-    return currentUser
   }
 
   useEffect(() => {
     let active = true
 
     const loadCurrentUser = async () => {
-      const accessToken = typeof window === 'undefined'
-        ? null
-        : window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
-
-      if (!accessToken) {
-        if (active) {
-          setUser(null)
-          setIsLoading(false)
-        }
-        return
-      }
-
       try {
         const currentUser = await authAPI.getCurrentUser()
         if (active) {

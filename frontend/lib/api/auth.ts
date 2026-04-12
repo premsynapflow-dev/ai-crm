@@ -23,11 +23,8 @@ export interface User {
   created_at?: string | null
 }
 
-interface LoginResponse {
-  access_token?: string
-  refresh_token?: string
-  token_type?: string
-  expires_in?: number
+interface SessionLoginResponse {
+  user?: unknown
 }
 
 function normalizeUser(payload: unknown): User {
@@ -50,24 +47,22 @@ function normalizeUser(payload: unknown): User {
 
 export const authAPI = {
   login: async (credentials: LoginCredentials): Promise<User> => {
-    const response = await api.post<LoginResponse>('/api/v1/auth/login', {
-      email: credentials.email,
+    const payload = new URLSearchParams({
+      username: credentials.email,
       password: credentials.password,
     })
 
-    console.log('[auth] Login response:', response.data)
-
-    const accessToken = response.data?.access_token
-    if (!accessToken) {
-      throw new Error('Login response did not include an access token')
-    }
+    const response = await api.post<SessionLoginResponse>('/auth/login', payload, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    })
 
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
-      console.log('TOKEN STORED:', window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY))
+      window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
     }
 
-    return authAPI.getCurrentUser()
+    return normalizeUser(response.data?.user)
   },
 
   logout: async () => {
