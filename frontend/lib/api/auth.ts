@@ -25,7 +25,8 @@ export interface User {
 }
 
 interface SessionLoginResponse {
-  user?: unknown
+  access_token?: string
+  user?: unknown & { access_token?: string }
 }
 
 function normalizeUser(payload: unknown): User {
