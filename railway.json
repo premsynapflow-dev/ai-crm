@@ -1,5 +1,8 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "buildCommand": "pip install -r requirements.txt && cd frontend && npm ci && npm run build && cd .."
+  },
   "deploy": {
     "startCommand": "bash start.sh",
     "restartPolicyType": "ON_FAILURE",

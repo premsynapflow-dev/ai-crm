@@ -3,7 +3,7 @@ services:
     name: ai-complaint-engine
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && cd frontend && npm ci && npm run build && cd ..
     startCommand: bash start.sh
     autoDeploy: true
     envVars:

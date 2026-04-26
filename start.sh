@@ -11,7 +11,17 @@ if [ "$SERVICE_TYPE" = "worker" ]; then
     exec "$PYTHON_BIN" worker_standalone.py
 else
     echo "Starting API..."
-    
+
+    # Build the Next.js frontend so FastAPI can serve it from frontend/out/
+    if [ -f "frontend/package.json" ] && [ ! -d "frontend/out" ]; then
+        echo "Building frontend..."
+        cd frontend
+        npm ci --prefer-offline 2>/dev/null || npm install
+        npm run build
+        cd ..
+        echo "Frontend build complete."
+    fi
+
     echo "Running migrations..."
     alembic upgrade head || echo "Migration failed, continuing..."
 
