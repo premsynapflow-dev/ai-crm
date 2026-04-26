@@ -27,5 +27,5 @@ else
 
     "$PYTHON_BIN" -m app.db.schema_guard || echo "Schema guard failed, continuing..."
 
-    exec "$PYTHON_BIN" -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 2
+    exec "$PYTHON_BIN" -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers 4
 fi
