@@ -1,6 +1,6 @@
 "use client"
 
-import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { IntegrationsSettingsContent } from '@/components/integrations-settings-content'
 import { LoginForm } from '@/components/login-form'
@@ -25,8 +25,8 @@ function IntegrationsSettingsPageContent() {
 
 export default function IntegrationsSettingsPage() {
   return (
-    <AuthProvider>
+    <>
       <IntegrationsSettingsPageContent />
-    </AuthProvider>
+    </>
   )
 }

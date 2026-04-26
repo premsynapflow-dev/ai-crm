@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { LoginForm } from '@/components/login-form'
-import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 
 function LoginPageContent() {
   const router = useRouter()
@@ -29,8 +29,8 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <AuthProvider>
+    <>
       <LoginPageContent />
-    </AuthProvider>
+    </>
   )
 }

@@ -4,10 +4,10 @@ import { DashboardSkeleton } from '@/components/ui/skeletons'
 
 export default function DashboardLoading() {
   return (
-    <AuthProvider>
+    <>
       <DashboardLayout>
         <DashboardSkeleton />
       </DashboardLayout>
-    </AuthProvider>
+    </>
   )
 }

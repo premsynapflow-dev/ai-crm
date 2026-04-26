@@ -9,7 +9,7 @@ import { DashboardLayout } from '@/components/dashboard-layout'
 import { LoginForm } from '@/components/login-form'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 
 function CustomerPageContent() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -55,10 +55,10 @@ function CustomerPageFallback() {
 
 export default function CustomerPage() {
   return (
-    <AuthProvider>
+    <>
       <Suspense fallback={<CustomerPageFallback />}>
         <CustomerPageContent />
       </Suspense>
-    </AuthProvider>
+    </>
   )
 }

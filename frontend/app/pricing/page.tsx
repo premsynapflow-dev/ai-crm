@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth, AuthProvider } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { LoginForm } from '@/components/login-form'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { PricingContent } from '@/components/pricing-content'
@@ -25,8 +25,8 @@ function PricingPageContent() {
 
 export default function PricingPage() {
   return (
-    <AuthProvider>
+    <>
       <PricingPageContent />
-    </AuthProvider>
+    </>
   )
 }

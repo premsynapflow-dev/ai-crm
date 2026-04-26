@@ -4,7 +4,7 @@ import { CustomerListSkeleton } from '@/components/ui/skeletons'
 
 export default function CustomersLoading() {
   return (
-    <AuthProvider>
+    <>
       <DashboardLayout>
         <div className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-8">
@@ -26,6 +26,6 @@ export default function CustomersLoading() {
           </div>
         </div>
       </DashboardLayout>
-    </AuthProvider>
+    </>
   )
 }

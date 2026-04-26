@@ -1,6 +1,6 @@
 "use client"
 
-import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { LoginForm } from '@/components/login-form'
 import { ReplyQueueContent } from '@/components/reply-queue-content'
@@ -25,8 +25,8 @@ function ReplyQueuePageContent() {
 
 export default function ReplyQueuePage() {
   return (
-    <AuthProvider>
+    <>
       <ReplyQueuePageContent />
-    </AuthProvider>
+    </>
   )
 }

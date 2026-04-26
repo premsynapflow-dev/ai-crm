@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth, AuthProvider } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { LoginForm } from '@/components/login-form'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { AnalyticsContent } from '@/components/analytics-content'
@@ -25,8 +25,8 @@ function AnalyticsPageContent() {
 
 export default function AnalyticsPage() {
   return (
-    <AuthProvider>
+    <>
       <AnalyticsPageContent />
-    </AuthProvider>
+    </>
   )
 }

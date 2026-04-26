@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth, AuthProvider } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { LoginForm } from '@/components/login-form'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { ComplaintsInbox } from '@/components/complaints-inbox'
@@ -25,8 +25,8 @@ function ComplaintsPageContent() {
 
 export default function ComplaintsPage() {
   return (
-    <AuthProvider>
+    <>
       <ComplaintsPageContent />
-    </AuthProvider>
+    </>
   )
 }

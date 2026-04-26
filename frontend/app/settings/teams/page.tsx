@@ -1,6 +1,6 @@
 "use client"
 
-import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { LoginForm } from '@/components/login-form'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { TeamsSettingsContent } from '@/components/teams-settings-content'
@@ -25,8 +25,8 @@ function TeamsSettingsPageContent() {
 
 export default function TeamsSettingsPage() {
   return (
-    <AuthProvider>
+    <>
       <TeamsSettingsPageContent />
-    </AuthProvider>
+    </>
   )
 }

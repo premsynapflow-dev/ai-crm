@@ -60,11 +60,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [lastReadAt, setLastReadAt] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const token = getToken()
-  if (!token && typeof window !== 'undefined') {
-    redirect('/login')
-  }
-
   const notificationStorageKey = useMemo(() => {
     if (!user?.id) {
       return null

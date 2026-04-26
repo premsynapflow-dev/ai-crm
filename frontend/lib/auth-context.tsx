@@ -52,8 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
         }
         console.error('Failed to fetch user', error)
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          window.location.href = '/login'
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : ''
+        if (currentPath && currentPath !== '/login' && currentPath !== '') {
+          // Let components handle their own unauthorized states (e.g. rendering LoginForm)
+          // instead of forcing a full page reload here.
         }
       } finally {
         if (active) {

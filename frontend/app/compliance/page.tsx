@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { AuthProvider, useAuth } from '@/lib/auth-context'
+import { useAuth } from '@/lib/auth-context'
 import { ComplianceContent } from '@/components/compliance-content'
 import { DashboardLayout } from '@/components/dashboard-layout'
 import { LoginForm } from '@/components/login-form'
@@ -81,8 +81,8 @@ function CompliancePageContent() {
 
 export default function CompliancePage() {
   return (
-    <AuthProvider>
+    <>
       <CompliancePageContent />
-    </AuthProvider>
+    </>
   )
 }

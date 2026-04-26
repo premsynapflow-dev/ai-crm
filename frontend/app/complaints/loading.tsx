@@ -4,7 +4,7 @@ import { TableSkeleton } from '@/components/ui/skeletons'
 
 export default function ComplaintsLoading() {
   return (
-    <AuthProvider>
+    <>
       <DashboardLayout>
         <div className="space-y-6">
           <div className="h-32 w-full animate-pulse rounded-[28px] bg-accent" />
@@ -20,6 +20,6 @@ export default function ComplaintsLoading() {
           </div>
         </div>
       </DashboardLayout>
-    </AuthProvider>
+    </>
   )
 }
