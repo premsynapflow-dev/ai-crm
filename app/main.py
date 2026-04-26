@@ -220,10 +220,6 @@ def landing_page():
     return FileResponse(Path("app/public/index.html"))
 
 
-@app.get("/widget.js")
-def widget_js() -> RedirectResponse:
-    return RedirectResponse(url="/public/widget.js")
-
 @app.on_event("startup")
 def on_startup() -> None:
     global worker_thread
