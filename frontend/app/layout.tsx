@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 
 import { AuthProvider } from '@/lib/auth-context'
 import './globals.css'
 
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const enableVercelAnalytics = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV)
 
 export const metadata: Metadata = {
@@ -43,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="font-sans antialiased">
+      <body className={`${inter.variable} font-sans antialiased`}>
         <AuthProvider>
           {children}
         </AuthProvider>

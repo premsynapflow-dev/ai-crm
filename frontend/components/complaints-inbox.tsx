@@ -44,6 +44,7 @@ import { analyticsAPI } from '@/lib/api/analytics'
 import { complaintsAPI, type Complaint } from '@/lib/api/complaints'
 import { cn } from '@/lib/utils'
 import { ComplaintDetailModal } from '@/components/complaint-detail-modal'
+import { TableSkeleton } from '@/components/ui/skeletons'
 import { toast } from 'sonner'
 
 const priorityColors: Record<string, string> = {
@@ -432,11 +433,8 @@ export function ComplaintsInbox() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
-                      <div className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading complaints...
-                      </div>
+                    <TableCell colSpan={12} className="p-4">
+                      <TableSkeleton rows={10} />
                     </TableCell>
                   </TableRow>
                 ) : complaints.length === 0 ? (
