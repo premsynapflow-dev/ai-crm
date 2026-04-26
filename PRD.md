@@ -75,13 +75,13 @@
 
 ### 6.1. Short Term (Scalability & Polish)
 - [ ] **Infrastructure Upgrade:** Move search/cache to Redis and background jobs to a dedicated worker process.
-- [ ] **Alembic Migrations:** Implement standard database version control.
+- [x] **Alembic Migrations:** Implement standard database version control.
 - [ ] **Deep Integrations:** Native connectors for Salesforce, Zendesk, and Intercom.
 
 ### 6.2. Medium Term (Advanced AI)
 - [ ] **Voice Intelligence:** Transcription and analysis of customer support calls.
 - [ ] **Custom Model Fine-tuning:** Allow clients to train the AI on their specific historical resolution data.
-- [ ] **Real-time Chat:** Integrated live-chat widget with AI-agent handoff.
+- [x] **Real-time Chat:** Integrated live-chat widget with AI-agent handoff.
 
 ### 6.3. Long Term (Ecosystem)
 - [ ] **Mobile Agent App:** Dedicated iOS/Android app for support managers on the move.

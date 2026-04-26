@@ -45,6 +45,7 @@ import {
   FolderKanban,
   Sparkles,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -135,6 +136,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/pricing', icon: CreditCard, label: 'Billing & Plans' },
     { href: '/usage', icon: Activity, label: 'Usage & Limits' },
     { href: '/settings', icon: Settings, label: 'Settings' },
+    { href: '/settings/widget', icon: MessageSquare, label: 'Live Chat Widget' },
   ]
 
   const handleLogout = () => {
