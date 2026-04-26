@@ -144,7 +144,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(DatabaseRateLimitMiddleware)
 app.add_middleware(RequestAuditMiddleware)
 
+# Ensure the public directory exists to prevent RuntimeError on mount
+os.makedirs("public", exist_ok=True)
 app.mount("/public", StaticFiles(directory="public"), name="public")
+
 
 
 @app.middleware("http")

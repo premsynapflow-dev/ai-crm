@@ -19,7 +19,11 @@ target_metadata = Base.metadata
 import os
 
 def get_url() -> str:
-    return os.getenv("DATABASE_URL") or get_settings().database_url
+    url = os.getenv("DATABASE_URL") or get_settings().database_url
+    if url and url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
+
 
 
 def run_migrations_offline() -> None:

@@ -11,12 +11,13 @@ from app.config import get_settings
 settings = get_settings()
 _current_client_id: ContextVar[str | None] = ContextVar("current_client_id", default=None)
 
-db_url = os.getenv("DATABASE_URL")
+db_url = os.getenv("DATABASE_URL") or getattr(settings, "database_url", None)
 if not db_url:
-    # Try pydantic settings as fallback just in case
-    db_url = getattr(settings, "database_url", None)
-    if not db_url:
-        raise RuntimeError("DATABASE_URL is not set")
+    raise RuntimeError("DATABASE_URL is not set")
+
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
 
 print("Using DATABASE_URL:", db_url[:30], "...")
 
