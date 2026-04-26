@@ -12,9 +12,10 @@ interface ChatWidgetProps {
   apiKey: string
   companyName: string
   initialMessage?: string
+  isEmbed?: boolean
 }
 
-export function ChatWidget({ apiKey, companyName, initialMessage = "How can we help you today?" }: ChatWidgetProps) {
+export function ChatWidget({ apiKey, companyName, initialMessage = "How can we help you today?", isEmbed = false }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: initialMessage }
@@ -23,6 +24,12 @@ export function ChatWidget({ apiKey, companyName, initialMessage = "How can we h
   const [isLoading, setIsLoading] = useState(false)
   const [escalated, setEscalated] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isEmbed) {
+      window.parent.postMessage({ type: 'SYNAPFLOW_WIDGET_RESIZE', isOpen }, '*')
+    }
+  }, [isOpen, isEmbed])
 
   useEffect(() => {
     if (scrollRef.current) {
