@@ -42,6 +42,10 @@ def _get_customer_or_404(db: Session, customer_id: uuid.UUID, client_id) -> Cust
     return customer
 
 
+def _ensure_customer_360_access(current_client, db: Session) -> None:
+    ensure_feature_access(current_client, "customer_360", db=db)
+
+
 class MergeCustomersRequest(BaseModel):
     master_customer_id: str
     duplicate_customer_id: str
@@ -76,6 +80,8 @@ def list_customers(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     query = db.query(Customer).filter(Customer.client_id == current_client.id, Customer.is_master == True)
     if search:
         pattern = f"%{search.strip()}%"
@@ -100,6 +106,8 @@ def merge_customers(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     master = _get_customer_or_404(db, _parse_customer_id(request.master_customer_id), current_client.id)
     duplicate = _get_customer_or_404(db, _parse_customer_id(request.duplicate_customer_id), current_client.id)
     try:
@@ -122,28 +130,7 @@ def get_customer_360(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    plan_id = getattr(current_client, "plan_id", "free")
-    print("Customer 360 request:", current_client.id, plan_id)
-
-    if plan_id not in ["pro", "max"]:
-        return {
-            "profile": { "id": customer_id, "client_id": str(current_client.id) },
-            "recent_tickets": [],
-            "recent_messages": [],
-            "active_tickets": [],
-            "interaction_timeline": [],
-            "timeline": [],
-            "notes": [],
-            "relationships": [],
-            "satisfaction_trend": [],
-            "churn_indicators": {},
-            "sentiment": { "score": 0, "label": "neutral", "sample_size": 0 },
-            "insights": [],
-            "stats": { "total_messages": 0, "total_tickets": 0, "open_tickets": 0, "total_interactions": 0, "last_contacted_at": None, "avg_response_time": None, "avg_satisfaction": 0, "churn_risk": 0, "lifetime_value": 0 },
-            "churn_risk": "low",
-            "interactions": [],
-            "summary": "Plan upgrade required to view 360"
-        }
+    _ensure_customer_360_access(current_client, db)
 
     try:
         parsed_customer_id = _parse_customer_id(customer_id)
@@ -201,23 +188,7 @@ def get_customer_360_snapshot(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
-    plan_id = getattr(current_client, "plan_id", "free")
-    print("Customer 360 request:", current_client.id, plan_id)
-
-    if plan_id not in ["pro", "max"]:
-        return {
-            "identity": { "id": customer_id, "client_id": str(current_client.id), "name": "Unknown", "primary_email": "", "merged_emails": [], "tags": [], "notes": "No data available yet", "created_at": None, "updated_at": None },
-            "metrics": { "total_messages": 0, "total_tickets": 0, "open_tickets": 0, "last_contacted_at": None, "avg_response_time": None },
-            "sentiment": { "score": 0, "label": "neutral", "sample_size": 0 },
-            "churn_risk": "low",
-            "recent_messages": [],
-            "recent_tickets": [],
-            "active_tickets": [],
-            "timeline": [],
-            "insights": [],
-            "interactions": [],
-            "summary": "Plan upgrade required to view 360"
-        }
+    _ensure_customer_360_access(current_client, db)
 
     try:
         customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
@@ -252,6 +223,8 @@ def update_customer(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     update_data = request.model_dump(exclude_unset=True)
     if "name" in update_data:
@@ -274,6 +247,8 @@ def find_duplicates(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     duplicates = CustomerDeduplicator(db).find_duplicates(customer, limit=10)
     return {
@@ -294,6 +269,8 @@ def list_customer_notes(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     notes = (
         db.query(CustomerNote)
@@ -311,6 +288,8 @@ def create_customer_note(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     note = CustomerNote(
         customer_id=customer.id,
@@ -331,6 +310,8 @@ def list_customer_relationships(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     relationships = (
         db.query(CustomerRelationship)
@@ -353,6 +334,8 @@ def create_customer_relationship(
     db: Session = Depends(get_db),
     current_client=Depends(require_api_key),
 ):
+    _ensure_customer_360_access(current_client, db)
+
     parent_customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
     child_customer = _get_customer_or_404(db, _parse_customer_id(request.child_customer_id), current_client.id)
     if parent_customer.id == child_customer.id:
