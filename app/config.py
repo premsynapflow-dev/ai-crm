@@ -26,6 +26,7 @@ class Settings(BaseSettings):
             "http://127.0.0.1:8000",
             "http://localhost:8000",
             "https://synapflow.up.railway.app",
+            "https://synapflow-ai-crm.up.railway.app",
         ],
         alias="ALLOWED_ORIGINS",
     )
@@ -170,7 +171,7 @@ def _manual_settings_data() -> dict:
         "ENVIRONMENT": os.getenv("ENVIRONMENT", "dev"),
         "ALLOWED_ORIGINS": os.getenv(
             "ALLOWED_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:8000,http://localhost:8000,https://synapflow.up.railway.app",
+            "http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:8000,http://localhost:8000,https://synapflow.up.railway.app,https://synapflow-ai-crm.up.railway.app",
         ),
         "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
         "SLACK_WEBHOOK_URL": os.getenv("SLACK_WEBHOOK_URL", ""),
