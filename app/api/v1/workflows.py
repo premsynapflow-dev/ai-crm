@@ -101,8 +101,15 @@ def list_workflow_executions(limit: int = 50, db: Session = Depends(get_db), cur
                 "customer_id": str(row.customer_id) if row.customer_id else None,
                 "action_type": row.action_type,
                 "execution_status": row.execution_status,
+                "retry_count": row.retry_count,
+                "max_retries": row.max_retries,
                 "execution_logs": row.execution_logs or {},
                 "error_message": row.error_message,
+                "error_json": row.error_json or {},
+                "started_at": row.started_at.isoformat() if row.started_at else None,
+                "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                "failed_at": row.failed_at.isoformat() if row.failed_at else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
                 "executed_at": row.executed_at.isoformat() if row.executed_at else None,
             }
             for row in rows

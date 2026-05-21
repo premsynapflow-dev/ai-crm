@@ -783,6 +783,37 @@ class EventLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class CustomerEvent(Base):
+    __tablename__ = "customer_events"
+    __table_args__ = (
+        Index("idx_customer_events_tenant_time", "client_id", "event_timestamp"),
+        Index("idx_customer_events_customer_time", "customer_id", "event_timestamp"),
+        Index("idx_customer_events_conversation_time", "conversation_id", "event_timestamp"),
+        Index("idx_customer_events_message_time", "message_id", "event_timestamp"),
+        Index("idx_customer_events_workflow_time", "workflow_execution_id", "event_timestamp"),
+        Index("idx_customer_events_type_time", "client_id", "event_type", "event_timestamp"),
+        Index("idx_customer_events_source_event", "source_event_id"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    conversation_id = Column(Uuid(as_uuid=True), ForeignKey("conversations.id"), nullable=True, index=True)
+    message_id = Column(Uuid(as_uuid=True), ForeignKey("unified_messages.id"), nullable=True, index=True)
+    workflow_execution_id = Column(Uuid(as_uuid=True), ForeignKey("workflow_executions.id", use_alter=True), nullable=True, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
+    source = Column(String(50), nullable=False)
+    source_event_id = Column(Uuid(as_uuid=True), nullable=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    actor_type = Column(String(50), nullable=False, default="system")
+    actor_id = Column(String(255), nullable=True)
+    event_timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    metadata_json = Column("metadata", JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    sentiment_score = Column(Float, nullable=True)
+    risk_delta = Column(Float, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class AutomationRule(Base):
     __tablename__ = "automation_rules"
 
@@ -808,6 +839,8 @@ class WorkflowExecution(Base):
         Index("idx_workflow_executions_client_time", "client_id", "executed_at"),
         Index("idx_workflow_executions_rule_time", "automation_rule_id", "executed_at"),
         Index("idx_workflow_executions_complaint_time", "complaint_id", "executed_at"),
+        Index("idx_workflow_executions_status_created", "execution_status", "created_at"),
+        Index("idx_workflow_executions_idempotency", "idempotency_key", unique=True),
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -815,11 +848,21 @@ class WorkflowExecution(Base):
     automation_rule_id = Column(Uuid(as_uuid=True), ForeignKey("automation_rules.id"), nullable=True, index=True)
     complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
     customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    trigger_event_id = Column(Uuid(as_uuid=True), ForeignKey("customer_events.id"), nullable=True, index=True)
+    job_id = Column(Uuid(as_uuid=True), ForeignKey("job_queue.id"), nullable=True, index=True)
+    idempotency_key = Column(String(255), nullable=True, index=True)
     trigger_event_type = Column(String(100), nullable=True)
     action_type = Column(String(50), nullable=False)
     execution_status = Column(String(30), nullable=False, default="succeeded", index=True)
+    retry_count = Column(Integer, nullable=False, default=0)
+    max_retries = Column(Integer, nullable=False, default=3)
     execution_logs = Column(JSON, nullable=False, default=dict)
     error_message = Column(Text, nullable=True)
+    error_json = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     executed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

@@ -20,6 +20,7 @@ from app.services.sla_manager import SLAManager
 from app.services.sentiment import analyze_sentiment
 from app.services.ticket_state_machine import TicketStateMachine
 from app.services.response_tracking import mark_first_response_by_id
+from app.services.workflow_queue import WORKFLOW_JOB_TYPE, process_workflow_action_job
 from app.utils.logging import get_logger
 from app.queue.backends import PostgresQueueBackend, get_queue_backend
 
@@ -296,6 +297,7 @@ JOB_HANDLERS = {
     "send_channel_message": process_send_channel_message_job,
     "sync_integration": process_sync_integration_job,
     "process_complaint_ai": lambda p: asyncio.run(process_complaint_ai_job(p)),
+    WORKFLOW_JOB_TYPE: process_workflow_action_job,
 }
 
 

@@ -352,6 +352,7 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     from app.utils.ticket import generate_ticket_id
     from app.workflow.dispatcher import dispatch_action
     from app.services.rules_engine import get_matching_rules
+    from app.services.workflow_queue import enqueue_matching_workflows
     # ---
     client_config = build_client_classification_config(db, client)
     classification = classify_message(message.message_text, client_config)
@@ -543,7 +544,6 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     )
     rules = get_matching_rules(db, client.id, classification)
     for rule in rules:
-        from app.services.action_executor import execute_action
         log_event(
             db,
             client.id,
@@ -563,7 +563,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
             actor_type="system",
             sentiment_score=sentiment_score,
         )
-        execute_action(rule, complaint, client, db=db, trigger_event_type="message_processed")
+    enqueue_matching_workflows(
+        db,
+        rules=rules,
+        complaint=complaint,
+        client=client,
+        trigger_event_type="message_processed",
+    )
     SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
     TicketStateMachine(db).sync_from_legacy(
         complaint,

@@ -5,7 +5,7 @@ from typing import Any, Optional
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.db.models import Complaint, Customer, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
+from app.db.models import Complaint, Customer, CustomerEvent, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
 from app.services.customer_deduplication import CustomerDeduplicator
 
 
@@ -345,15 +345,26 @@ class CustomerProfileService:
             .all()
         )
         recent_events = (
-            self.db.query(EventLog)
+            self.db.query(CustomerEvent)
             .filter(
-                EventLog.client_id == customer.client_id,
-                EventLog.customer_id == customer.id,
+                CustomerEvent.client_id == customer.client_id,
+                CustomerEvent.customer_id == customer.id,
             )
-            .order_by(EventLog.event_timestamp.desc(), EventLog.created_at.desc())
+            .order_by(CustomerEvent.event_timestamp.desc(), CustomerEvent.created_at.desc())
             .limit(50)
             .all()
         )
+        if not recent_events:
+            recent_events = (
+                self.db.query(EventLog)
+                .filter(
+                    EventLog.client_id == customer.client_id,
+                    EventLog.customer_id == customer.id,
+                )
+                .order_by(EventLog.event_timestamp.desc(), EventLog.created_at.desc())
+                .limit(50)
+                .all()
+            )
         relationships = (
             self.db.query(CustomerRelationship)
             .filter(
@@ -428,12 +439,20 @@ class CustomerProfileService:
             .all()
         )
         recent_events = (
-            self.db.query(EventLog)
-            .filter(EventLog.client_id == customer.client_id, EventLog.customer_id == customer.id)
-            .order_by(EventLog.event_timestamp.desc(), EventLog.created_at.desc())
+            self.db.query(CustomerEvent)
+            .filter(CustomerEvent.client_id == customer.client_id, CustomerEvent.customer_id == customer.id)
+            .order_by(CustomerEvent.event_timestamp.desc(), CustomerEvent.created_at.desc())
             .limit(20)
             .all()
         )
+        if not recent_events:
+            recent_events = (
+                self.db.query(EventLog)
+                .filter(EventLog.client_id == customer.client_id, EventLog.customer_id == customer.id)
+                .order_by(EventLog.event_timestamp.desc(), EventLog.created_at.desc())
+                .limit(20)
+                .all()
+            )
         active_tickets = [ticket for ticket in recent_tickets if ticket.resolution_status != "resolved"]
         sentiment = self.compute_customer_sentiment(customer.id)
         churn = self.compute_churn_risk(customer)
@@ -690,7 +709,7 @@ class CustomerProfileService:
         recent_messages: list[UnifiedMessage],
         recent_tickets: list[Complaint],
         notes: list[CustomerNote],
-        recent_events: list[EventLog] | None = None,
+        recent_events: list[CustomerEvent | EventLog] | None = None,
     ) -> list[dict[str, Any]]:
         items = [serialize_customer_timeline_message(message) for message in recent_messages]
         items.extend(serialize_customer_timeline_ticket(ticket) for ticket in recent_tickets)
@@ -925,6 +944,19 @@ class CustomerProfileService:
 
     def _count_recent_events(self, customer: Customer, event_types: list[str], *, days: int) -> int:
         since = _utcnow() - timedelta(days=days)
+        canonical_count = int(
+            self.db.query(func.count(CustomerEvent.id))
+            .filter(
+                CustomerEvent.client_id == customer.client_id,
+                CustomerEvent.customer_id == customer.id,
+                CustomerEvent.event_type.in_(event_types),
+                CustomerEvent.event_timestamp >= since,
+            )
+            .scalar()
+            or 0
+        )
+        if canonical_count:
+            return canonical_count
         return int(
             self.db.query(func.count(EventLog.id))
             .filter(
@@ -1110,13 +1142,17 @@ def serialize_customer_timeline_note(note: CustomerNote) -> dict[str, Any]:
     }
 
 
-def serialize_customer_timeline_event(event: EventLog) -> dict[str, Any]:
-    payload = event.payload if isinstance(event.payload, dict) else {}
+def serialize_customer_timeline_event(event: CustomerEvent | EventLog) -> dict[str, Any]:
+    is_canonical = isinstance(event, CustomerEvent)
+    payload_source = event.metadata_json if is_canonical else event.payload
+    payload = payload_source if isinstance(payload_source, dict) else {}
     timestamp = _safe_iso(event.event_timestamp or event.created_at)
     event_type = (event.event_type or "event").replace("_", " ").title()
     body = payload.get("summary") or payload.get("outcome") or payload.get("action_type") or event.event_type
+    source_event_id = getattr(event, "source_event_id", None)
+    public_id = source_event_id or event.id
     return {
-        "id": f"event:{event.id}",
+        "id": f"event:{public_id}",
         "type": "event",
         "title": event_type,
         "body": str(body or "Customer event"),
@@ -1129,9 +1165,14 @@ def serialize_customer_timeline_event(event: EventLog) -> dict[str, Any]:
             "client_id": str(event.client_id) if event.client_id else None,
             "customer_id": str(event.customer_id) if event.customer_id else None,
             "complaint_id": str(event.complaint_id) if event.complaint_id else None,
+            "conversation_id": str(event.conversation_id) if is_canonical and event.conversation_id else None,
+            "message_id": str(event.message_id) if is_canonical and event.message_id else None,
+            "workflow_execution_id": str(event.workflow_execution_id) if is_canonical and event.workflow_execution_id else None,
+            "source_event_id": str(source_event_id) if source_event_id else None,
             "event_type": event.event_type,
             "source": event.source,
             "actor_type": event.actor_type,
+            "actor_id": event.actor_id if is_canonical else payload.get("actor_id"),
             "sentiment_score": event.sentiment_score,
             "risk_delta": event.risk_delta,
             "payload": payload,

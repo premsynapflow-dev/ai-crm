@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from app.db.models import AutomationRule, Complaint, Customer, EventLog, UnifiedMessage, WorkflowExecution
+from app.db.models import AutomationRule, Complaint, Customer, CustomerEvent, EventLog, MessageEvent, UnifiedMessage, WorkflowExecution
 from app.services.action_executor import execute_action
 from app.services.customer_profile import CustomerProfileService
 from app.services.event_logger import log_event
@@ -40,10 +40,13 @@ def test_customer_360_includes_event_timeline_with_tenant_isolation(test_db, tes
     )
     test_db.commit()
 
+    canonical = test_db.query(CustomerEvent).filter(CustomerEvent.source_event_id == visible.id).one()
     data = CustomerProfileService(test_db).get_customer_360(str(customer.id))
     timeline_ids = [item["id"] for item in data["timeline"]]
 
     assert f"event:{visible.id}" in timeline_ids
+    assert canonical.client_id == test_client_record.id
+    assert canonical.customer_id == customer.id
     assert all(item["data"].get("client_id") != str(other_client_id) for item in data["timeline"] if item["type"] == "event")
 
 
@@ -145,7 +148,49 @@ def test_workflow_execution_records_success(test_db, test_client_record):
 
     saved = test_db.query(WorkflowExecution).filter(WorkflowExecution.id == execution.id).one()
     event = test_db.query(EventLog).filter(EventLog.event_type == "workflow_action_succeeded").one()
+    canonical = test_db.query(CustomerEvent).filter(CustomerEvent.event_type == "workflow_action_succeeded").one()
     assert complaint.priority == 5
     assert saved.execution_status == "succeeded"
     assert saved.customer_id == customer.id
     assert event.complaint_id == complaint.id
+    assert canonical.workflow_execution_id == execution.id
+
+
+def test_message_event_dual_writes_customer_event(test_db, test_client_record):
+    from app.services.message_events import log_message_event
+
+    customer = Customer(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        primary_email="message-event@example.com",
+        emails=["message-event@example.com"],
+    )
+    message = UnifiedMessage(
+        id=uuid.uuid4(),
+        client_id=test_client_record.id,
+        customer_id=customer.id,
+        channel="email",
+        external_message_id="msg-canonical-event",
+        sender_id="message-event@example.com",
+        message_text="Please help",
+        timestamp=datetime.now(timezone.utc),
+        direction="inbound",
+        status="processed",
+        raw_payload={},
+    )
+    test_db.add_all([customer, message])
+    test_db.commit()
+
+    event = log_message_event(
+        test_db,
+        message=message,
+        event_type="message_processed",
+        payload={"summary": "Message processed"},
+    )
+    test_db.commit()
+
+    canonical = test_db.query(CustomerEvent).filter(CustomerEvent.source_event_id == event.id).one()
+    saved_message_event = test_db.query(MessageEvent).filter(MessageEvent.id == event.id).one()
+    assert saved_message_event.message_id == message.id
+    assert canonical.message_id == message.id
+    assert canonical.customer_id == customer.id

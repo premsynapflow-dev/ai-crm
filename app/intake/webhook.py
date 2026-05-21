@@ -13,7 +13,6 @@ from app.db.session import get_db
 from app.intelligence.classifier import classify_message, summarize_if_needed
 from app.queue.simple_queue import queue_job
 from app.middleware.feature_gate import has_feature_access
-from app.services.action_executor import execute_action
 from app.services.audit_logs import append_audit_log
 from app.services.auto_reply_hardened import HardenedAutoReplyService
 from app.services.classification_service import build_client_classification_config, classification_to_action
@@ -25,6 +24,7 @@ from app.services.sla_manager import SLAManager
 from app.services.ticket_state_machine import TicketStateMachine
 from app.services.sentiment import analyze_sentiment
 from app.services.rules_engine import get_matching_rules
+from app.services.workflow_queue import enqueue_matching_workflows
 from app.utils.logging import get_logger
 from app.utils.sanitize import sanitize_email, sanitize_message, sanitize_phone
 from app.utils.ticket import generate_thread_id, generate_ticket_id
@@ -166,8 +166,13 @@ def _process_complaint_for_client(
 
     rules = get_matching_rules(db, client.id, classification)
 
-    for rule in rules:
-        execute_action(rule, complaint, client)
+    enqueue_matching_workflows(
+        db,
+        rules=rules,
+        complaint=complaint,
+        client=client,
+        trigger_event_type="complaint_created",
+    )
 
     SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
     TicketStateMachine(db).sync_from_legacy(

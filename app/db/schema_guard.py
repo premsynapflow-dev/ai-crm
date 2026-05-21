@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.sql.sqltypes import Boolean, DateTime, Float, Integer
 
 from app.db.session import SessionLocal
-from app.db.models import AIReplyQueue, AutomationRule, Client, Complaint, Customer, CustomerInteraction, EventLog, MessageEvent
+from app.db.models import AIReplyQueue, AutomationRule, Client, Complaint, Customer, CustomerEvent, CustomerInteraction, EventLog, JobQueue, MessageEvent, WorkflowExecution
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ REQUIRED_TABLES = [
     "conversations",
     "automation_settings",
     "message_events",
+    "customer_events",
     "workflow_executions",
     "churn_outcomes",
     "agent_corrections",
@@ -299,6 +300,24 @@ def _ensure_required_columns():
             "payload",
             "created_at",
         ]
+        customer_event_columns = [
+            "client_id",
+            "customer_id",
+            "conversation_id",
+            "message_id",
+            "workflow_execution_id",
+            "complaint_id",
+            "source",
+            "source_event_id",
+            "event_type",
+            "actor_type",
+            "actor_id",
+            "event_timestamp",
+            "metadata",
+            "sentiment_score",
+            "risk_delta",
+            "created_at",
+        ]
         reply_queue_columns = [
             "reply_draft_id",
         ]
@@ -307,6 +326,22 @@ def _ensure_required_columns():
             "trigger_definition",
             "condition_definition",
             "action_definition",
+        ]
+        workflow_execution_columns = [
+            "trigger_event_id",
+            "job_id",
+            "idempotency_key",
+            "retry_count",
+            "max_retries",
+            "error_json",
+            "started_at",
+            "completed_at",
+            "failed_at",
+            "created_at",
+        ]
+        job_queue_columns = [
+            "scheduled_for",
+            "processed_at",
         ]
 
         added_client_columns = _sync_missing_model_columns("clients", Client, client_columns)
@@ -368,6 +403,14 @@ def _ensure_required_columns():
         if added_message_event_columns:
             added_summary["message_events"] = added_message_event_columns
 
+        added_customer_event_columns = _sync_missing_model_columns(
+            "customer_events",
+            CustomerEvent,
+            customer_event_columns,
+        )
+        if added_customer_event_columns:
+            added_summary["customer_events"] = added_customer_event_columns
+
         added_automation_rule_columns = _sync_missing_model_columns(
             "automation_rules",
             AutomationRule,
@@ -375,6 +418,18 @@ def _ensure_required_columns():
         )
         if added_automation_rule_columns:
             added_summary["automation_rules"] = added_automation_rule_columns
+
+        added_workflow_execution_columns = _sync_missing_model_columns(
+            "workflow_executions",
+            WorkflowExecution,
+            workflow_execution_columns,
+        )
+        if added_workflow_execution_columns:
+            added_summary["workflow_executions"] = added_workflow_execution_columns
+
+        added_job_queue_columns = _sync_missing_model_columns("job_queue", JobQueue, job_queue_columns)
+        if added_job_queue_columns:
+            added_summary["job_queue"] = added_job_queue_columns
 
         if added_summary:
             for table_name, added_columns in added_summary.items():
@@ -513,7 +568,17 @@ def _create_indexes():
         "CREATE INDEX IF NOT EXISTS idx_message_events_client_time ON message_events(client_id, event_timestamp DESC) WHERE client_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_message_events_customer_time ON message_events(customer_id, event_timestamp DESC) WHERE customer_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_message_events_complaint_time ON message_events(complaint_id, event_timestamp DESC) WHERE complaint_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_tenant_time ON customer_events(client_id, event_timestamp DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_customer_time ON customer_events(customer_id, event_timestamp DESC) WHERE customer_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_conversation_time ON customer_events(conversation_id, event_timestamp DESC) WHERE conversation_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_message_time ON customer_events(message_id, event_timestamp DESC) WHERE message_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_workflow_time ON customer_events(workflow_execution_id, event_timestamp DESC) WHERE workflow_execution_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_type_time ON customer_events(client_id, event_type, event_timestamp DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_customer_events_source_event ON customer_events(source_event_id) WHERE source_event_id IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_workflow_executions_client_time ON workflow_executions(client_id, executed_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_workflow_executions_status_created ON workflow_executions(execution_status, created_at DESC)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_executions_idempotency ON workflow_executions(idempotency_key)",
+        "CREATE INDEX IF NOT EXISTS idx_job_queue_status_scheduled ON job_queue(status, scheduled_for, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_churn_outcomes_client_time ON churn_outcomes(client_id, recorded_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_agent_corrections_client_time ON agent_corrections(client_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_knowledge_snippets_client_status ON knowledge_snippets(client_id, status)",

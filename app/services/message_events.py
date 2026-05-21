@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.db.models import MessageEvent, UnifiedMessage
+from app.services.customer_events import mirror_legacy_event
 
 
 def _as_uuid(value: uuid.UUID | str | None) -> uuid.UUID | None:
@@ -62,4 +63,5 @@ def log_message_event(
     )
     db.add(event)
     db.flush()
+    mirror_legacy_event(db, event, metadata=payload, message_id=event.message_id)
     return event

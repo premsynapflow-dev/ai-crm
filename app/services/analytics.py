@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_
 
-from app.db.models import AgentCorrection, ChurnOutcome, Complaint, EventLog, MaterializedAnalytics, WorkflowExecution
+from app.db.models import AgentCorrection, ChurnOutcome, Complaint, CustomerEvent, EventLog, MaterializedAnalytics, WorkflowExecution
 
 
 def complaint_category_breakdown(db, client_id):
@@ -285,27 +285,45 @@ def escalation_rate(db, client_id):
 
 def complaint_spike_alerts(db, client_id, hours=24):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    count = db.query(func.count(EventLog.id)).filter(
-        EventLog.client_id == client_id,
-        EventLog.event_type == "complaint_spike_alert",
-        EventLog.created_at >= cutoff,
+    count = db.query(func.count(CustomerEvent.id)).filter(
+        CustomerEvent.client_id == client_id,
+        CustomerEvent.event_type == "complaint_spike_alert",
+        CustomerEvent.event_timestamp >= cutoff,
     ).scalar() or 0
+    if not count:
+        count = db.query(func.count(EventLog.id)).filter(
+            EventLog.client_id == client_id,
+            EventLog.event_type == "complaint_spike_alert",
+            EventLog.created_at >= cutoff,
+        ).scalar() or 0
     return {"complaint_spike_alerts": count}
 
 
 def event_intelligence_counts(db, client_id, days=30):
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     rows = (
-        db.query(EventLog.event_type, func.count(EventLog.id))
+        db.query(CustomerEvent.event_type, func.count(CustomerEvent.id))
         .filter(
-            EventLog.client_id == client_id,
-            or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+            CustomerEvent.client_id == client_id,
+            CustomerEvent.event_timestamp >= cutoff,
         )
-        .group_by(EventLog.event_type)
-        .order_by(func.count(EventLog.id).desc())
+        .group_by(CustomerEvent.event_type)
+        .order_by(func.count(CustomerEvent.id).desc())
         .limit(20)
         .all()
     )
+    if not rows:
+        rows = (
+            db.query(EventLog.event_type, func.count(EventLog.id))
+            .filter(
+                EventLog.client_id == client_id,
+                or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+            )
+            .group_by(EventLog.event_type)
+            .order_by(func.count(EventLog.id).desc())
+            .limit(20)
+            .all()
+        )
     risk_events = {
         "refund_requested",
         "payment_failed",
@@ -416,15 +434,26 @@ def advanced_intelligence_analytics(db, client_id, days=30):
         .all()
     )
     guardrail_incidents = (
-        db.query(func.count(EventLog.id))
+        db.query(func.count(CustomerEvent.id))
         .filter(
-            EventLog.client_id == client_id,
-            EventLog.event_type.in_(["ai_reply_rejected", "reply_draft_rejected", "workflow_action_failed"]),
-            or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+            CustomerEvent.client_id == client_id,
+            CustomerEvent.event_type.in_(["ai_reply_rejected", "reply_draft_rejected", "workflow_action_failed"]),
+            CustomerEvent.event_timestamp >= cutoff,
         )
         .scalar()
         or 0
     )
+    if not guardrail_incidents:
+        guardrail_incidents = (
+            db.query(func.count(EventLog.id))
+            .filter(
+                EventLog.client_id == client_id,
+                EventLog.event_type.in_(["ai_reply_rejected", "reply_draft_rejected", "workflow_action_failed"]),
+                or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+            )
+            .scalar()
+            or 0
+        )
     corrections = (
         db.query(func.count(AgentCorrection.id))
         .filter(AgentCorrection.client_id == client_id, AgentCorrection.created_at >= cutoff)
@@ -432,15 +461,26 @@ def advanced_intelligence_analytics(db, client_id, days=30):
         or 0
     )
     risk_movement_rows = (
-        db.query(EventLog.event_type, func.count(EventLog.id))
+        db.query(CustomerEvent.event_type, func.count(CustomerEvent.id))
         .filter(
-            EventLog.client_id == client_id,
-            EventLog.event_type.in_(["sentiment_drop_detected", "churn_outcome_recorded", "complaint_reopened"]),
-            or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+            CustomerEvent.client_id == client_id,
+            CustomerEvent.event_type.in_(["sentiment_drop_detected", "churn_outcome_recorded", "complaint_reopened"]),
+            CustomerEvent.event_timestamp >= cutoff,
         )
-        .group_by(EventLog.event_type)
+        .group_by(CustomerEvent.event_type)
         .all()
     )
+    if not risk_movement_rows:
+        risk_movement_rows = (
+            db.query(EventLog.event_type, func.count(EventLog.id))
+            .filter(
+                EventLog.client_id == client_id,
+                EventLog.event_type.in_(["sentiment_drop_detected", "churn_outcome_recorded", "complaint_reopened"]),
+                or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+            )
+            .group_by(EventLog.event_type)
+            .all()
+        )
     return {
         "window_days": days,
         "churn_cohorts": [{"outcome_type": row[0], "count": int(row[1])} for row in churn_rows],

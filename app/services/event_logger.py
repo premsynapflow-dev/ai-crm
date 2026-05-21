@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 from app.db.models import EventLog
+from app.services.customer_events import mirror_legacy_event
 
 
 def _utcnow() -> datetime:
@@ -55,4 +56,5 @@ def log_event(
     )
     db.add(event)
     db.flush()
+    mirror_legacy_event(db, event, metadata=payload)
     return event
