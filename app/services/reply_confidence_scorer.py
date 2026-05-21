@@ -19,6 +19,16 @@ class ReplyConfidenceScorer:
         r"i'm not able to",
         r"i apologize.*i don't have",
     ]
+    REFUND_PROMISE_PATTERNS = [
+        r"\b(refund|credit|compensation|coupon)\b.*\b(approved|processed|guaranteed|will be issued)\b",
+        r"\bwe (will|can) refund\b",
+        r"\byour refund (has been|is) approved\b",
+    ]
+    POLICY_PROMISE_PATTERNS = [
+        r"\baccording to (our|the) policy\b",
+        r"\bcompany policy (requires|guarantees|allows)\b",
+        r"\blegally required\b",
+    ]
 
     def __init__(self):
         settings = get_settings()
@@ -34,6 +44,7 @@ class ReplyConfidenceScorer:
         relevance_score = self._score_relevance(sanitized_reply, ticket_summary or "")
         toxicity_score = self._check_toxicity(sanitized_reply)
         hallucination_passed = self._check_hallucinations(sanitized_reply)
+        refund_policy_flags = self._check_policy_hallucination_flags(sanitized_reply, ticket_summary or "")
         factual_consistency_score = self._score_factual_consistency(sanitized_reply, ticket_summary or "")
         model_confidence = float(generation_metadata.get("model_confidence", 0.7) or 0.7)
 
@@ -58,6 +69,14 @@ class ReplyConfidenceScorer:
             confidence_score *= 0.85
             warnings.append("Low factual consistency")
 
+        if refund_policy_flags["refund_promise_without_context"]:
+            confidence_score *= 0.75
+            warnings.append("Refund or compensation promise lacks source context")
+
+        if refund_policy_flags["policy_claim_without_context"]:
+            confidence_score *= 0.8
+            warnings.append("Policy/legal claim lacks source context")
+
         if confidence_score >= self.auto_approve_threshold and hallucination_passed:
             recommendation = "auto_approve"
         elif confidence_score >= self.human_review_threshold:
@@ -73,6 +92,7 @@ class ReplyConfidenceScorer:
             "factual_consistency_score": round(factual_consistency_score, 4),
             "recommendation": recommendation,
             "warnings": warnings,
+            "guardrail_flags": refund_policy_flags,
             "component_scores": {
                 "length": round(length_score, 4),
                 "coherence": round(coherence_score, 4),
@@ -135,6 +155,18 @@ class ReplyConfidenceScorer:
                 logger.warning("Reply hallucination pattern matched: %s", pattern)
                 return False
         return True
+
+    def _check_policy_hallucination_flags(self, reply: str, ticket_summary: str) -> dict[str, bool]:
+        lowered_reply = reply.lower()
+        lowered_summary = ticket_summary.lower()
+        refund_context = any(term in lowered_summary for term in ("refund", "credit", "compensation", "coupon"))
+        policy_context = any(term in lowered_summary for term in ("policy", "terms", "legal", "compliance", "refund"))
+        refund_promise = any(re.search(pattern, lowered_reply) for pattern in self.REFUND_PROMISE_PATTERNS)
+        policy_claim = any(re.search(pattern, lowered_reply) for pattern in self.POLICY_PROMISE_PATTERNS)
+        return {
+            "refund_promise_without_context": bool(refund_promise and not refund_context),
+            "policy_claim_without_context": bool(policy_claim and not policy_context),
+        }
 
     def _score_factual_consistency(self, reply: str, ticket_summary: str) -> float:
         if not reply:

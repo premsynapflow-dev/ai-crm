@@ -5,7 +5,7 @@ from typing import Any, Optional
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.db.models import Complaint, Customer, CustomerInteraction, CustomerNote, CustomerRelationship, UnifiedMessage
+from app.db.models import Complaint, Customer, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
 from app.services.customer_deduplication import CustomerDeduplicator
 
 
@@ -344,6 +344,16 @@ class CustomerProfileService:
             .limit(50)
             .all()
         )
+        recent_events = (
+            self.db.query(EventLog)
+            .filter(
+                EventLog.client_id == customer.client_id,
+                EventLog.customer_id == customer.id,
+            )
+            .order_by(EventLog.event_timestamp.desc(), EventLog.created_at.desc())
+            .limit(50)
+            .all()
+        )
         relationships = (
             self.db.query(CustomerRelationship)
             .filter(
@@ -362,6 +372,7 @@ class CustomerProfileService:
             recent_messages=recent_messages,
             recent_tickets=recent_tickets,
             notes=notes,
+            recent_events=recent_events,
         )
 
         return {
@@ -376,6 +387,7 @@ class CustomerProfileService:
             "satisfaction_trend": self._build_satisfaction_trend(customer.id),
             "churn_indicators": self._calculate_churn_indicators(customer),
             "sentiment": sentiment,
+            "risk": churn,
             "insights": self._build_insights(customer, recent_tickets, sentiment, churn),
             "stats": {
                 "total_messages": customer.total_messages,
@@ -415,6 +427,13 @@ class CustomerProfileService:
             .limit(10)
             .all()
         )
+        recent_events = (
+            self.db.query(EventLog)
+            .filter(EventLog.client_id == customer.client_id, EventLog.customer_id == customer.id)
+            .order_by(EventLog.event_timestamp.desc(), EventLog.created_at.desc())
+            .limit(20)
+            .all()
+        )
         active_tickets = [ticket for ticket in recent_tickets if ticket.resolution_status != "resolved"]
         sentiment = self.compute_customer_sentiment(customer.id)
         churn = self.compute_churn_risk(customer)
@@ -446,7 +465,9 @@ class CustomerProfileService:
                 recent_messages=recent_messages,
                 recent_tickets=recent_tickets,
                 notes=notes,
+                recent_events=recent_events,
             ),
+            "risk": churn,
             "insights": self._build_insights(customer, recent_tickets, sentiment, churn),
         }
 
@@ -625,36 +646,32 @@ class CustomerProfileService:
                     break
 
         score = round(sum(scores) / len(scores), 3) if scores else None
+        dimensions = self._aggregate_emotion_dimensions(resolved_customer.id)
         return {
             "score": score,
             "label": _sentiment_label(score),
             "sample_size": len(scores),
+            "emotion_dimensions": dimensions,
+            "trend": self._sentiment_trend(resolved_customer.id),
         }
 
     def compute_churn_risk(self, customer: Customer | str | uuid.UUID) -> dict[str, Any]:
         resolved_customer = customer if isinstance(customer, Customer) else self._get_customer_or_master(customer)
         indicators = self._calculate_churn_indicators(resolved_customer)
 
-        negative_streak = bool(indicators["negative_sentiment_streak"])
-        many_recent_complaints = indicators["recent_ticket_volume"] >= 3
-        unresolved_tickets = indicators["unresolved_tickets"] >= 2
-
-        if (negative_streak and (many_recent_complaints or unresolved_tickets)) or (
-            indicators["recent_negative_tickets"] >= 3 and indicators["unresolved_tickets"] >= 1
-        ):
+        score = self._weighted_churn_score(indicators)
+        if score >= 75:
             level = "high"
-            score = min(95, 80 + indicators["recent_negative_tickets"] * 3 + indicators["unresolved_tickets"] * 2)
-        elif negative_streak or many_recent_complaints or indicators["unresolved_tickets"] >= 1:
+        elif score >= 40:
             level = "medium"
-            score = min(70, 45 + indicators["recent_ticket_volume"] * 4 + indicators["unresolved_tickets"] * 3)
         else:
             level = "low"
-            score = min(30, 10 + indicators["recent_ticket_volume"] * 3)
 
         return {
             "level": level,
-            "score": float(score),
+            "score": float(round(score, 2)),
             "signals": indicators,
+            "explanation": self._churn_explanation(indicators),
         }
 
     def _get_customer_or_master(self, customer_id) -> Customer:
@@ -673,10 +690,12 @@ class CustomerProfileService:
         recent_messages: list[UnifiedMessage],
         recent_tickets: list[Complaint],
         notes: list[CustomerNote],
+        recent_events: list[EventLog] | None = None,
     ) -> list[dict[str, Any]]:
         items = [serialize_customer_timeline_message(message) for message in recent_messages]
         items.extend(serialize_customer_timeline_ticket(ticket) for ticket in recent_tickets)
         items.extend(serialize_customer_timeline_note(note) for note in notes)
+        items.extend(serialize_customer_timeline_event(event) for event in (recent_events or []))
         return sorted(items, key=lambda item: item["sort_at"] or "", reverse=True)
 
     def _build_insights(
@@ -703,6 +722,8 @@ class CustomerProfileService:
             insights.append("Retention follow-up recommended")
         if customer.open_tickets:
             insights.append(f"{customer.open_tickets} unresolved ticket(s) need attention")
+        if churn.get("explanation"):
+            insights.extend(churn["explanation"][:2])
         return insights[:5]
 
     def _message_sentiment_score(self, message: UnifiedMessage) -> float | None:
@@ -805,7 +826,116 @@ class CustomerProfileService:
             "total_escalations": int(total_escalations),
             "days_since_last_interaction": days_since_last,
             "low_satisfaction": bool(customer.avg_satisfaction_score is not None and customer.avg_satisfaction_score < 3.0),
+            "avg_recent_sentiment": round(sum(recent_message_scores) / len(recent_message_scores), 3) if recent_message_scores else None,
+            "sentiment_drop_detected": self._sentiment_trend(customer.id).get("direction") == "declining",
+            "refund_or_payment_events": self._count_recent_events(
+                customer,
+                ["refund_requested", "refund_processed", "payment_failed", "plan_downgraded"],
+                days=90,
+            ),
         }
+
+    def _weighted_churn_score(self, indicators: dict[str, Any]) -> float:
+        score = 0.0
+        score += min(float(indicators["recent_ticket_volume"]) * 8.0, 24.0)
+        score += min(float(indicators["unresolved_tickets"]) * 12.0, 30.0)
+        score += min(float(indicators["recent_negative_tickets"]) * 9.0, 27.0)
+        score += min(float(indicators["total_escalations"]) * 6.0, 18.0)
+        score += min(float(indicators["refund_or_payment_events"]) * 15.0, 30.0)
+        if indicators["negative_sentiment_streak"]:
+            score += 16.0
+        if indicators["sentiment_drop_detected"]:
+            score += 10.0
+        if indicators["low_satisfaction"]:
+            score += 12.0
+        days_since_last = indicators.get("days_since_last_interaction")
+        if days_since_last is not None:
+            if days_since_last > 30:
+                score += 16.0
+            elif days_since_last > 14:
+                score += 8.0
+        avg_sentiment = indicators.get("avg_recent_sentiment")
+        if avg_sentiment is not None and avg_sentiment < -0.45:
+            score += 10.0
+        return min(100.0, score)
+
+    def _churn_explanation(self, indicators: dict[str, Any]) -> list[str]:
+        explanation: list[str] = []
+        if indicators["unresolved_tickets"]:
+            explanation.append(f"{indicators['unresolved_tickets']} unresolved ticket(s)")
+        if indicators["recent_negative_tickets"]:
+            explanation.append(f"{indicators['recent_negative_tickets']} recent negative ticket(s)")
+        if indicators["negative_sentiment_streak"]:
+            explanation.append("Negative sentiment streak")
+        if indicators["sentiment_drop_detected"]:
+            explanation.append("Sentiment trend is declining")
+        if indicators["total_escalations"]:
+            explanation.append(f"{indicators['total_escalations']} escalation(s)")
+        if indicators["refund_or_payment_events"]:
+            explanation.append("Refund/payment risk event detected")
+        if indicators["low_satisfaction"]:
+            explanation.append("Low satisfaction score")
+        days_since_last = indicators.get("days_since_last_interaction")
+        if days_since_last is not None and days_since_last > 14:
+            explanation.append(f"No recent interaction for {days_since_last} days")
+        return explanation[:6]
+
+    def _sentiment_trend(self, customer_id) -> dict[str, Any]:
+        messages = (
+            self.db.query(UnifiedMessage)
+            .filter(UnifiedMessage.customer_id == customer_id, UnifiedMessage.direction == "inbound")
+            .order_by(UnifiedMessage.timestamp.desc(), UnifiedMessage.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        scores = [score for score in (self._message_sentiment_score(message) for message in messages) if score is not None]
+        if len(scores) < 4:
+            return {"direction": "stable", "delta": 0.0, "sample_size": len(scores)}
+        recent = sum(scores[: len(scores) // 2]) / max(1, len(scores[: len(scores) // 2]))
+        older = sum(scores[len(scores) // 2 :]) / max(1, len(scores[len(scores) // 2 :]))
+        delta = round(recent - older, 3)
+        if delta <= -0.2:
+            direction = "declining"
+        elif delta >= 0.2:
+            direction = "improving"
+        else:
+            direction = "stable"
+        return {"direction": direction, "delta": delta, "sample_size": len(scores)}
+
+    def _aggregate_emotion_dimensions(self, customer_id) -> dict[str, float]:
+        messages = (
+            self.db.query(UnifiedMessage)
+            .filter(UnifiedMessage.customer_id == customer_id)
+            .order_by(UnifiedMessage.timestamp.desc(), UnifiedMessage.created_at.desc())
+            .limit(20)
+            .all()
+        )
+        totals: dict[str, list[float]] = {}
+        for message in messages:
+            raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+            dimensions = raw_payload.get("emotion_dimensions") or {}
+            if not isinstance(dimensions, dict):
+                continue
+            for key, value in dimensions.items():
+                try:
+                    totals.setdefault(str(key), []).append(float(value))
+                except (TypeError, ValueError):
+                    continue
+        return {key: round(sum(values) / len(values), 3) for key, values in totals.items() if values}
+
+    def _count_recent_events(self, customer: Customer, event_types: list[str], *, days: int) -> int:
+        since = _utcnow() - timedelta(days=days)
+        return int(
+            self.db.query(func.count(EventLog.id))
+            .filter(
+                EventLog.client_id == customer.client_id,
+                EventLog.customer_id == customer.id,
+                EventLog.event_type.in_(event_types),
+                (EventLog.event_timestamp >= since) | (EventLog.created_at >= since),
+            )
+            .scalar()
+            or 0
+        )
 
     def _calculate_churn_risk_score(self, customer: Customer) -> float:
         return round(float(self.compute_churn_risk(customer)["score"]), 2)
@@ -977,6 +1107,36 @@ def serialize_customer_timeline_note(note: CustomerNote) -> dict[str, Any]:
         "sort_at": serialized["created_at"],
         "timestamp": serialized["created_at"],
         "data": serialized,
+    }
+
+
+def serialize_customer_timeline_event(event: EventLog) -> dict[str, Any]:
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    timestamp = _safe_iso(event.event_timestamp or event.created_at)
+    event_type = (event.event_type or "event").replace("_", " ").title()
+    body = payload.get("summary") or payload.get("outcome") or payload.get("action_type") or event.event_type
+    return {
+        "id": f"event:{event.id}",
+        "type": "event",
+        "title": event_type,
+        "body": str(body or "Customer event"),
+        "channel": event.source,
+        "status": payload.get("status") or payload.get("queue_status") or payload.get("outcome"),
+        "sort_at": timestamp,
+        "timestamp": timestamp,
+        "data": {
+            "id": str(event.id),
+            "client_id": str(event.client_id) if event.client_id else None,
+            "customer_id": str(event.customer_id) if event.customer_id else None,
+            "complaint_id": str(event.complaint_id) if event.complaint_id else None,
+            "event_type": event.event_type,
+            "source": event.source,
+            "actor_type": event.actor_type,
+            "sentiment_score": event.sentiment_score,
+            "risk_delta": event.risk_delta,
+            "payload": payload,
+            "created_at": _safe_iso(event.created_at),
+        },
     }
 
 

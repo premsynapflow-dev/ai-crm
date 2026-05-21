@@ -46,6 +46,8 @@ class Settings(BaseSettings):
 
     app_base_url: str = Field(default="http://127.0.0.1:8000", alias="APP_BASE_URL")
     sqlite_queue_path: str = Field(default="data/jobs.db", alias="SQLITE_QUEUE_PATH")
+    redis_url: str = Field(default="", alias="REDIS_URL")
+    queue_backend: Literal["auto", "postgres", "redis"] = Field(default="auto", alias="QUEUE_BACKEND")
     request_log_retention_days: int = Field(default=30, alias="REQUEST_LOG_RETENTION_DAYS")
     default_timezone: str = Field(default="UTC", alias="DEFAULT_TIMEZONE")
     sla_monitor_interval_minutes: int = Field(default=10, alias="SLA_MONITOR_INTERVAL_MINUTES")
@@ -186,6 +188,8 @@ def _manual_settings_data() -> dict:
         "INBOUND_EMAIL_WEBHOOK_SECRET": os.getenv("INBOUND_EMAIL_WEBHOOK_SECRET", ""),
         "APP_BASE_URL": os.getenv("APP_BASE_URL", "http://127.0.0.1:8000"),
         "SQLITE_QUEUE_PATH": os.getenv("SQLITE_QUEUE_PATH", "data/jobs.db"),
+        "REDIS_URL": os.getenv("REDIS_URL", ""),
+        "QUEUE_BACKEND": os.getenv("QUEUE_BACKEND", "auto"),
         "REQUEST_LOG_RETENTION_DAYS": os.getenv("REQUEST_LOG_RETENTION_DAYS", "30"),
         "DEFAULT_TIMEZONE": os.getenv("DEFAULT_TIMEZONE", "UTC"),
         "SLA_MONITOR_INTERVAL_MINUTES": os.getenv("SLA_MONITOR_INTERVAL_MINUTES", "10"),

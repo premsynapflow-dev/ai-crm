@@ -155,6 +155,7 @@ def get_customer_360(
             "satisfaction_trend": data["satisfaction_trend"],
             "churn_indicators": data["churn_indicators"],
             "sentiment": data.get("sentiment"),
+            "risk": data.get("risk"),
             "insights": data.get("insights", []),
             "stats": data["stats"],
             "interactions": [],

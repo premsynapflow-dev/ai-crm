@@ -762,10 +762,23 @@ class ClientUser(Base):
 
 class EventLog(Base):
     __tablename__ = "event_logs"
+    __table_args__ = (
+        Index("idx_event_logs_client_time", "client_id", "event_timestamp"),
+        Index("idx_event_logs_customer_time", "customer_id", "event_timestamp"),
+        Index("idx_event_logs_complaint_time", "complaint_id", "event_timestamp"),
+        Index("idx_event_logs_type_time", "client_id", "event_type", "event_timestamp"),
+    )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(Uuid(as_uuid=True), nullable=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
     event_type = Column(String(100), nullable=False)
+    source = Column(String(50), nullable=True)
+    actor_type = Column(String(50), nullable=True)
+    event_timestamp = Column(DateTime(timezone=True), nullable=True, index=True)
+    sentiment_score = Column(Float, nullable=True)
+    risk_delta = Column(Float, nullable=True)
     payload = Column(JSON)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -779,10 +792,120 @@ class AutomationRule(Base):
     trigger_value = Column(String(100), nullable=False)
     action_type = Column(String(50), nullable=False)
     action_config = Column(JSON, nullable=True)
+    workflow_name = Column(String(100), nullable=True)
+    trigger_definition = Column(JSON, nullable=True)
+    condition_definition = Column(JSON, nullable=True)
+    action_definition = Column(JSON, nullable=True)
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     client = relationship("Client", back_populates="automation_rules")
+
+
+class WorkflowExecution(Base):
+    __tablename__ = "workflow_executions"
+    __table_args__ = (
+        Index("idx_workflow_executions_client_time", "client_id", "executed_at"),
+        Index("idx_workflow_executions_rule_time", "automation_rule_id", "executed_at"),
+        Index("idx_workflow_executions_complaint_time", "complaint_id", "executed_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    automation_rule_id = Column(Uuid(as_uuid=True), ForeignKey("automation_rules.id"), nullable=True, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    trigger_event_type = Column(String(100), nullable=True)
+    action_type = Column(String(50), nullable=False)
+    execution_status = Column(String(30), nullable=False, default="succeeded", index=True)
+    execution_logs = Column(JSON, nullable=False, default=dict)
+    error_message = Column(Text, nullable=True)
+    executed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ChurnOutcome(Base):
+    __tablename__ = "churn_outcomes"
+    __table_args__ = (
+        UniqueConstraint("client_id", "customer_id", "outcome_type", name="uq_churn_outcomes_customer_type"),
+        Index("idx_churn_outcomes_client_time", "client_id", "recorded_at"),
+        Index("idx_churn_outcomes_customer_time", "customer_id", "recorded_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
+    outcome_type = Column(String(30), nullable=False)
+    reason = Column(Text, nullable=True)
+    risk_score_at_outcome = Column(Float, nullable=True)
+    metadata_json = Column("metadata", JSON, nullable=False, default=dict)
+    recorded_by = Column(String(255), nullable=True)
+    recorded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class AgentCorrection(Base):
+    __tablename__ = "agent_corrections"
+    __table_args__ = (
+        Index("idx_agent_corrections_client_time", "client_id", "created_at"),
+        Index("idx_agent_corrections_complaint_time", "complaint_id", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    correction_type = Column(String(50), nullable=False)
+    original_value = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=True)
+    corrected_value = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False)
+    feedback_score = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
+    corrected_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class KnowledgeSnippet(Base):
+    __tablename__ = "knowledge_snippets"
+    __table_args__ = (
+        Index("idx_knowledge_snippets_client_status", "client_id", "status"),
+        Index("idx_knowledge_snippets_client_category", "client_id", "category"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String(100), nullable=True)
+    keywords = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+    source_type = Column(String(50), nullable=False, default="manual")
+    status = Column(String(30), nullable=False, default="active")
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ModelAuditLog(Base):
+    __tablename__ = "model_audit_logs"
+    __table_args__ = (
+        Index("idx_model_audit_client_time", "client_id", "created_at"),
+        Index("idx_model_audit_complaint_time", "complaint_id", "created_at"),
+        Index("idx_model_audit_task_time", "task_type", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=True, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    provider = Column(String(50), nullable=False)
+    model = Column(String(100), nullable=True)
+    task_type = Column(String(100), nullable=False)
+    prompt_hash = Column(String(64), nullable=True)
+    prompt_preview = Column(Text, nullable=True)
+    output_preview = Column(Text, nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    status = Column(String(30), nullable=False, default="succeeded")
+    error_message = Column(Text, nullable=True)
+    metadata_json = Column("metadata", JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class Subscription(Base):
@@ -1009,10 +1132,21 @@ class MessageEvent(Base):
     __table_args__ = (
         Index("idx_message_events_message_id", "message_id"),
         Index("idx_message_events_event_type", "event_type"),
+        Index("idx_message_events_client_time", "client_id", "event_timestamp"),
+        Index("idx_message_events_customer_time", "customer_id", "event_timestamp"),
+        Index("idx_message_events_complaint_time", "complaint_id", "event_timestamp"),
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), nullable=True, index=True)
+    customer_id = Column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
     message_id = Column(Uuid(as_uuid=True), nullable=True, index=True)
     event_type = Column(String(100), nullable=False, index=True)
+    source = Column(String(50), nullable=True)
+    actor_type = Column(String(50), nullable=True)
+    event_timestamp = Column(DateTime(timezone=True), nullable=True, index=True)
+    sentiment_score = Column(Float, nullable=True)
+    risk_delta = Column(Float, nullable=True)
     payload = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

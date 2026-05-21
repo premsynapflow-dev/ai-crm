@@ -183,6 +183,7 @@ def test_normalize_classification_output_returns_consistent_schema():
         "recommended_action",
         "confidence",
         "summary",
+        "emotion_dimensions",
     }
     assert result["intent"] == "complaint"
     assert result["category"] == "general"

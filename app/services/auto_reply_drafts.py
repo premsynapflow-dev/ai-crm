@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
+import time
 from typing import Any, Sequence
 
-import httpx
 from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
 
@@ -16,9 +16,11 @@ from app.intelligence.prompt_builder import (
     build_auto_reply_generation_prompt,
     get_prompt_config_for_client,
 )
-from app.services.ai import _extract_json_payload, get_gemini_client
+from app.services.ai import _extract_json_payload
 from app.services.conversation_threads import get_thread_messages
 from app.services.event_logger import log_event
+from app.services.model_orchestration import audit_model_call, get_model_orchestrator, timed_ms
+from app.services.knowledge import retrieve_snippets
 
 PROMPT_VERSION = "auto_reply_with_hitl_v1"
 MAX_RECENT_MESSAGES = 5
@@ -196,11 +198,25 @@ class AutoReplyDraftService:
             return self._fallback_generation(ticket, customer, recent_messages)
 
         try:
-            response = get_gemini_client().generate_content(
+            started = time.perf_counter()
+            response = get_model_orchestrator().generate_reply(
                 prompt,
                 model="gemini-2.5-flash-lite",
                 max_output_tokens=700,
                 temperature=0.25,
+            )
+            audit_model_call(
+                self.db,
+                client_id=ticket.client_id,
+                complaint_id=ticket.id,
+                customer_id=customer.id if customer is not None else None,
+                provider=response.provider,
+                model=response.model,
+                task_type="generate_reply",
+                prompt=prompt,
+                output=response.text,
+                latency_ms=timed_ms(started),
+                metadata={"prompt_version": PROMPT_VERSION},
             )
             return self._normalize_generation_payload(
                 response.text,
@@ -250,26 +266,27 @@ class AutoReplyDraftService:
             return self._fallback_generation(ticket, customer, recent_messages)
 
         try:
-            async with httpx.AsyncClient(timeout=20.0) as client_session:
-                response = await client_session.post(
-                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
-                    params={"key": api_key},
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0.25,
-                            "maxOutputTokens": 700,
-                        },
-                    },
-                )
-                response.raise_for_status()
-                payload = response.json()
-                raw_text = (
-                    payload.get("candidates", [{}])[0]
-                    .get("content", {})
-                    .get("parts", [{}])[0]
-                    .get("text", "")
-                )
+            started = time.perf_counter()
+            response = await get_model_orchestrator().generate_reply_async(
+                prompt,
+                model="gemini-2.5-flash-lite",
+                max_output_tokens=700,
+                temperature=0.25,
+            )
+            raw_text = response.text
+            audit_model_call(
+                self.db,
+                client_id=ticket.client_id,
+                complaint_id=ticket.id,
+                customer_id=customer.id if customer is not None else None,
+                provider=response.provider,
+                model=response.model,
+                task_type="generate_reply",
+                prompt=prompt,
+                output=response.text,
+                latency_ms=timed_ms(started),
+                metadata={"prompt_version": PROMPT_VERSION},
+            )
             return self._normalize_generation_payload(
                 raw_text,
                 ticket,
@@ -418,6 +435,10 @@ class AutoReplyDraftService:
         recent_messages: Sequence[UnifiedMessage | dict[str, Any]],
     ) -> dict[str, Any]:
         customer_history = self._customer_history_lines(ticket, customer)
+        knowledge = [
+            f"- {snippet.title}: {_normalize_text(snippet.content)[:500]}"
+            for snippet in retrieve_snippets(self.db, client_id=ticket.client_id, query=ticket.summary or ticket.category or "", limit=3)
+        ]
         return {
             "ticket_number": ticket.ticket_number or ticket.ticket_id,
             "category": ticket.category or "general",
@@ -433,6 +454,7 @@ class AutoReplyDraftService:
             "churn_risk_score": customer.churn_risk_score if customer is not None else None,
             "customer_history": customer_history,
             "recent_messages": self._recent_message_lines(recent_messages),
+            "relevant_knowledge": knowledge,
         }
 
     def _customer_history_lines(self, ticket: Complaint, customer: Customer | None) -> list[str]:
@@ -635,7 +657,7 @@ def generate_auto_reply(ticket, customer, recent_messages) -> dict[str, Any]:
     if api_key:
         try:
             prompt = build_auto_reply_generation_prompt(context, DEFAULT_CONFIG)
-            response = get_gemini_client().generate_content(
+            response = get_model_orchestrator().generate_reply(
                 prompt,
                 model="gemini-2.5-flash-lite",
                 max_output_tokens=700,

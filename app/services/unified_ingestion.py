@@ -259,6 +259,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "conversation_id": str(conversation.id),
                 "external_message_id": message.external_message_id,
             },
+            source=message.channel,
+            actor_type="customer" if message.direction == "inbound" else "agent",
         )
     else:
         log_message_event(
@@ -271,6 +273,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "conversation_id": str(conversation.id),
                 "external_message_id": message.external_message_id,
             },
+            source=message.channel,
+            actor_type="customer" if message.direction == "inbound" else "agent",
         )
         log_event(
             db,
@@ -282,6 +286,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "direction": message.direction,
                 "conversation_id": str(conversation.id),
             },
+            source=message.channel,
+            actor_type="customer" if message.direction == "inbound" else "agent",
         )
 
     if message.direction != "inbound":
@@ -310,6 +316,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "outcome": "quota_blocked",
                 "conversation_id": str(conversation.id),
             },
+            source=message.channel,
+            actor_type="customer",
         )
         log_event(
             db,
@@ -320,6 +328,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "external_message_id": message.external_message_id,
                 "conversation_id": str(conversation.id),
             },
+            source=message.channel,
+            actor_type="system",
         )
         db.flush()
         return {
@@ -353,6 +363,7 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     category = classification["category"]
     sentiment_score = classification["sentiment"]
     urgency = classification["urgency_score"]
+    emotion_dimensions = classification.get("emotion_dimensions") or {}
     resolved_customer = CustomerProfileService(db).resolve_customer(
         client_id=client.id,
         email=customer_email,
@@ -388,7 +399,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "message_id": str(unified_message.id),
                 "conversation_id": str(conversation.id),
                 "category": category,
+                "sentiment": sentiment_score,
+                "emotion_dimensions": emotion_dimensions,
             },
+            customer_id=resolved_customer.id if resolved_customer else None,
+            source=message.channel,
+            actor_type="customer",
+            sentiment_score=sentiment_score,
         )
         db.flush()
         return {
@@ -424,6 +441,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     complaint.priority = priority
     complaint.category = category
     complaint.sentiment = sentiment_score
+    complaint.sentiment_score = int(round((sentiment_score + 1) * 2 + 1))
+    complaint.sentiment_label = "negative" if sentiment_score < -0.2 else "positive" if sentiment_score > 0.2 else "neutral"
+    complaint.sentiment_indicators = {
+        "emotion_dimensions": emotion_dimensions,
+        "urgency_score": urgency,
+        "classification_confidence": confidence,
+    }
     complaint.urgency_score = urgency
     complaint.status = action
     complaint.resolution_status = "open"
@@ -453,6 +477,8 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "source": complaint.source,
                 "rbi_category_code": complaint.rbi_category_code,
                 "tat_status": complaint.tat_status,
+                "sentiment": complaint.sentiment,
+                "emotion_dimensions": emotion_dimensions,
             },
         )
     else:
@@ -466,8 +492,14 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 {
                     "ticket_id": complaint.ticket_id,
                     "complaint_id": str(complaint.id),
+                    "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
                     "summary": complaint.summary,
                 },
+                customer_id=complaint.customer_id,
+                complaint_id=complaint.id,
+                source=complaint.source,
+                actor_type="customer",
+                sentiment_score=sentiment_score,
             )
         append_audit_log(
             db,
@@ -512,7 +544,26 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     rules = get_matching_rules(db, client.id, classification)
     for rule in rules:
         from app.services.action_executor import execute_action
-        execute_action(rule, complaint, client)
+        log_event(
+            db,
+            client.id,
+            "workflow_rule_matched",
+            {
+                "rule_id": str(rule.id),
+                "trigger_type": rule.trigger_type,
+                "trigger_value": rule.trigger_value,
+                "action_type": rule.action_type,
+                "complaint_id": str(complaint.id),
+                "ticket_id": complaint.ticket_id,
+                "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
+            },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source="workflow",
+            actor_type="system",
+            sentiment_score=sentiment_score,
+        )
+        execute_action(rule, complaint, client, db=db, trigger_event_type="message_processed")
     SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
     TicketStateMachine(db).sync_from_legacy(
         complaint,
@@ -534,7 +585,15 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "priority": complaint.priority,
                 "source": complaint.source,
                 "status": complaint.status,
+                "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
+                "sentiment": sentiment_score,
+                "emotion_dimensions": emotion_dimensions,
             },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source=complaint.source,
+            actor_type="customer",
+            sentiment_score=sentiment_score,
         )
     if client.is_rbi_regulated and has_feature_access(client, "rbi_compliance", db=db):
         if complaint.rbi_complaint is None:
@@ -557,7 +616,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "summary": complaint.ai_reply,
                 "confidence": complaint.ai_reply_confidence,
                 "queue_status": queue_entry.status,
+                "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
             },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source="ai_reply",
+            actor_type="system",
+            sentiment_score=sentiment_score,
         )
     dispatch_action(
         action=action,
@@ -588,6 +653,10 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
         assigned_user_id=str(routing_result.assigned_user_id) if routing_result.assigned_user_id else None,
         classification_category=category,
     )
+    unified_message.raw_payload = {
+        **(unified_message.raw_payload or {}),
+        "emotion_dimensions": emotion_dimensions,
+    }
     conversation.last_message_at = unified_message.timestamp
     if is_new_complaint:
         track_ticket_usage(client.id)
@@ -605,7 +674,14 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "team_id": str(routing_result.team_id) if routing_result.team_id else None,
                 "assigned_team": routing_result.team_name,
                 "assigned_user": routing_result.assigned_user,
+                "sentiment": sentiment_score,
+                "emotion_dimensions": emotion_dimensions,
             },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source=message.channel,
+            actor_type="customer",
+            sentiment_score=sentiment_score,
         )
     if complaint.ai_reply:
         log_message_event(
@@ -617,7 +693,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
                 "ticket_id": complaint.ticket_id,
                 "reply_status": complaint.ai_reply_status,
                 "confidence": complaint.ai_reply_confidence,
+                "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
             },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source="ai_reply",
+            actor_type="system",
+            sentiment_score=sentiment_score,
         )
     db.flush()
 

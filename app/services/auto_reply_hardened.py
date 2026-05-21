@@ -113,6 +113,9 @@ class HardenedAutoReplyService:
             "draft_id": str(draft.id),
             "draft_subject": draft.subject,
             "prompt_version": draft.prompt_version,
+            "confidence_components": scoring_result.get("component_scores", {}),
+            "guardrail_flags": scoring_result.get("guardrail_flags", {}),
+            "warnings": scoring_result.get("warnings", []),
         }
         queue_entry.hallucination_check_passed = scoring_result["hallucination_check_passed"]
         queue_entry.toxicity_score = scoring_result["toxicity_score"]
@@ -143,7 +146,14 @@ class HardenedAutoReplyService:
                 "queue_id": str(queue_entry.id) if queue_entry.id else None,
                 "confidence_score": queue_entry.confidence_score,
                 "subject": draft.subject,
+                "hallucination_check_passed": queue_entry.hallucination_check_passed,
+                "guardrail_flags": scoring_result.get("guardrail_flags", {}),
+                "warnings": scoring_result.get("warnings", []),
             },
+            customer_id=draft.customer_id,
+            complaint_id=ticket.id,
+            source="ai_reply",
+            actor_type="system",
         )
         if commit:
             self.db.commit()
@@ -226,6 +236,10 @@ class HardenedAutoReplyService:
                 "reviewed_by": reviewer_email,
                 "time_to_approval_seconds": self._approval_latency_seconds(queue_entry, reviewed_at),
             },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source="ai_reply",
+            actor_type="agent",
         )
 
         if commit:
@@ -269,6 +283,10 @@ class HardenedAutoReplyService:
                 "reason": reason.strip(),
                 "time_to_approval_seconds": self._approval_latency_seconds(queue_entry, reviewed_at),
             },
+            customer_id=complaint.customer_id,
+            complaint_id=complaint.id,
+            source="ai_reply",
+            actor_type="agent",
         )
 
         if commit:

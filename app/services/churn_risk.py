@@ -14,8 +14,10 @@ def calculate_churn_risk(db: Session, customer_email: str, client_id: str) -> di
     normalized_email = CustomerDeduplicator._normalize_email(customer_email)
     profile = _find_customer_profile(db, normalized_email, client_id)
     if profile:
-        CustomerProfileService(db).refresh_customer_metrics(profile, commit=False)
-        indicators = CustomerProfileService(db)._calculate_churn_indicators(profile)
+        service = CustomerProfileService(db)
+        service.refresh_customer_metrics(profile, commit=False)
+        churn = service.compute_churn_risk(profile)
+        indicators = churn["signals"]
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         unresolved_count = (
             db.query(Complaint)
@@ -26,7 +28,7 @@ def calculate_churn_risk(db: Session, customer_email: str, client_id: str) -> di
             )
             .count()
         )
-        risk_score = int(round(profile.churn_risk_score or 0))
+        risk_score = int(round(churn["score"]))
         if risk_score >= 75:
             risk_level = "critical"
         elif risk_score >= 50:
@@ -42,6 +44,8 @@ def calculate_churn_risk(db: Session, customer_email: str, client_id: str) -> di
             "unresolved_count": unresolved_count,
             "avg_sentiment": None,
             "recommendation": get_churn_recommendation(risk_level),
+            "signals": indicators,
+            "explanation": churn.get("explanation", []),
         }
 
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
@@ -107,6 +111,7 @@ def get_high_risk_customers(db: Session, client_id: str) -> list[dict]:
             risk_score = int(round(profile.churn_risk_score or 0))
             risk_level = "critical" if risk_score >= 75 else "high" if risk_score >= 50 else "medium" if risk_score >= 25 else "low"
             if risk_level in {"high", "critical"}:
+                churn = service.compute_churn_risk(profile)
                 high_risk_profiles.append(
                     {
                         "customer_email": profile.primary_email,
@@ -114,6 +119,8 @@ def get_high_risk_customers(db: Session, client_id: str) -> list[dict]:
                         "risk_score": risk_score,
                         "risk_level": risk_level,
                         "recommendation": get_churn_recommendation(risk_level),
+                        "signals": churn.get("signals", {}),
+                        "explanation": churn.get("explanation", []),
                     }
                 )
         return sorted(high_risk_profiles, key=lambda item: item["risk_score"], reverse=True)

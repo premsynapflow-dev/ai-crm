@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_
 
-from app.db.models import Complaint, EventLog, MaterializedAnalytics
+from app.db.models import AgentCorrection, ChurnOutcome, Complaint, EventLog, MaterializedAnalytics, WorkflowExecution
 
 
 def complaint_category_breakdown(db, client_id):
@@ -293,6 +293,34 @@ def complaint_spike_alerts(db, client_id, hours=24):
     return {"complaint_spike_alerts": count}
 
 
+def event_intelligence_counts(db, client_id, days=30):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        db.query(EventLog.event_type, func.count(EventLog.id))
+        .filter(
+            EventLog.client_id == client_id,
+            or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+        )
+        .group_by(EventLog.event_type)
+        .order_by(func.count(EventLog.id).desc())
+        .limit(20)
+        .all()
+    )
+    risk_events = {
+        "refund_requested",
+        "payment_failed",
+        "plan_downgraded",
+        "sentiment_drop_detected",
+        "workflow_action_failed",
+        "ai_reply_rejected",
+    }
+    event_counts = [{"event_type": str(event_type or "unknown"), "count": int(count)} for event_type, count in rows]
+    return {
+        "event_counts": event_counts,
+        "risk_event_count": sum(item["count"] for item in event_counts if item["event_type"] in risk_events),
+    }
+
+
 def cache_metric(db, client_id, metric_key, metric_value, period_start=None, period_end=None):
     cached = (
         db.query(MaterializedAnalytics)
@@ -348,6 +376,7 @@ def analytics_overview(db, client_id, days=30):
         "complaints_by_hour": complaints_by_hour(db, client_id, days=days),
         "average_ai_confidence": average_ai_confidence(db, client_id)["average_ai_confidence"],
         "resolution_rate": round((resolved_count / total_complaints) * 100, 2) if total_complaints else 0.0,
+        "event_intelligence": event_intelligence_counts(db, client_id, days=days),
     }
     cache_metric(db, client_id, "overview", overview)
     return overview
@@ -362,3 +391,68 @@ def analytics_customers(db, client_id):
         .limit(10)
         .all()
     )
+
+
+def advanced_intelligence_analytics(db, client_id, days=30):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    churn_rows = (
+        db.query(ChurnOutcome.outcome_type, func.count(ChurnOutcome.id))
+        .filter(ChurnOutcome.client_id == client_id, ChurnOutcome.recorded_at >= cutoff)
+        .group_by(ChurnOutcome.outcome_type)
+        .all()
+    )
+    issue_rows = (
+        db.query(Complaint.category, func.count(Complaint.id), func.avg(Complaint.sentiment))
+        .filter(Complaint.client_id == client_id, Complaint.created_at >= cutoff)
+        .group_by(Complaint.category)
+        .order_by(func.count(Complaint.id).desc())
+        .limit(10)
+        .all()
+    )
+    workflow_rows = (
+        db.query(WorkflowExecution.execution_status, func.count(WorkflowExecution.id))
+        .filter(WorkflowExecution.client_id == client_id, WorkflowExecution.executed_at >= cutoff)
+        .group_by(WorkflowExecution.execution_status)
+        .all()
+    )
+    guardrail_incidents = (
+        db.query(func.count(EventLog.id))
+        .filter(
+            EventLog.client_id == client_id,
+            EventLog.event_type.in_(["ai_reply_rejected", "reply_draft_rejected", "workflow_action_failed"]),
+            or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+        )
+        .scalar()
+        or 0
+    )
+    corrections = (
+        db.query(func.count(AgentCorrection.id))
+        .filter(AgentCorrection.client_id == client_id, AgentCorrection.created_at >= cutoff)
+        .scalar()
+        or 0
+    )
+    risk_movement_rows = (
+        db.query(EventLog.event_type, func.count(EventLog.id))
+        .filter(
+            EventLog.client_id == client_id,
+            EventLog.event_type.in_(["sentiment_drop_detected", "churn_outcome_recorded", "complaint_reopened"]),
+            or_(EventLog.event_timestamp >= cutoff, EventLog.created_at >= cutoff),
+        )
+        .group_by(EventLog.event_type)
+        .all()
+    )
+    return {
+        "window_days": days,
+        "churn_cohorts": [{"outcome_type": row[0], "count": int(row[1])} for row in churn_rows],
+        "recurring_issue_clusters": [
+            {"category": str(category or "unknown"), "count": int(count), "avg_sentiment": round(float(avg or 0.0), 3)}
+            for category, count, avg in issue_rows
+        ],
+        "workflow_performance": [{"status": status, "count": int(count)} for status, count in workflow_rows],
+        "ai_performance": {
+            "average_confidence": average_ai_confidence(db, client_id)["average_ai_confidence"],
+            "guardrail_incidents": int(guardrail_incidents),
+            "agent_corrections": int(corrections),
+        },
+        "risk_movement": [{"event_type": event_type, "count": int(count)} for event_type, count in risk_movement_rows],
+    }

@@ -2,10 +2,12 @@ import json
 import os
 import asyncio
 import httpx
+import time
 from typing import Any, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.intelligence.prompt_builder import build_classification_prompt
+from app.services.model_orchestration import audit_model_call, get_model_orchestrator, parse_json_model_output, timed_ms
 from app.utils.logging import get_logger
 from app.utils.circuit_breaker import gemini_breaker, CircuitBreakerOpenError
 
@@ -25,6 +27,7 @@ _FALLBACK = {
     "recommended_action": "support_ticket",
     "confidence": 0.0,
     "summary": "",
+    "emotion_dimensions": {},
 }
 
 _ALLOWED_INTENTS = {
@@ -97,6 +100,16 @@ def normalize_classification_output(result: Optional[dict[str, Any]], message: s
         except (TypeError, ValueError):
             return default
 
+    def _emotion_dimensions(raw: Any) -> dict[str, float]:
+        if not isinstance(raw, dict):
+            return {}
+        allowed = ("frustration", "urgency", "confusion", "satisfaction", "aggression", "loyalty")
+        return {
+            key: round(_clamp(raw.get(key), 0.0, 1.0, 0.0), 4)
+            for key in allowed
+            if raw.get(key) is not None
+        }
+
     try:
         priority = max(1, min(5, int(result.get("priority", 2))))
     except (TypeError, ValueError):
@@ -111,6 +124,7 @@ def normalize_classification_output(result: Optional[dict[str, Any]], message: s
         "recommended_action": recommended_action,
         "confidence": _clamp(result.get("confidence"), 0.0, 1.0, 0.5),
         "summary": summary,
+        "emotion_dimensions": _emotion_dimensions(result.get("emotion_dimensions")),
     }
 
 
@@ -147,10 +161,12 @@ async def classify_message_async(message: str, client_config: Optional[dict] = N
         logger.warning("GEMINI_API_KEY not set - using fallback classification.")
         return normalize_classification_output(_FALLBACK, message)
     
+    prompt = _build_classification_prompt(message, client_config)
+    started = time.perf_counter()
     try:
-        prompt = _build_classification_prompt(message, client_config)
-        raw_response = await _call_gemini_api(prompt, api_key)
-        return _parse_and_validate(raw_response, message)
+        raw = await get_model_orchestrator().classify_message(message, client_config)
+        parsed = normalize_classification_output(parse_json_model_output(raw["raw_text"]), message)
+        return parsed
     except CircuitBreakerOpenError:
         logger.warning("Gemini circuit breaker is OPEN - using fallback")
         return normalize_classification_output(_FALLBACK, message)

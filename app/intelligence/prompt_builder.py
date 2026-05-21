@@ -141,7 +141,15 @@ Return exactly this structure:
   "priority": <integer 1-5>,
   "recommended_action": "one of: escalate/notify_sales/support_ticket/auto_reply/product_feedback",
   "confidence": <float 0.0 to 1.0>,
-  "summary": "short concise summary of the message"
+  "summary": "short concise summary of the message",
+  "emotion_dimensions": {{
+    "frustration": <float 0.0 to 1.0>,
+    "urgency": <float 0.0 to 1.0>,
+    "confusion": <float 0.0 to 1.0>,
+    "satisfaction": <float 0.0 to 1.0>,
+    "aggression": <float 0.0 to 1.0>,
+    "loyalty": <float 0.0 to 1.0>
+  }}
 }}"""
 
     return prompt
@@ -298,6 +306,7 @@ def build_auto_reply_generation_prompt(context: Dict[str, Any], config: Optional
 
     history_lines = context.get("customer_history") or ["- No prior customer history available."]
     message_lines = context.get("recent_messages") or ["- No previous conversation available."]
+    knowledge_lines = context.get("relevant_knowledge") or ["- No approved policy or FAQ snippets matched."]
     signature = reply_guidelines.get("signature", "Best regards,\nSupport Team")
 
     prompt = f"""You are a customer support agent writing a draft reply that MUST be reviewed by a human before sending.
@@ -325,6 +334,9 @@ CUSTOMER CONTEXT:
 
 CUSTOMER HISTORY:
 {chr(10).join(history_lines)}
+
+RELEVANT APPROVED KNOWLEDGE:
+{chr(10).join(knowledge_lines)}
 
 PREVIOUS CONVERSATION:
 {chr(10).join(message_lines)}

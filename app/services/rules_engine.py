@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import AutomationRule
+from app.services.workflow_dsl import context_from_complaint, evaluate_rule
 
 
 def get_matching_rules(
@@ -32,6 +33,8 @@ def get_matching_rules(
 
 def should_trigger_rule(rule: AutomationRule, classification: Dict) -> bool:
     """Check if rule should trigger based on classification"""
+    if rule.trigger_definition or rule.condition_definition or rule.action_definition:
+        return evaluate_rule(rule, {**classification, "complaint": classification.get("complaint")}).matched
     trigger_type = rule.trigger_type
     trigger_value = rule.trigger_value
     

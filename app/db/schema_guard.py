@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.sql.sqltypes import Boolean, DateTime, Float, Integer
 
 from app.db.session import SessionLocal
-from app.db.models import AIReplyQueue, Client, Complaint, Customer, CustomerInteraction, EventLog
+from app.db.models import AIReplyQueue, AutomationRule, Client, Complaint, Customer, CustomerInteraction, EventLog, MessageEvent
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,11 @@ REQUIRED_TABLES = [
     "conversations",
     "automation_settings",
     "message_events",
+    "workflow_executions",
+    "churn_outcomes",
+    "agent_corrections",
+    "knowledge_snippets",
+    "model_audit_logs",
 ]
 
 
@@ -269,12 +274,39 @@ def _ensure_required_columns():
         ]
         event_log_columns = [
             "client_id",
+            "customer_id",
+            "complaint_id",
             "event_type",
+            "source",
+            "actor_type",
+            "event_timestamp",
+            "sentiment_score",
+            "risk_delta",
+            "payload",
+            "created_at",
+        ]
+        message_event_columns = [
+            "client_id",
+            "customer_id",
+            "complaint_id",
+            "message_id",
+            "event_type",
+            "source",
+            "actor_type",
+            "event_timestamp",
+            "sentiment_score",
+            "risk_delta",
             "payload",
             "created_at",
         ]
         reply_queue_columns = [
             "reply_draft_id",
+        ]
+        automation_rule_columns = [
+            "workflow_name",
+            "trigger_definition",
+            "condition_definition",
+            "action_definition",
         ]
 
         added_client_columns = _sync_missing_model_columns("clients", Client, client_columns)
@@ -314,9 +346,35 @@ def _ensure_required_columns():
         if added_reply_queue_columns:
             added_summary["ai_reply_queue"] = added_reply_queue_columns
 
-        added_event_log_columns = _sync_missing_model_columns("event_logs", EventLog, event_log_columns)
+        added_event_log_columns = _sync_missing_model_columns(
+            "event_logs",
+            EventLog,
+            event_log_columns,
+            extra_sql=[
+                "UPDATE event_logs SET event_timestamp = created_at WHERE event_timestamp IS NULL",
+            ],
+        )
         if added_event_log_columns:
             added_summary["event_logs"] = added_event_log_columns
+
+        added_message_event_columns = _sync_missing_model_columns(
+            "message_events",
+            MessageEvent,
+            message_event_columns,
+            extra_sql=[
+                "UPDATE message_events SET event_timestamp = created_at WHERE event_timestamp IS NULL",
+            ],
+        )
+        if added_message_event_columns:
+            added_summary["message_events"] = added_message_event_columns
+
+        added_automation_rule_columns = _sync_missing_model_columns(
+            "automation_rules",
+            AutomationRule,
+            automation_rule_columns,
+        )
+        if added_automation_rule_columns:
+            added_summary["automation_rules"] = added_automation_rule_columns
 
         if added_summary:
             for table_name, added_columns in added_summary.items():
@@ -448,6 +506,18 @@ def _create_indexes():
         "CREATE INDEX IF NOT EXISTS idx_rbi_tat ON rbi_complaints(tat_due_date) WHERE resolution_date IS NULL",
         "CREATE INDEX IF NOT EXISTS idx_complaints_rbi_tat_due ON complaints(tat_due_at) WHERE tat_due_at IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_complaints_rbi_category ON complaints(client_id, rbi_category_code) WHERE rbi_category_code IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_event_logs_client_time ON event_logs(client_id, event_timestamp DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_event_logs_customer_time ON event_logs(customer_id, event_timestamp DESC) WHERE customer_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_event_logs_complaint_time ON event_logs(complaint_id, event_timestamp DESC) WHERE complaint_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_event_logs_type_time ON event_logs(client_id, event_type, event_timestamp DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_message_events_client_time ON message_events(client_id, event_timestamp DESC) WHERE client_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_message_events_customer_time ON message_events(customer_id, event_timestamp DESC) WHERE customer_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_message_events_complaint_time ON message_events(complaint_id, event_timestamp DESC) WHERE complaint_id IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_workflow_executions_client_time ON workflow_executions(client_id, executed_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_churn_outcomes_client_time ON churn_outcomes(client_id, recorded_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_agent_corrections_client_time ON agent_corrections(client_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_snippets_client_status ON knowledge_snippets(client_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_model_audit_client_time ON model_audit_logs(client_id, created_at DESC)",
     ]
 
     for index_sql in indexes:

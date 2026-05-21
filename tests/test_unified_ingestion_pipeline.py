@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.db.models import ClientUser, Complaint, RoutingRule, SLAPolicy, Team, TeamMember, UnifiedMessage
+from app.db.models import ClientUser, Complaint, EventLog, MessageEvent, RoutingRule, SLAPolicy, Team, TeamMember, UnifiedMessage
 from app.services.unified_ingestion import IncomingMessage, process_incoming_message
 
 
@@ -83,6 +83,7 @@ def test_incoming_message_creates_complaint_links_assignment_and_sla(test_db, te
         "recommended_action": "support_ticket",
         "confidence": 0.91,
         "summary": "Billing issue on customer account",
+        "emotion_dimensions": {"frustration": 0.7, "confusion": 0.3},
     }
 
     with patch("app.services.unified_ingestion.can_process_ticket", return_value=True), patch(
@@ -123,7 +124,18 @@ def test_incoming_message_creates_complaint_links_assignment_and_sla(test_db, te
     assert stored_message.raw_payload["assigned_team"] == "finance"
     assert stored_message.raw_payload["assigned_user"] == "owner@example.com"
     assert stored_message.raw_payload["assigned_user_id"] == str(user.id)
+    assert stored_message.raw_payload["emotion_dimensions"]["frustration"] == 0.7
     assert stored_message.status == "processed"
+    assert complaint.sentiment_indicators["emotion_dimensions"]["frustration"] == 0.7
+    event = test_db.query(EventLog).filter(EventLog.event_type == "complaint_received").one()
+    message_event = test_db.query(MessageEvent).filter(MessageEvent.event_type == "message_processed").one()
+    assert event.customer_id == complaint.customer_id
+    assert event.complaint_id == complaint.id
+    assert event.source == "email"
+    assert event.sentiment_score == -0.3
+    assert message_event.customer_id == complaint.customer_id
+    assert message_event.complaint_id == complaint.id
+    assert message_event.sentiment_score == -0.3
     assert finance_member.active_tasks == 1
 
 

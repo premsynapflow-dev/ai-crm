@@ -21,6 +21,7 @@ from app.services.sentiment import analyze_sentiment
 from app.services.ticket_state_machine import TicketStateMachine
 from app.services.response_tracking import mark_first_response_by_id
 from app.utils.logging import get_logger
+from app.queue.backends import PostgresQueueBackend, get_queue_backend
 
 logger = get_logger(__name__)
 
@@ -41,15 +42,7 @@ def _fallback_sentiment_details(raw_score: float | int | None) -> dict:
 def enqueue_job(job_type, payload, scheduled_for=None):
     db = SessionLocal()
     try:
-        job = JobQueue(
-            job_type=job_type,
-            payload=payload,
-            scheduled_for=scheduled_for,
-        )
-        db.add(job)
-        db.commit()
-        db.refresh(job)
-        return job
+        return get_queue_backend().enqueue(db, job_type, payload, scheduled_for)
     except Exception:
         db.rollback()
         raise
@@ -59,15 +52,7 @@ def enqueue_job(job_type, payload, scheduled_for=None):
 
 def queue_job(db, job_type, payload, scheduled_for=None):
     """Queue job using an existing DB session"""
-    job = JobQueue(
-        job_type=job_type,
-        payload=payload,
-        scheduled_for=scheduled_for,
-    )
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-    return job
+    return get_queue_backend().enqueue(db, job_type, payload, scheduled_for)
 
 
 def process_send_email_job(payload: Dict):
@@ -317,35 +302,23 @@ JOB_HANDLERS = {
 def process_jobs() -> int:
     """Process pending jobs"""
     db = SessionLocal()
+    backend = get_queue_backend()
     try:
-        jobs = db.query(JobQueue).filter(
-            JobQueue.status == 'queued'
-        ).limit(10).all()
+        jobs = backend.fetch(db, limit=10)
         
         for job in jobs:
             try:
-                job.status = 'processing'
-                db.commit()
+                backend.mark_processing(db, job)
 
                 handler = JOB_HANDLERS.get(job.job_type)
                 if handler:
                     handler(job.payload)
-                    job.status = 'completed'
-                    job.processed_at = datetime.now(timezone.utc)
+                    backend.mark_completed(db, job)
                 else:
-                    job.status = 'failed'
-                    job.last_error = f"Unknown job type: {job.job_type}"
-
-                db.commit()
+                    raise ValueError(f"Unknown job type: {job.job_type}")
 
             except Exception as e:
-                job.retry_count += 1
-                if job.retry_count >= 3:
-                    job.status = 'failed'
-                else:
-                    job.status = 'queued'
-                job.last_error = str(e)
-                db.commit()
+                backend.mark_failed(db, job, e)
                 logger.exception(f"Job {job.id} failed: {e}")
         
         return len(jobs)

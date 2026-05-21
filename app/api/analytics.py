@@ -17,6 +17,7 @@ from app.middleware.feature_gate import ensure_feature_access
 from app.services.analytics import (
     analytics_customers,
     analytics_overview,
+    advanced_intelligence_analytics,
     category_breakdown_over_time,
     complaint_category_breakdown,
     sentiment_distribution,
@@ -220,3 +221,14 @@ def analytics_customers_endpoint(
 ):
     client = _resolve_client(request, db, x_api_key)
     return analytics_customers(db, client.id)
+
+
+@router.get("/intelligence")
+def analytics_intelligence_endpoint(
+    request: Request,
+    days: int = 30,
+    x_api_key: str = Header(default="", alias="x-api-key"),
+    db: Session = Depends(get_db),
+):
+    client = _resolve_client(request, db, x_api_key)
+    return advanced_intelligence_analytics(db, client.id, days=max(1, min(days, 180)))
