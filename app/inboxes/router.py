@@ -70,7 +70,7 @@ def gmail_callback(
         if not access_token:
             raise HTTPException(status_code=502, detail="Google OAuth token response did not include an access token")
         email_address = inbox_service.fetch_google_user_email(access_token)
-        inbox_service.upsert_gmail_inbox(
+        inbox = inbox_service.upsert_gmail_inbox(
             db,
             tenant_id=oauth_state["tenant_id"],
             email_address=email_address,
@@ -78,6 +78,21 @@ def gmail_callback(
             refresh_token=token_payload.get("refresh_token"),
             token_expiry=inbox_service.build_gmail_token_expiry(token_payload),
         )
+        if inbox_service.settings.gmail_pubsub_topic.strip():
+            try:
+                from app.integrations.gmail import setup_gmail_watch
+
+                setup_gmail_watch(inbox)
+                db.commit()
+                logger.info("Gmail watch enabled for tenant=%s email=%s", oauth_state["tenant_id"], email_address)
+            except Exception as exc:
+                db.rollback()
+                logger.warning(
+                    "Gmail inbox stored but watch setup failed tenant=%s email=%s: %s",
+                    oauth_state["tenant_id"],
+                    email_address,
+                    exc,
+                )
         logger.info("Gmail inbox stored for tenant=%s email=%s", oauth_state["tenant_id"], email_address)
         return RedirectResponse(url=oauth_state["redirect_path"], status_code=307)
     except Exception as exc:

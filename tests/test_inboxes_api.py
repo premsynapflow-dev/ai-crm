@@ -148,6 +148,7 @@ def test_gmail_oauth_flow_stores_inbox_and_redirects(monkeypatch, test_db, clien
     monkeypatch.setattr(inbox_service.settings, "google_client_id", "google-client-id")
     monkeypatch.setattr(inbox_service.settings, "google_client_secret", "google-client-secret")
     monkeypatch.setattr(inbox_service.settings, "google_oauth_redirect_uri", "http://testserver/auth/gmail/callback")
+    monkeypatch.setattr(inbox_service.settings, "gmail_pubsub_topic", "")
     monkeypatch.setattr(inbox_service, "exchange_google_code", lambda _code: {
         "access_token": "gmail-access-token",
         "refresh_token": "gmail-refresh-token",
@@ -181,6 +182,47 @@ def test_gmail_oauth_flow_stores_inbox_and_redirects(monkeypatch, test_db, clien
     assert saved_inbox.provider_type == "gmail"
     assert decrypt_secret(saved_inbox.access_token) == "gmail-access-token"
     assert decrypt_secret(saved_inbox.refresh_token) == "gmail-refresh-token"
+
+
+def test_gmail_oauth_flow_sets_up_watch_when_pubsub_topic_exists(monkeypatch, test_db, client, test_client_record):
+    headers = _auth_headers(client, test_db, test_client_record)
+    watch_calls = []
+
+    def fake_setup_gmail_watch(inbox: Inbox) -> dict:
+        watch_calls.append(str(inbox.id))
+        inbox.metadata_json = {"history_id": "12345", "watch_response": {"historyId": "12345"}}
+        return inbox.metadata_json["watch_response"]
+
+    monkeypatch.setattr(inbox_service.settings, "google_client_id", "google-client-id")
+    monkeypatch.setattr(inbox_service.settings, "google_client_secret", "google-client-secret")
+    monkeypatch.setattr(inbox_service.settings, "google_oauth_redirect_uri", "http://testserver/auth/gmail/callback")
+    monkeypatch.setattr(inbox_service.settings, "gmail_pubsub_topic", "projects/test/topics/gmail")
+    monkeypatch.setattr(gmail_integration, "setup_gmail_watch", fake_setup_gmail_watch)
+    monkeypatch.setattr(inbox_service, "exchange_google_code", lambda _code: {
+        "access_token": "gmail-access-token",
+        "refresh_token": "gmail-refresh-token",
+        "expires_in": 3600,
+    })
+    monkeypatch.setattr(inbox_service, "fetch_google_user_email", lambda _token: "owner@example.com")
+
+    connect_url_response = client.get("/inboxes/gmail/connect-url", headers=headers)
+    google_url = client.get(connect_url_response.json()["connect_url"], follow_redirects=False).headers["location"]
+    state = parse_qs(urlparse(google_url).query)["state"][0]
+
+    callback_response = client.get(
+        f"/auth/gmail/callback?code=test-oauth-code&state={state}",
+        follow_redirects=False,
+    )
+
+    assert callback_response.status_code == 307
+    saved_inbox = (
+        test_db.query(Inbox)
+        .filter(Inbox.tenant_id == test_client_record.id, Inbox.email_address == "owner@example.com")
+        .first()
+    )
+    assert saved_inbox is not None
+    assert watch_calls == [str(saved_inbox.id)]
+    assert saved_inbox.metadata_json["history_id"] == "12345"
 
 
 def test_inboxes_gmail_connect_derives_redirect_uri_from_app_base_url(monkeypatch, test_db, client, test_client_record):
