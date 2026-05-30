@@ -1,7 +1,7 @@
 """add event intelligence and workflow execution logs
 
 Revision ID: 20260521_01
-Revises: 20260412_03
+Revises: 20260412_04
 Create Date: 2026-05-21
 """
 
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "20260521_01"
-down_revision = "20260412_03"
+down_revision = "20260412_04"
 branch_labels = None
 depends_on = None
 
