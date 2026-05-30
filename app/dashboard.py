@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+
 from app.config import get_settings
 from app.db.models import Client, Complaint
 from app.db.session import get_db
