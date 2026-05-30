@@ -18,9 +18,6 @@ if not db_url:
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-
-print("Using DATABASE_URL:", db_url[:30], "...")
-
 engine = create_engine(
     db_url,
     connect_args={"sslmode": "require"} if "postgresql" in db_url else {},

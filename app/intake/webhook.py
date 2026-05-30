@@ -1,3 +1,5 @@
+import hashlib
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -61,6 +63,9 @@ class EmailWebhookRequest(BaseModel):
     from_: str = Field(..., alias="from")
     subject: str = Field(..., min_length=1)
     text: str = Field(..., min_length=1)
+    message_id: Optional[str] = Field(default=None, max_length=255)
+    thread_id: Optional[str] = Field(default=None, max_length=255)
+    timestamp: Optional[datetime] = None
 
 
 class WhatsAppWebhookRequest(BaseModel):
@@ -68,6 +73,29 @@ class WhatsAppWebhookRequest(BaseModel):
 
     from_: str = Field(..., alias="From")
     body: str = Field(..., alias="Body", min_length=1)
+    message_id: Optional[str] = Field(default=None, max_length=255)
+    thread_id: Optional[str] = Field(default=None, max_length=255)
+    timestamp: Optional[datetime] = None
+
+
+def _stable_external_id(prefix: str, *parts: str | None) -> str:
+    normalized = "\n".join(" ".join(str(part or "").split()) for part in parts)
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest}"
+
+
+def _normalize_webhook_timestamp(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _payload_dump(payload: BaseModel) -> dict:
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump(by_alias=True, exclude_none=True)
+    return dict(payload)
 
 
 def _process_complaint_for_client(
@@ -359,17 +387,23 @@ def process_email_webhook(
         incoming_message = IncomingMessage(
             client_id=client.id,
             channel="email",
-            external_message_id=payload.subject,  # Use subject as unique id for demo; replace as needed
+            external_message_id=payload.message_id
+            or _stable_external_id("email-webhook", str(client.id), payload.from_, payload.subject, payload.text),
+            external_thread_id=payload.thread_id or payload.message_id,
             sender_id=payload.from_,
             sender_name=None,
-            message_text=f"{payload.subject} {payload.text}".strip(),
+            message_text="\n\n".join(part for part in [payload.subject, payload.text] if part).strip(),
+            timestamp=_normalize_webhook_timestamp(payload.timestamp),
             direction="inbound",
             status="received",
-            raw_payload=payload.model_dump() if hasattr(payload, 'model_dump') else dict(payload),
+            raw_payload={
+                **_payload_dump(payload),
+                "headers": {"Subject": payload.subject, "From": payload.from_},
+                "request_path": "/webhook/email",
+            },
         )
         result = process_incoming_message(db, incoming_message)
         db.commit()
-        track_ticket_usage(client.id)
         action = result
     except HTTPException:
         raise
@@ -403,17 +437,22 @@ def process_whatsapp_webhook(
         incoming_message = IncomingMessage(
             client_id=client.id,
             channel="whatsapp",
-            external_message_id=payload.body[:32],  # Use body hash/part as unique id for demo
+            external_message_id=payload.message_id
+            or _stable_external_id("whatsapp-webhook", str(client.id), payload.from_, payload.body),
+            external_thread_id=payload.thread_id or payload.from_,
             sender_id=payload.from_,
             sender_name=None,
             message_text=payload.body,
+            timestamp=_normalize_webhook_timestamp(payload.timestamp),
             direction="inbound",
             status="received",
-            raw_payload=payload.model_dump() if hasattr(payload, 'model_dump') else dict(payload),
+            raw_payload={
+                **_payload_dump(payload),
+                "request_path": "/webhook/whatsapp",
+            },
         )
         result = process_incoming_message(db, incoming_message)
         db.commit()
-        track_ticket_usage(client.id)
         action = result
     except HTTPException:
         raise
