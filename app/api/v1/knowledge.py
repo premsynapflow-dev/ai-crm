@@ -23,6 +23,13 @@ class KnowledgeSnippetRequest(BaseModel):
     created_by: str | None = None
 
 
+class KnowledgeSnippetUpdateRequest(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    category: str | None = None
+    keywords: list[str] | None = None
+
+
 @router.get("")
 def list_snippets(db: Session = Depends(get_db), current_client=Depends(require_api_key)):
     rows = (
@@ -53,6 +60,51 @@ def create_knowledge_snippet(payload: KnowledgeSnippetRequest, db: Session = Dep
 @router.get("/search")
 def search_snippets(q: str = Query(default=""), limit: int = 5, db: Session = Depends(get_db), current_client=Depends(require_api_key)):
     return {"items": [serialize_snippet(item) for item in retrieve_snippets(db, client_id=current_client.id, query=q, limit=limit)]}
+
+
+@router.patch("/{snippet_id}")
+def update_snippet(
+    snippet_id: str,
+    payload: KnowledgeSnippetUpdateRequest,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    snippet = (
+        db.query(KnowledgeSnippet)
+        .filter(KnowledgeSnippet.id == uuid.UUID(snippet_id), KnowledgeSnippet.client_id == current_client.id)
+        .first()
+    )
+    if snippet is None:
+        raise HTTPException(status_code=404, detail="Snippet not found")
+    if payload.title is not None:
+        snippet.title = payload.title.strip()
+    if payload.content is not None:
+        snippet.content = payload.content.strip()
+    if payload.category is not None:
+        snippet.category = payload.category.strip() or None
+    if payload.keywords is not None:
+        snippet.keywords = payload.keywords
+    db.commit()
+    db.refresh(snippet)
+    return {"success": True, "item": serialize_snippet(snippet)}
+
+
+@router.delete("/{snippet_id}")
+def delete_snippet(
+    snippet_id: str,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    snippet = (
+        db.query(KnowledgeSnippet)
+        .filter(KnowledgeSnippet.id == uuid.UUID(snippet_id), KnowledgeSnippet.client_id == current_client.id)
+        .first()
+    )
+    if snippet is None:
+        raise HTTPException(status_code=404, detail="Snippet not found")
+    db.delete(snippet)
+    db.commit()
+    return {"success": True}
 
 
 @router.patch("/{snippet_id}/status")

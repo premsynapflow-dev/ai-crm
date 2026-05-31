@@ -46,6 +46,8 @@ import {
   Sparkles,
   ShieldCheck,
   MessageSquare,
+  BookOpen,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -132,6 +134,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/settings/teams', icon: Users, label: 'Teams' },
     { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
     ...(canAccessRbiCompliance ? [{ href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' }] : []),
+    { href: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
+    { href: '/workflows', icon: Zap, label: 'Automation' },
     { href: '/analytics', icon: BarChart3, label: 'Analytics' },
     { href: '/pricing', icon: CreditCard, label: 'Billing & Plans' },
     { href: '/usage', icon: Activity, label: 'Usage & Limits' },

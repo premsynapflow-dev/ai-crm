@@ -74,6 +74,72 @@ def create_workflow(payload: WorkflowRuleRequest, db: Session = Depends(get_db),
     return {"success": True, "item": _serialize_rule(rule)}
 
 
+@router.patch("/{rule_id}")
+def update_workflow(
+    rule_id: str,
+    payload: WorkflowRuleRequest,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    rule = db.query(AutomationRule).filter(
+        AutomationRule.id == uuid.UUID(rule_id),
+        AutomationRule.client_id == current_client.id,
+    ).first()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    validation = validate_workflow_definition(payload.model_dump())
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail=validation["errors"])
+    first_action = payload.actions[0] if payload.actions else {}
+    rule.workflow_name = payload.workflow_name or payload.trigger.get("type") or rule.workflow_name
+    rule.trigger_type = str(payload.trigger.get("type") or rule.trigger_type)
+    rule.trigger_value = str(payload.trigger.get("value") or rule.trigger_value)
+    rule.action_type = str(first_action.get("type") or rule.action_type)
+    rule.action_config = first_action.get("config") or rule.action_config or {}
+    rule.trigger_definition = payload.trigger
+    rule.condition_definition = payload.conditions
+    rule.action_definition = payload.actions
+    rule.enabled = payload.enabled
+    db.commit()
+    db.refresh(rule)
+    return {"success": True, "item": _serialize_rule(rule)}
+
+
+@router.delete("/{rule_id}")
+def delete_workflow(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    rule = db.query(AutomationRule).filter(
+        AutomationRule.id == uuid.UUID(rule_id),
+        AutomationRule.client_id == current_client.id,
+    ).first()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    db.delete(rule)
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/{rule_id}/toggle")
+def toggle_workflow(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    rule = db.query(AutomationRule).filter(
+        AutomationRule.id == uuid.UUID(rule_id),
+        AutomationRule.client_id == current_client.id,
+    ).first()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    rule.enabled = not bool(rule.enabled)
+    db.commit()
+    db.refresh(rule)
+    return {"success": True, "item": _serialize_rule(rule)}
+
+
 @router.post("/{rule_id}/preview")
 def preview_workflow(rule_id: str, payload: WorkflowPreviewRequest, db: Session = Depends(get_db), current_client=Depends(require_api_key)):
     rule = db.query(AutomationRule).filter(AutomationRule.id == uuid.UUID(rule_id), AutomationRule.client_id == current_client.id).first()

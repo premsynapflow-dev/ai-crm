@@ -58,6 +58,7 @@ from app.db.session import SessionLocal
 from app.integrations.email import router as email_integration_router
 from app.integrations.gmail import router as gmail_integration_router
 from app.integrations.whatsapp import router as whatsapp_integration_router
+from app.integrations.voice import router as voice_integration_router
 from app.inboxes.router import router as inboxes_router
 from app.intake.webhook import router as webhook_router
 from app.middleware.security import SecurityHeadersMiddleware
@@ -248,6 +249,7 @@ app.include_router(webhook_router)
 app.include_router(email_integration_router)
 app.include_router(gmail_integration_router)
 app.include_router(whatsapp_integration_router)
+app.include_router(voice_integration_router)
 app.include_router(inboxes_router)
 app.include_router(dashboard_router)
 app.include_router(client_portal_router)

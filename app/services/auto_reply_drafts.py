@@ -519,6 +519,8 @@ class AutoReplyDraftService:
             return fallback
 
         subject = _normalize_text(payload.get("subject")) or fallback.subject
+        if subject and not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}"
         body = str(payload.get("body") or "").strip() or fallback.body
         confidence_score = _clamp_confidence(payload.get("confidence_score"), fallback.confidence_score)
         return AutoReplyDraftResult(

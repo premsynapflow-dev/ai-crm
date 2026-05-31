@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SynapFlow – Portal Login</title>
+</head>
+<body>
+  <form method="post" action="/portal/login">
+    <h1>Portal Login</h1>
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+    <label>Email <input type="email" name="email" required></label>
+    <label>Password <input type="password" name="password" required></label>
+    <button type="submit">Sign In</button>
+  </form>
+</body>
+</html>

@@ -156,11 +156,15 @@ async def classify_message_async(message: str, client_config: Optional[dict] = N
     Returns:
         Classification dict or fallback on error.
     """
+    if not message or not message.strip():
+        logger.warning("Empty message received - using fallback classification.")
+        return normalize_classification_output(_FALLBACK, message)
+
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         logger.warning("GEMINI_API_KEY not set - using fallback classification.")
         return normalize_classification_output(_FALLBACK, message)
-    
+
     prompt = _build_classification_prompt(message, client_config)
     started = time.perf_counter()
     try:
