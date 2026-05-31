@@ -54,7 +54,7 @@ export const authAPI = {
       password: credentials.password,
     })
 
-    const response = await api.post<SessionLoginResponse>('/auth/login', payload, {
+    const response = await api.post<SessionLoginResponse>('/api/v1/auth/login', payload, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
