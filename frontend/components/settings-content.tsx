@@ -19,6 +19,7 @@ import {
 import {
   User,
   Building2,
+  Bot,
   Key,
   Webhook,
   Bell,
@@ -28,9 +29,15 @@ import {
   EyeOff,
   Check,
   Loader2,
+  X,
 } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import { getCompanySectorLabel, isRbiEligibleCompany } from '@/lib/company-profile'
 import { settingsAPI, type SettingsSummary } from '@/lib/api/settings'
+import { promptsAPI, type ClientPromptConfig } from '@/lib/api/prompts'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import ConnectionsPage from '@/app/settings/connections/page'
@@ -47,6 +54,14 @@ function formatDate(value?: string | null) {
   })
 }
 
+const DEFAULT_PROMPTS: ClientPromptConfig = {
+  custom_prompt_enabled: false,
+  tone: 'professional',
+  industry: 'general',
+  focus_areas: [],
+  reply_guidelines: '',
+}
+
 export function SettingsContent() {
   const { user } = useAuth()
   const [summary, setSummary] = useState<SettingsSummary | null>(null)
@@ -55,32 +70,65 @@ export function SettingsContent() {
   const [webhookUrl, setWebhookUrl] = useState('')
   const [isSavingWebhook, setIsSavingWebhook] = useState(false)
   const [isTestingWebhook, setIsTestingWebhook] = useState(false)
+  const [prompts, setPrompts] = useState<ClientPromptConfig>(DEFAULT_PROMPTS)
+  const [isSavingPrompts, setIsSavingPrompts] = useState(false)
+  const [pendingFocusArea, setPendingFocusArea] = useState('')
 
   useEffect(() => {
     let active = true
 
-    settingsAPI.getSummary()
-      .then((response) => {
-        if (active) {
-          setSummary(response)
-          setWebhookUrl(response.webhooks[0]?.url ?? '')
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setSummary(null)
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsLoading(false)
-        }
-      })
+    Promise.allSettled([
+      settingsAPI.getSummary(),
+      promptsAPI.get(),
+    ]).then(([summaryResult, promptsResult]) => {
+      if (!active) return
+      if (summaryResult.status === 'fulfilled') {
+        setSummary(summaryResult.value)
+        setWebhookUrl(summaryResult.value.webhooks[0]?.url ?? '')
+      } else {
+        setSummary(null)
+      }
+      if (promptsResult.status === 'fulfilled') {
+        setPrompts(promptsResult.value)
+      }
+    }).finally(() => {
+      if (active) setIsLoading(false)
+    })
 
     return () => {
       active = false
     }
   }, [user?.plan_id])
+
+  const handleSavePrompts = async () => {
+    setIsSavingPrompts(true)
+    try {
+      const updated = await promptsAPI.update({
+        enabled: prompts.custom_prompt_enabled,
+        tone: prompts.tone,
+        industry: prompts.industry,
+        focus_areas: prompts.focus_areas,
+        reply_guidelines: prompts.reply_guidelines,
+      })
+      setPrompts(updated)
+      toast.success('AI prompt configuration saved')
+    } catch {
+      toast.error('Failed to save prompt configuration')
+    } finally {
+      setIsSavingPrompts(false)
+    }
+  }
+
+  const addFocusArea = () => {
+    const tag = pendingFocusArea.trim()
+    if (!tag || prompts.focus_areas.includes(tag)) return
+    setPrompts((p) => ({ ...p, focus_areas: [...p.focus_areas, tag] }))
+    setPendingFocusArea('')
+  }
+
+  const removeFocusArea = (tag: string) => {
+    setPrompts((p) => ({ ...p, focus_areas: p.focus_areas.filter((t) => t !== tag) }))
+  }
 
   const handleCopy = (value: string, label: string) => {
     navigator.clipboard.writeText(value)
@@ -166,6 +214,10 @@ export function SettingsContent() {
           <TabsTrigger value="notifications" className="gap-2">
             <Bell className="h-4 w-4" />
             Notifications
+          </TabsTrigger>
+          <TabsTrigger value="ai-prompts" className="gap-2">
+            <Bot className="h-4 w-4" />
+            AI Prompts
           </TabsTrigger>
           {(isBusinessPlan || summary.team_members.length > 1) && (
             <TabsTrigger value="team" className="gap-2">
@@ -430,6 +482,117 @@ export function SettingsContent() {
                   </p>
                 </CardContent>
               </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ai-prompts">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Prompt Configuration</CardTitle>
+              <CardDescription>Customise the tone, focus, and reply style the AI uses for classifying and responding to your complaints.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Enable toggle */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="font-medium">Enable custom AI prompts</p>
+                  <p className="text-sm text-muted-foreground">When enabled, the settings below override the default AI behaviour.</p>
+                </div>
+                <Switch
+                  checked={prompts.custom_prompt_enabled}
+                  onCheckedChange={(checked) => setPrompts((p) => ({ ...p, custom_prompt_enabled: checked }))}
+                />
+              </div>
+
+              <div className={prompts.custom_prompt_enabled ? '' : 'pointer-events-none opacity-50'}>
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Tone */}
+                  <div className="space-y-2">
+                    <Label>Response tone</Label>
+                    <Select value={prompts.tone} onValueChange={(v) => setPrompts((p) => ({ ...p, tone: v as ClientPromptConfig['tone'] }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="professional">Professional</SelectItem>
+                        <SelectItem value="friendly">Friendly</SelectItem>
+                        <SelectItem value="empathetic">Empathetic</SelectItem>
+                        <SelectItem value="formal">Formal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Industry */}
+                  <div className="space-y-2">
+                    <Label>Industry</Label>
+                    <Select value={prompts.industry} onValueChange={(v) => setPrompts((p) => ({ ...p, industry: v as ClientPromptConfig['industry'] }))}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="general">General</SelectItem>
+                        <SelectItem value="ecommerce">E-commerce</SelectItem>
+                        <SelectItem value="saas">SaaS</SelectItem>
+                        <SelectItem value="healthcare">Healthcare</SelectItem>
+                        <SelectItem value="finance">Finance</SelectItem>
+                        <SelectItem value="education">Education</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Focus areas tag input */}
+                <div className="space-y-2 mt-4">
+                  <Label>Focus areas</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={pendingFocusArea}
+                      onChange={(e) => setPendingFocusArea(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addFocusArea() } }}
+                      placeholder="Add a focus area (e.g. billing, refunds)"
+                    />
+                    <Button variant="outline" onClick={addFocusArea} disabled={!pendingFocusArea.trim()}>
+                      Add
+                    </Button>
+                  </div>
+                  {prompts.focus_areas.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {prompts.focus_areas.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="gap-1.5 pr-1.5">
+                          {tag}
+                          <button onClick={() => removeFocusArea(tag)} className="rounded-full hover:bg-muted-foreground/20 p-0.5">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reply guidelines */}
+                <div className="space-y-2 mt-4">
+                  <Label>Reply guidelines</Label>
+                  <Textarea
+                    value={prompts.reply_guidelines}
+                    onChange={(e) => setPrompts((p) => ({ ...p, reply_guidelines: e.target.value }))}
+                    placeholder="Additional instructions for AI-generated replies (e.g. always mention return policy, avoid mentioning competitors)"
+                    rows={5}
+                    className="resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button onClick={() => void handleSavePrompts()} disabled={isSavingPrompts}>
+                  {isSavingPrompts ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : 'Save configuration'}
+                </Button>
+                {prompts.updated_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Last updated {formatDate(prompts.updated_at)}
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

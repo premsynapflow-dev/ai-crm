@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
+  Brain,
   Building2,
   CheckCircle2,
   Loader2,
@@ -16,8 +17,50 @@ import {
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+
+interface ModelAuditStats {
+  total: number
+  error_rate: number
+  avg_confidence: number
+  avg_latency_ms: number
+}
+
+interface ModelAuditRow {
+  id: string
+  provider: string
+  model: string
+  task_type: string
+  confidence_score?: number | null
+  latency_ms?: number | null
+  status: string
+  error_message?: string | null
+  created_at?: string | null
+}
+
+interface QueueHealth {
+  pending: number
+  processing: number
+  completed: number
+  failed: number
+  backend?: string
+}
 
 interface AdminDashboardData {
   overview: {
@@ -64,6 +107,11 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState<AdminDashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [modelAuditStats, setModelAuditStats] = useState<ModelAuditStats | null>(null)
+  const [modelAuditRows, setModelAuditRows] = useState<ModelAuditRow[]>([])
+  const [auditTaskFilter, setAuditTaskFilter] = useState('all')
+  const [queueHealth, setQueueHealth] = useState<QueueHealth | null>(null)
+  const queueRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const adminToken = window.localStorage.getItem(ADMIN_TOKEN_KEY)
@@ -72,13 +120,11 @@ export default function AdminDashboardPage() {
       return
     }
 
+    const authHeaders = { Authorization: `Bearer ${adminToken}` }
+
     const fetchAdminData = async () => {
       try {
-        const response = await fetch('/api/admin/dashboard/overview', {
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-          },
-        })
+        const response = await fetch('/api/admin/dashboard/overview', { headers: authHeaders })
 
         if (response.status === 401) {
           window.localStorage.removeItem(ADMIN_TOKEN_KEY)
@@ -99,8 +145,52 @@ export default function AdminDashboardPage() {
       }
     }
 
+    const fetchModelAudit = async (taskType = 'all') => {
+      try {
+        const params = taskType !== 'all' ? `?limit=50&task_type=${taskType}` : '?limit=50'
+        const res = await fetch(`/api/admin/model-audit${params}`, { headers: authHeaders })
+        if (!res.ok) return
+        const json = (await res.json()) as { stats: ModelAuditStats; items: ModelAuditRow[] }
+        setModelAuditStats(json.stats)
+        setModelAuditRows(json.items)
+      } catch { /* silently ignore */ }
+    }
+
+    const fetchQueueHealth = async () => {
+      try {
+        const res = await fetch('/api/admin/queue-health', { headers: authHeaders })
+        if (!res.ok) return
+        setQueueHealth((await res.json()) as QueueHealth)
+      } catch { /* silently ignore */ }
+    }
+
     void fetchAdminData()
+    void fetchModelAudit()
+    void fetchQueueHealth()
+
+    // Auto-refresh queue health every 30s
+    queueRefreshRef.current = setInterval(() => { void fetchQueueHealth() }, 30000)
+
+    return () => {
+      if (queueRefreshRef.current) clearInterval(queueRefreshRef.current)
+    }
   }, [router])
+
+  const handleAuditFilterChange = (taskType: string) => {
+    setAuditTaskFilter(taskType)
+    const adminToken = window.localStorage.getItem(ADMIN_TOKEN_KEY)
+    if (!adminToken) return
+    const params = taskType !== 'all' ? `?limit=50&task_type=${taskType}` : '?limit=50'
+    fetch(`/api/admin/model-audit${params}`, { headers: { Authorization: `Bearer ${adminToken}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (json) {
+          setModelAuditStats((json as { stats: ModelAuditStats }).stats)
+          setModelAuditRows((json as { items: ModelAuditRow[] }).items)
+        }
+      })
+      .catch(() => { /* ignore */ })
+  }
 
   const statCards = useMemo(() => {
     if (!data) {
@@ -339,24 +429,148 @@ export default function AdminDashboardPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="tenants">
+          <TabsContent value="tenants" className="space-y-6">
+            {/* Queue health mini-cards */}
+            <div className="grid gap-4 md:grid-cols-4">
+              {[
+                { label: 'Pending', value: queueHealth?.pending ?? '—', color: 'text-amber-600' },
+                { label: 'Processing', value: queueHealth?.processing ?? '—', color: 'text-blue-600' },
+                { label: 'Completed', value: queueHealth?.completed ?? '—', color: 'text-emerald-600' },
+                { label: 'Failed', value: queueHealth?.failed ?? '—', color: 'text-rose-600' },
+              ].map((card) => (
+                <Card key={card.label} className="rounded-[1.5rem] border-slate-200 bg-white">
+                  <CardContent className="p-5">
+                    <p className="text-sm text-slate-500">{card.label} jobs</p>
+                    <p className={`mt-2 text-3xl font-semibold ${card.color}`}>{card.value}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Tenant list */}
             <Card className="rounded-[1.6rem] border-slate-200">
               <CardHeader>
-                <CardTitle>Tenant management</CardTitle>
+                <CardTitle>All tenants</CardTitle>
+                <CardDescription>Joined date, plan, and ticket volume across all accounts.</CardDescription>
               </CardHeader>
-              <CardContent className="text-slate-600">
-                Tenant-level controls are wired on the backend and ready for deeper CRUD actions next. This view is set up for plan upgrades, search, and lifecycle controls as the next admin iteration.
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Company</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Tickets</TableHead>
+                      <TableHead>Joined</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.top_tenants.length > 0 ? (
+                      data.top_tenants.map((tenant) => (
+                        <TableRow key={`${tenant.name}-${tenant.plan}`}>
+                          <TableCell className="font-medium">{tenant.name}</TableCell>
+                          <TableCell><Badge variant="outline" className="capitalize">{tenant.plan}</Badge></TableCell>
+                          <TableCell>{tenant.ticket_count.toLocaleString()}</TableCell>
+                          <TableCell className="text-slate-500">—</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-slate-400">No tenants with complaints yet.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="analytics">
+          <TabsContent value="analytics" className="space-y-6">
+            {/* Model audit stats */}
+            {modelAuditStats && (
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card className="rounded-[1.5rem] border-slate-200 bg-white">
+                  <CardContent className="p-5">
+                    <p className="text-sm text-slate-500">Avg AI confidence</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-950">{modelAuditStats.avg_confidence}%</p>
+                  </CardContent>
+                </Card>
+                <Card className="rounded-[1.5rem] border-slate-200 bg-white">
+                  <CardContent className="p-5">
+                    <p className="text-sm text-slate-500">Avg latency</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-950">{modelAuditStats.avg_latency_ms} ms</p>
+                  </CardContent>
+                </Card>
+                <Card className="rounded-[1.5rem] border-slate-200 bg-white">
+                  <CardContent className="p-5">
+                    <p className="text-sm text-slate-500">Error rate</p>
+                    <p className="mt-2 text-3xl font-semibold text-rose-600">{modelAuditStats.error_rate}%</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Model audit log table */}
             <Card className="rounded-[1.6rem] border-slate-200">
               <CardHeader>
-                <CardTitle>Analytics and insights</CardTitle>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <Brain className="h-5 w-5 text-primary" />
+                    <CardTitle>AI inference log</CardTitle>
+                  </div>
+                  <Select value={auditTaskFilter} onValueChange={handleAuditFilterChange}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All task types</SelectItem>
+                      <SelectItem value="classification">Classification</SelectItem>
+                      <SelectItem value="sentiment">Sentiment</SelectItem>
+                      <SelectItem value="root_cause">Root cause</SelectItem>
+                      <SelectItem value="reply_generation">Reply generation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <CardDescription>Last 50 AI inferences across all tenants.</CardDescription>
               </CardHeader>
-              <CardContent className="text-slate-600">
-                The platform overview already exposes the key aggregate metrics. We can expand this tab next with usage trends, billing metrics, and queue health charts once you want a fuller admin analytics surface.
+              <CardContent>
+                {modelAuditRows.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8">No AI inference records found.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Task type</TableHead>
+                        <TableHead>Model</TableHead>
+                        <TableHead>Confidence</TableHead>
+                        <TableHead>Latency</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Time</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {modelAuditRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="capitalize">{row.task_type}</TableCell>
+                          <TableCell className="font-mono text-xs">{row.model}</TableCell>
+                          <TableCell>
+                            {row.confidence_score != null ? `${Math.round(row.confidence_score * 100)}%` : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {row.latency_ms != null ? `${row.latency_ms} ms` : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={row.status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}>
+                              {row.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-slate-500 text-xs">
+                            {row.created_at ? new Date(row.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

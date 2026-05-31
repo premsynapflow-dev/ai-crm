@@ -520,11 +520,16 @@ export function AnalyticsContent() {
           <div className="grid gap-6 xl:grid-cols-2">
             <Card>
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Flame className="h-5 w-5 text-rose-500" />
-                  <CardTitle>Root Cause Analysis</CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Flame className="h-5 w-5 text-rose-500" />
+                    <CardTitle>Root Cause Analysis</CardTitle>
+                  </div>
+                  {rootCause && (
+                    <span className="text-xs text-muted-foreground">{rootCause.period}</span>
+                  )}
                 </div>
-                <CardDescription>Trending complaint categories and where operational attention is needed most.</CardDescription>
+                <CardDescription>All complaint categories with period-over-period trends and resolution rates.</CardDescription>
               </CardHeader>
               <CardContent>
                 {rootCauseLocked ? (
@@ -541,25 +546,56 @@ export function AnalyticsContent() {
                         {rootCause.overall_change_percentage > 0 ? '+' : ''}
                         {rootCause.overall_change_percentage}%
                       </p>
-                      <p className="mt-2 text-sm text-slate-400">{rootCause.period}</p>
-                    </div>
-                    {rootCause.top_issues.slice(0, 4).map((issue) => (
-                      <div key={issue.category} className="flex items-center justify-between rounded-xl border p-4">
-                        <div>
-                          <p className="font-medium">{issue.category}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {issue.current_count} complaints, {issue.percentage_of_total}% of total
-                          </p>
-                        </div>
-                        <Badge className={issue.change_percentage > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}>
-                          {issue.change_percentage > 0 ? '+' : ''}
-                          {issue.change_percentage}%
-                        </Badge>
+                      <div className="mt-2 flex items-center gap-4 text-sm text-slate-400">
+                        <span>{rootCause.total_complaints} complaints this period</span>
+                        <span>{rootCause.previous_period_total} prior period</span>
                       </div>
-                    ))}
-                    <div className="rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
-                      {rootCause.insights[0] ?? 'No critical issue spikes detected.'}
                     </div>
+
+                    <div className="space-y-2">
+                      {rootCause.top_issues.map((issue) => {
+                        const resolutionRate = rootCause.resolution_rates?.[issue.category]
+                        return (
+                          <div key={issue.category} className="flex items-center justify-between rounded-xl border p-3.5 gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{issue.category}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {issue.current_count} complaints · {issue.percentage_of_total}% of total
+                                {resolutionRate != null && ` · ${resolutionRate}% resolved`}
+                              </p>
+                            </div>
+                            <Badge
+                              className={
+                                issue.change_percentage > 10
+                                  ? 'bg-red-100 text-red-700'
+                                  : issue.change_percentage > 0
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : issue.change_percentage < 0
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-slate-100 text-slate-600'
+                              }
+                            >
+                              {issue.change_percentage > 0 ? '+' : ''}
+                              {issue.change_percentage}%
+                            </Badge>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {rootCause.insights.length > 0 && (
+                      <div className="rounded-xl bg-muted/50 p-4 space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Insights</p>
+                        <ul className="space-y-1.5">
+                          {rootCause.insights.map((insight) => (
+                            <li key={insight} className="flex items-start gap-2 text-sm text-slate-700">
+                              <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-slate-400" />
+                              {insight}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">

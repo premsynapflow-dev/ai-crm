@@ -23,12 +23,17 @@ from app.auth import resolve_current_client_user
 from app.billing.usage import can_process_ticket, track_ticket_usage
 from app.config import get_settings
 from app.db.models import (
+    AgentCorrection,
     AIReplyQueue,
     Client,
     ClientUser,
     Complaint,
+    CustomerEvent,
     CustomerInteraction,
     Escalation,
+    EventLog,
+    MessageEvent,
+    ModelAuditLog,
     RBIComplaint,
     RBIEscalationLog,
     ReplyFeedback,
@@ -36,6 +41,7 @@ from app.db.models import (
     TicketComment,
     TicketStateTransition,
     UnifiedMessage,
+    WorkflowExecution,
 )
 from app.db.session import get_db
 from app.middleware.feature_gate import ensure_feature_access
@@ -351,10 +357,11 @@ def _delete_complaint_graph(db: Session, complaint: Complaint) -> None:
     db.query(TicketComment).filter(TicketComment.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(TicketStateTransition).filter(TicketStateTransition.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(Escalation).filter(Escalation.ticket_id == complaint_id).delete(synchronize_session=False)
-    db.query(CustomerInteraction).filter(CustomerInteraction.complaint_id == complaint_id).update(
-        {CustomerInteraction.complaint_id: None},
-        synchronize_session=False,
-    )
+    # Nullable FKs — set to NULL to preserve audit/log records
+    for model in (CustomerInteraction, EventLog, CustomerEvent, WorkflowExecution, AgentCorrection, ModelAuditLog, MessageEvent):
+        db.query(model).filter(model.complaint_id == complaint_id).update(
+            {model.complaint_id: None}, synchronize_session=False
+        )
     db.delete(complaint)
 
 

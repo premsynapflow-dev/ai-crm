@@ -488,6 +488,7 @@ class CustomerProfileService:
             ),
             "risk": churn,
             "insights": self._build_insights(customer, recent_tickets, sentiment, churn),
+            "satisfaction_trend": self._build_satisfaction_trend(customer.id),
         }
 
     def _find_existing_customer(

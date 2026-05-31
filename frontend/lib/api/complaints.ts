@@ -26,6 +26,11 @@ export interface Complaint {
   satisfactionScore?: number | null
   threadId?: string
   conversationId?: string | null
+  slaStatus?: string | null
+  slaDueAt?: string | null
+  escalationLevel?: number | null
+  escalatedAt?: string | null
+  escalatedTo?: string | null
 }
 
 export interface ComplaintThreadAttachment {
@@ -98,6 +103,11 @@ interface ComplaintApiPayload {
   satisfaction_score?: number | null
   thread_id?: string
   conversation_id?: string | null
+  sla_status?: string | null
+  sla_due_at?: string | null
+  escalation_level?: number | null
+  escalated_at?: string | null
+  escalated_to?: string | null
   thread_messages?: Array<{
     id: string
     direction?: string
@@ -166,6 +176,11 @@ function normalizeComplaint(complaint: ComplaintApiPayload): ComplaintDetail {
     satisfactionScore: complaint.satisfaction_score ?? null,
     threadId: complaint.thread_id,
     conversationId: complaint.conversation_id ?? null,
+    slaStatus: complaint.sla_status ?? null,
+    slaDueAt: complaint.sla_due_at ?? null,
+    escalationLevel: complaint.escalation_level ?? null,
+    escalatedAt: complaint.escalated_at ?? null,
+    escalatedTo: complaint.escalated_to ?? null,
     threadMessages: (complaint.thread_messages ?? []).map((message) => ({
       id: message.id,
       direction: message.direction ?? 'inbound',

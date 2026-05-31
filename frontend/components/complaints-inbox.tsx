@@ -423,6 +423,7 @@ export function ComplaintsInbox() {
                   <TableHead>Subject</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Priority</TableHead>
+                  <TableHead>SLA</TableHead>
                   <TableHead>Sentiment</TableHead>
                   <TableHead>AI Conf.</TableHead>
                   <TableHead>Status</TableHead>
@@ -433,13 +434,13 @@ export function ComplaintsInbox() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="p-4">
+                    <TableCell colSpan={13} className="p-4">
                       <TableSkeleton rows={10} />
                     </TableCell>
                   </TableRow>
                 ) : complaints.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={13} className="h-32 text-center text-muted-foreground">
                       No complaints found for the selected filters.
                     </TableCell>
                   </TableRow>
@@ -467,6 +468,20 @@ export function ComplaintsInbox() {
                         <Badge className={cn('capitalize', priorityColors[complaint.priority])}>
                           {complaint.priority}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {complaint.slaStatus === 'breached' && (
+                          <Badge className="bg-red-100 text-red-700">Breached</Badge>
+                        )}
+                        {complaint.slaStatus === 'approaching_breach' && (
+                          <Badge className="bg-amber-100 text-amber-700">Nearing</Badge>
+                        )}
+                        {complaint.slaStatus === 'on_track' && (
+                          <Badge className="bg-green-100 text-green-700">On track</Badge>
+                        )}
+                        {!complaint.slaStatus && (
+                          <Badge variant="outline" className="text-slate-400">—</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge className={cn('capitalize', sentimentColors[complaint.sentiment])}>

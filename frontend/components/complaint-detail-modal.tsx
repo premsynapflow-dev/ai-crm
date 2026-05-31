@@ -12,7 +12,9 @@ import {
   Paperclip,
   Phone,
   Send,
+  Shield,
   Sparkles,
+  TrendingUp,
   User,
 } from 'lucide-react'
 
@@ -534,6 +536,71 @@ export function ComplaintDetailModal({
                 </div>
               </CardContent>
             </Card>
+
+            {/* SLA Card */}
+            <Card className="gap-4 border-slate-200 bg-white/95">
+              <CardHeader className="gap-1">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Shield className="h-4 w-4 text-sky-600" />
+                  SLA status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Status</p>
+                  <div className="mt-1">
+                    {currentComplaint.slaStatus === 'breached' && (
+                      <Badge className="bg-red-100 text-red-700">Breached</Badge>
+                    )}
+                    {currentComplaint.slaStatus === 'approaching_breach' && (
+                      <Badge className="bg-amber-100 text-amber-700">Approaching breach</Badge>
+                    )}
+                    {currentComplaint.slaStatus === 'on_track' && (
+                      <Badge className="bg-green-100 text-green-700">On track</Badge>
+                    )}
+                    {!currentComplaint.slaStatus && (
+                      <Badge variant="outline">Not set</Badge>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Due by</p>
+                  <p className="mt-1 font-medium text-slate-900">{formatDateTime(currentComplaint.slaDueAt)}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Escalation Card — only shown when escalation_level > 0 */}
+            {currentComplaint.escalationLevel != null && currentComplaint.escalationLevel > 0 && (
+              <Card className="gap-4 border-amber-200 bg-amber-50/60">
+                <CardHeader className="gap-1">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <TrendingUp className="h-4 w-4 text-amber-600" />
+                    Escalation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Level</p>
+                    <div className="mt-1">
+                      {currentComplaint.escalationLevel === 1 && <Badge className="bg-amber-100 text-amber-700">L1</Badge>}
+                      {currentComplaint.escalationLevel === 2 && <Badge className="bg-orange-100 text-orange-700">L2</Badge>}
+                      {currentComplaint.escalationLevel >= 3 && <Badge className="bg-red-100 text-red-700">IO / Legal</Badge>}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Escalated at</p>
+                    <p className="mt-1 font-medium text-slate-900">{formatDateTime(currentComplaint.escalatedAt)}</p>
+                  </div>
+                  {currentComplaint.escalatedTo && (
+                    <div className="col-span-2">
+                      <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Escalated to</p>
+                      <p className="mt-1 font-medium text-slate-900">{currentComplaint.escalatedTo}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </DialogContent>

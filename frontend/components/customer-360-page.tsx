@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Loader2, MessageSquare, Tag, Ticket, TrendingDown } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowDown, ArrowUp, Minus, Loader2, MessageSquare, Tag, Ticket, TrendingDown } from 'lucide-react'
 import { toast } from 'sonner'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -336,6 +337,92 @@ export function Customer360Page({ customerId }: Customer360PageProps) {
         </div>
 
         <div className="space-y-6">
+          {/* Satisfaction Trend Chart */}
+          {(data.satisfaction_trend ?? []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  Satisfaction trend
+                  {data.sentiment.trend?.direction === 'improving' && (
+                    <span className="inline-flex items-center gap-1 text-emerald-600 text-sm font-normal">
+                      <ArrowUp className="h-3.5 w-3.5" /> Improving
+                    </span>
+                  )}
+                  {data.sentiment.trend?.direction === 'declining' && (
+                    <span className="inline-flex items-center gap-1 text-rose-600 text-sm font-normal">
+                      <ArrowDown className="h-3.5 w-3.5" /> Declining
+                    </span>
+                  )}
+                  {(!data.sentiment.trend || data.sentiment.trend.direction === 'stable') && (
+                    <span className="inline-flex items-center gap-1 text-slate-500 text-sm font-normal">
+                      <Minus className="h-3.5 w-3.5" /> Stable
+                    </span>
+                  )}
+                </CardTitle>
+                <CardDescription>Weekly average satisfaction score (last 90 days).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={120}>
+                  <AreaChart data={data.satisfaction_trend} margin={{ top: 4, right: 4, bottom: 0, left: -28 }}>
+                    <defs>
+                      <linearGradient id="satGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="week" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <Tooltip
+                      formatter={(value: number) => [value?.toFixed(1) ?? '–', 'Avg score']}
+                      contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    />
+                    <Area type="monotone" dataKey="avg_score" stroke="#0ea5e9" strokeWidth={2} fill="url(#satGrad)" connectNulls />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Churn Risk Explanation */}
+          {(data.risk?.explanation ?? []).length > 0 && (
+            <Card className={data.risk?.level === 'high' ? 'border-rose-200 bg-rose-50/40' : data.risk?.level === 'medium' ? 'border-amber-200 bg-amber-50/40' : ''}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <AlertTriangle className={`h-4 w-4 ${data.risk?.level === 'high' ? 'text-rose-600' : data.risk?.level === 'medium' ? 'text-amber-600' : 'text-slate-500'}`} />
+                  Churn risk factors
+                </CardTitle>
+                <CardDescription>Signals contributing to this customer&apos;s churn risk level.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <ul className="space-y-1.5">
+                  {(data.risk?.explanation ?? []).map((point) => (
+                    <li key={point} className="flex items-start gap-2 text-sm text-slate-700">
+                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-slate-400" />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+                {(data.risk?.signals ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {(data.risk?.signals ?? []).map((signal) => (
+                      <Badge
+                        key={typeof signal === 'string' ? signal : signal.label}
+                        className={
+                          (typeof signal === 'object' && signal.severity === 'high') ? 'bg-rose-100 text-rose-700' :
+                          (typeof signal === 'object' && signal.severity === 'medium') ? 'bg-amber-100 text-amber-700' :
+                          'bg-slate-100 text-slate-700'
+                        }
+                      >
+                        {typeof signal === 'string' ? signal : signal.label}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Insights</CardTitle>

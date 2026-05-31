@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from app.db.models import AIReplyQueue, Client, Complaint, Customer, Subscription
+from app.db.models import AIReplyQueue, Client, Complaint, Customer, ModelAuditLog, Subscription
 from app.db.session import get_db
 from app.dependencies.auth import get_current_admin_user
+from app.queue.backends import queue_health
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -177,6 +178,59 @@ async def list_all_tenants(
             for tenant in tenants
         ],
     }
+
+
+@router.get("/model-audit")
+async def get_admin_model_audit(
+    limit: int = 50,
+    task_type: str | None = None,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(get_current_admin_user),
+):
+    """Platform-level model audit log (all tenants)."""
+    _ = admin_user
+    query = db.query(ModelAuditLog).order_by(ModelAuditLog.created_at.desc())
+    if task_type:
+        query = query.filter(ModelAuditLog.task_type == task_type)
+    rows = query.limit(max(1, min(limit, 200))).all()
+
+    total_all = db.query(func.count(ModelAuditLog.id)).scalar() or 0
+    failed_count = db.query(func.count(ModelAuditLog.id)).filter(ModelAuditLog.status == "failed").scalar() or 0
+    avg_conf = db.query(func.avg(ModelAuditLog.confidence_score)).filter(ModelAuditLog.confidence_score.isnot(None)).scalar()
+    avg_lat = db.query(func.avg(ModelAuditLog.latency_ms)).filter(ModelAuditLog.latency_ms.isnot(None)).scalar()
+
+    return {
+        "stats": {
+            "total": total_all,
+            "error_rate": round((failed_count / total_all * 100) if total_all else 0, 2),
+            "avg_confidence": round(float(avg_conf or 0) * 100, 1),
+            "avg_latency_ms": round(float(avg_lat or 0)),
+        },
+        "items": [
+            {
+                "id": str(row.id),
+                "provider": row.provider,
+                "model": row.model,
+                "task_type": row.task_type,
+                "confidence_score": row.confidence_score,
+                "latency_ms": row.latency_ms,
+                "status": row.status,
+                "error_message": row.error_message,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.get("/queue-health")
+async def get_admin_queue_health(
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(get_current_admin_user),
+):
+    """Platform-wide job queue health."""
+    _ = admin_user
+    return queue_health(db)
 
 
 @router.post("/tenants/{tenant_id}/upgrade-plan")

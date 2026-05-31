@@ -159,8 +159,19 @@ export interface Customer360Response {
     score: number | null
     label: string
     sample_size: number
+    trend?: {
+      direction: 'improving' | 'declining' | 'stable' | string
+      window_days?: number
+    }
   }
   churn_risk: 'low' | 'medium' | 'high'
+  risk?: {
+    level: 'low' | 'medium' | 'high' | string
+    score?: number
+    explanation?: string[]
+    signals?: Array<{ label: string; severity?: string }>
+  }
+  satisfaction_trend?: Array<{ week: string; avg_score: number | null }>
   recent_messages: CustomerMessage[]
   recent_tickets: CustomerTicket[]
   active_tickets: CustomerTicket[]

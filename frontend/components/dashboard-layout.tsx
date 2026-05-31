@@ -5,8 +5,6 @@ import Link from 'next/link'
 import { usePathname, redirect } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { getToken } from '@/lib/auth'
-import { isRbiEligibleCompany } from '@/lib/company-profile'
-import { planIncludesFeature } from '@/lib/plan-features'
 import { Logo } from '@/components/logo'
 import { notificationsAPI, type NotificationItem } from '@/lib/api/notifications'
 import { Button } from '@/components/ui/button'
@@ -123,9 +121,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [lastReadAt, notifications])
 
   const unreadCount = unreadNotifications.length
-  const canAccessRbiCompliance =
-    isRbiEligibleCompany(user?.business_sector, user?.is_rbi_regulated) &&
-    planIncludesFeature(user?.plan_id, 'rbi_compliance')
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
@@ -133,7 +128,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { href: '/assignments', icon: FolderKanban, label: 'Assignments' },
     { href: '/settings/teams', icon: Users, label: 'Teams' },
     { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
-    ...(canAccessRbiCompliance ? [{ href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' }] : []),
+    { href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' },
     { href: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
     { href: '/workflows', icon: Zap, label: 'Automation' },
     { href: '/analytics', icon: BarChart3, label: 'Analytics' },
