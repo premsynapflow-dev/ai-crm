@@ -49,16 +49,10 @@ function normalizeUser(payload: unknown): User {
 
 export const authAPI = {
   login: async (credentials: LoginCredentials): Promise<User> => {
-    const payload = new URLSearchParams({
-      username: credentials.email,
-      password: credentials.password,
-    })
-
     try {
-      const response = await api.post<SessionLoginResponse>('/api/v1/auth/login', payload, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+      const response = await api.post<SessionLoginResponse>('/api/v1/auth/login', {
+        email: credentials.email,
+        password: credentials.password,
       })
 
       console.log('[auth] Login response:', {
