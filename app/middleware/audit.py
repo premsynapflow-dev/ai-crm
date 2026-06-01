@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 _audit_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="audit")
 
 # Paths that don't need auditing — skip to save DB connections
-_SKIP_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/health", "/metrics", "/static/")
+_SKIP_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/health", "/metrics", "/static/", "/assets/")
 
 
 def _should_skip_audit(path: str) -> bool:

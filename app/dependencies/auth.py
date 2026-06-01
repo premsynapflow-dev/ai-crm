@@ -16,23 +16,25 @@ settings = get_settings()
 async def get_client_from_api_key(
     request: Request,
     x_api_key: str = Header(default="", alias="x-api-key"),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db)
 ) -> Optional[Client]:
-    """Get client from API key header"""
+    """Get client from API key header or Bearer JWT."""
     if x_api_key and x_api_key.strip():
         return db.query(Client).filter(
             Client.api_key == x_api_key.strip()
         ).first()
 
-    return resolve_current_client(request, db, required=False)
+    return resolve_current_client(request, db, authorization=authorization, required=False)
 
 
 async def require_api_key(
     request: Request,
     x_api_key: str = Header(default="", alias="x-api-key"),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db)
 ) -> Client:
-    """Require a valid API key, or fall back to the signed-in session for the web app."""
+    """Require a valid API key, or fall back to JWT Bearer / session auth for the web app."""
     if x_api_key and x_api_key.strip():
         client = db.query(Client).filter(
             Client.api_key == x_api_key.strip()
@@ -44,7 +46,7 @@ async def require_api_key(
             )
         return client
 
-    client = resolve_current_client(request, db, required=False)
+    client = resolve_current_client(request, db, authorization=authorization, required=False)
     if client is None:
         raise HTTPException(
             status_code=401,

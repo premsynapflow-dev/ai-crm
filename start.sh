@@ -12,7 +12,7 @@ if [ "$SERVICE_TYPE" = "worker" ]; then
 else
     echo "Starting API..."
 
-    # Build the Next.js frontend so FastAPI can serve it from frontend/out/
+    # Build the Vite+React frontend so FastAPI can serve it from frontend/out/
     if [ -f "frontend/package.json" ] && [ ! -d "frontend/out" ]; then
         echo "Building frontend..."
         cd frontend

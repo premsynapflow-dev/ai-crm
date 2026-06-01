@@ -16,7 +16,7 @@ from app.security.session import BadSignature, decode_session
 settings = get_settings()
 
 # Paths that don't carry tenant identity — skip DB lookup entirely
-_SKIP_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/health", "/metrics", "/static/")
+_SKIP_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/health", "/metrics", "/static/", "/assets/")
 
 # TTL cache: avoid a DB round-trip on every request for the same API key / user ID
 # Entries expire after 5 minutes so key rotation and user changes take effect promptly

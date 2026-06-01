@@ -159,7 +159,7 @@ app.mount("/public", StaticFiles(directory="public"), name="public")
 
 
 
-_SKIP_LOGGING_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/static/")
+_SKIP_LOGGING_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/static/", "/assets/")
 
 
 @app.middleware("http")
