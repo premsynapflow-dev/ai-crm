@@ -55,36 +55,19 @@ export const authAPI = {
         password: credentials.password,
       })
 
-      console.log('[auth] Login response:', {
-        hasAccessToken: !!response.data?.access_token,
-        accessTokenLength: response.data?.access_token?.length || 0,
-        fullResponse: JSON.stringify(response.data).substring(0, 200),
-      })
-
-      // Store token immediately
       if (response.data?.access_token) {
         setToken(response.data.access_token)
-        console.log('[auth] Token stored in localStorage')
-        const storedToken = localStorage.getItem('access_token')
-        console.log('[auth] Verification - token in localStorage:', !!storedToken, 'length:', storedToken?.length)
       } else if (response.data?.user?.access_token) {
         setToken(response.data.user.access_token)
-        console.log('[auth] Token stored in localStorage (nested)')
-      } else {
-        console.warn('[auth] No access_token in response:', JSON.stringify(response.data).substring(0, 200))
       }
 
-      // Fetch current user with the new token
       try {
         const userResponse = await api.get<User>('/api/v1/me')
-        console.log('[auth] Got user data after login:', userResponse.data)
         return normalizeUser(userResponse.data)
-      } catch (userError) {
-        console.warn('[auth] Failed to fetch user after login, using response data:', userError instanceof Error ? userError.message : String(userError))
+      } catch {
         return normalizeUser(response.data?.user || response.data)
       }
     } catch (error) {
-      console.error('[auth] Login failed:', error instanceof Error ? error.message : String(error))
       throw error
     }
   },

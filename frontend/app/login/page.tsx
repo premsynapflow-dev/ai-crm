@@ -16,11 +16,7 @@ function LoginPageContent() {
     }
   }, [isAuthenticated, isLoading, router])
 
-  if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading SynapFlow...</div>
-  }
-
-  if (isAuthenticated) {
+  if (!isLoading && isAuthenticated) {
     return <div className="flex min-h-screen items-center justify-center">Redirecting to dashboard...</div>
   }
 

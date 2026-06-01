@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { Logo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import { toast } from 'sonner'
 
 export function LoginForm() {
   const { login } = useAuth()
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
@@ -53,6 +55,7 @@ export function LoginForm() {
         toast.success('Welcome to SynapFlow!', {
           description: 'You have successfully logged in.'
         })
+        router.push('/dashboard')
       } else {
         toast.error('Login failed', {
           description: 'Please check your credentials and try again.'

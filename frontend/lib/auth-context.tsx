@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import { authAPI, type PlanId, type User } from '@/lib/api/auth'
 import { billingAPI } from '@/lib/api/billing'
+import { getToken } from '@/lib/auth'
 
 interface AuthUser extends User {
   avatar?: string
@@ -42,20 +43,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true
 
     const loadCurrentUser = async () => {
+      if (!getToken()) {
+        if (active) setIsLoading(false)
+        return
+      }
+
       try {
         const currentUser = await authAPI.getCurrentUser()
         if (active) {
           setUser(currentUser)
         }
-      } catch (error) {
+      } catch {
         if (active) {
           setUser(null)
-        }
-        console.error('Failed to fetch user', error)
-        const currentPath = typeof window !== 'undefined' ? window.location.pathname.replace(/\/$/, '') : ''
-        if (currentPath && currentPath !== '/login' && currentPath !== '') {
-          // Let components handle their own unauthorized states (e.g. rendering LoginForm)
-          // instead of forcing a full page reload here.
         }
       } finally {
         if (active) {

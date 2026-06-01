@@ -5,6 +5,9 @@ const nextConfig = {
     unoptimized: true,
   },
   trailingSlash: true,
+  turbopack: {
+    root: __dirname,
+  },
 }
 
 export default nextConfig

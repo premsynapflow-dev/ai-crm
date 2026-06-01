@@ -6,7 +6,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { AuthProvider } from '@/lib/auth-context'
 import './globals.css'
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const enableVercelAnalytics = process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV)
 
 export const metadata: Metadata = {

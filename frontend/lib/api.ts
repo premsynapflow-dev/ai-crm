@@ -24,8 +24,6 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = getToken()
 
-  console.log('[auth] Authorization header before API call:', token)
-
   if (token) {
     const authorizationHeader = `Bearer ${token}`
     if (typeof config.headers?.set === 'function') {
