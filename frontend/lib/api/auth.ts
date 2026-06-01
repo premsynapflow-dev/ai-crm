@@ -11,6 +11,16 @@ export interface LoginCredentials {
   password: string
 }
 
+export interface ForgotPasswordPayload {
+  email: string
+}
+
+export interface ResetPasswordPayload {
+  email: string
+  otp: string
+  new_password: string
+}
+
 export interface User {
   id: string
   email: string
@@ -70,6 +80,16 @@ export const authAPI = {
     } catch (error) {
       throw error
     }
+  },
+
+  forgotPassword: async (payload: ForgotPasswordPayload): Promise<{ message: string }> => {
+    const response = await api.post('/api/v1/auth/forgot-password', payload)
+    return response.data
+  },
+
+  resetPassword: async (payload: ResetPasswordPayload): Promise<{ message: string }> => {
+    const response = await api.post('/api/v1/auth/reset-password', payload)
+    return response.data
   },
 
   logout: async () => {

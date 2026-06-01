@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     smtp_user: str = Field(default="", alias="SMTP_USER")
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="", alias="SMTP_FROM")
+    resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
+    resend_from: str = Field(default="SynapFlow <onboarding@resend.dev>", alias="RESEND_FROM")
     inbound_email_domain: str = Field(default="inbound.synapflow.com", alias="INBOUND_EMAIL_DOMAIN")
     inbound_email_webhook_secret: str = Field(default="", alias="INBOUND_EMAIL_WEBHOOK_SECRET")
 
@@ -184,6 +186,8 @@ def _manual_settings_data() -> dict:
         "SMTP_USER": os.getenv("SMTP_USER", ""),
         "SMTP_PASSWORD": os.getenv("SMTP_PASSWORD", ""),
         "SMTP_FROM": os.getenv("SMTP_FROM", ""),
+        "RESEND_API_KEY": os.getenv("RESEND_API_KEY", ""),
+        "RESEND_FROM": os.getenv("RESEND_FROM", "SynapFlow <onboarding@resend.dev>"),
         "INBOUND_EMAIL_DOMAIN": os.getenv("INBOUND_EMAIL_DOMAIN", "inbound.synapflow.com"),
         "INBOUND_EMAIL_WEBHOOK_SECRET": os.getenv("INBOUND_EMAIL_WEBHOOK_SECRET", ""),
         "APP_BASE_URL": os.getenv("APP_BASE_URL", "http://127.0.0.1:8000"),

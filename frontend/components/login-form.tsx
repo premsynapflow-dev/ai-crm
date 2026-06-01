@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { Logo } from '@/components/logo'
@@ -145,13 +146,9 @@ export function LoginForm() {
                   Remember me
                 </label>
               </div>
-              <button
-                type="button"
-                className="text-sm text-primary hover:underline"
-                onClick={() => toast.info('Password reset link sent to your email')}
-              >
+              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
                 Forgot password?
-              </button>
+              </Link>
             </div>
 
             <Button

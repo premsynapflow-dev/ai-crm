@@ -127,3 +127,77 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .dark body {
+    color-scheme: dark;
+  }
+
+  .dark [class~="bg-white"],
+  .dark [class~="bg-white/95"],
+  .dark [class~="bg-white/90"],
+  .dark [class~="bg-white/80"],
+  .dark [class~="bg-white/70"],
+  .dark [class~="bg-white/5"],
+  .dark [class~="bg-slate-50"],
+  .dark [class~="bg-slate-50/80"],
+  .dark [class~="bg-slate-50/70"],
+  .dark [class~="bg-slate-100"],
+  .dark [class~="bg-gray-100"],
+  .dark [class~="bg-[#fcfbf7]"],
+  .dark [class~="bg-[#f5f9ff]"] {
+    background-color: color-mix(in oklch, var(--card) 92%, white 8%) !important;
+  }
+
+  .dark [class~="text-slate-950"],
+  .dark [class~="text-slate-900"],
+  .dark [class~="text-slate-800"],
+  .dark [class~="text-gray-900"],
+  .dark [class~="text-gray-800"] {
+    color: var(--foreground) !important;
+  }
+
+  .dark [class~="text-slate-700"],
+  .dark [class~="text-slate-600"],
+  .dark [class~="text-slate-500"],
+  .dark [class~="text-slate-400"],
+  .dark [class~="text-gray-700"],
+  .dark [class~="text-gray-600"] {
+    color: var(--muted-foreground) !important;
+  }
+
+  .dark [class~="border-slate-300"],
+  .dark [class~="border-slate-200"],
+  .dark [class~="border-slate-200/80"],
+  .dark [class~="border-slate-200/70"],
+  .dark [class~="border-gray-200"],
+  .dark [class~="border-white/70"] {
+    border-color: var(--border) !important;
+  }
+
+  .dark [class~="bg-emerald-100"],
+  .dark [class~="bg-emerald-50"] {
+    background-color: color-mix(in oklch, oklch(0.7 0.18 160) 22%, var(--background) 78%) !important;
+  }
+
+  .dark [class~="text-emerald-700"] {
+    color: oklch(0.82 0.14 160) !important;
+  }
+
+  .dark [class~="bg-red-50"] {
+    background-color: color-mix(in oklch, var(--destructive) 20%, var(--background) 80%) !important;
+  }
+
+  .dark [class~="bg-sky-50"] {
+    background-color: color-mix(in oklch, oklch(0.65 0.18 235) 18%, var(--background) 82%) !important;
+  }
+
+  .dark [class~="bg-amber-100"] {
+    background-color: color-mix(in oklch, oklch(0.8 0.15 80) 22%, var(--background) 78%) !important;
+  }
+
+  .dark [class~="text-amber-900"],
+  .dark [class~="text-amber-700"] {
+    color: oklch(0.86 0.14 80) !important;
+  }
+}

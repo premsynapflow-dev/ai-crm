@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getToken, clearToken } from './auth'
 
-const AUTH_REDIRECT_EXEMPT_PATHS = new Set(['/', '/login', '/signup', '/admin/login'])
+const AUTH_REDIRECT_EXEMPT_PATHS = new Set(['/', '/login', '/signup', '/forgot-password', '/admin/login'])
 
 function normalizePathname(pathname: string): string {
   if (!pathname || pathname === '/') {

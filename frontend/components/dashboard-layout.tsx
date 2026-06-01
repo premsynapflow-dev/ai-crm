@@ -245,7 +245,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <button
                 onClick={handleLogout}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 w-full transition-all",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 w-full transition-all",
                   collapsed && "justify-center px-2"
                 )}
               >
@@ -267,7 +267,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.08),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(241,245,249,1))]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.08),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(241,245,249,1))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_30%),linear-gradient(180deg,_rgba(2,6,23,1),_rgba(15,23,42,1))]">
       {/* Desktop Sidebar */}
       <aside className={cn(
         "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 hidden lg:block",
@@ -318,7 +318,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* Right Actions */}
             <div className="flex items-center gap-2">
               {user?.plan_id && (
-                <Badge variant="outline" className="hidden border-emerald-200 bg-emerald-50 text-emerald-700 md:inline-flex">
+                <Badge variant="outline" className="hidden border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 md:inline-flex">
                   {user.plan_id}
                 </Badge>
               )}

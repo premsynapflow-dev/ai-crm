@@ -760,6 +760,23 @@ class ClientUser(Base):
     assigned_complaints = relationship("Complaint", foreign_keys="Complaint.assigned_user_id", back_populates="assigned_user")
 
 
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+    __table_args__ = (
+        Index("idx_password_reset_otps_user_active", "user_id", "used_at", "expires_at"),
+        Index("idx_password_reset_otps_expires_at", "expires_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("client_users.id"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    otp_hash = Column(String(128), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class EventLog(Base):
     __tablename__ = "event_logs"
     __table_args__ = (

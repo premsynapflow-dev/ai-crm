@@ -13,6 +13,7 @@ from email.parser import BytesParser
 from email.utils import getaddresses, make_msgid, parsedate_to_datetime
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -51,6 +52,62 @@ class ForwardedEmailRequest(BaseModel):
     raw_email: str
 
 
+def _from_email(from_email: str | None = None) -> str:
+    return from_email or settings.smtp_from or settings.resend_from
+
+
+def _email_body_with_footer(body: str) -> str:
+    base_url = settings.app_base_url.rstrip("/")
+    unsubscribe_notice = (
+        "\n\n---\n"
+        "To unsubscribe from SynapFlow notifications, email privacy@synapflow.in "
+        "or visit " + base_url + "/unsubscribe\n"
+        "SynapTec Pvt. Ltd. - [INSERT REGISTERED ADDRESS]"
+    )
+    return body + unsubscribe_notice
+
+
+def _resend_headers() -> dict[str, str]:
+    base_url = settings.app_base_url.rstrip("/")
+    return {
+        "List-Unsubscribe": f"<mailto:privacy@synapflow.in?subject=unsubscribe>, <{base_url}/unsubscribe>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _send_resend_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    *,
+    from_email: str | None = None,
+    reply_to: str | None = None,
+    include_metadata: bool = False,
+) -> bool | dict[str, Any]:
+    payload: dict[str, Any] = {
+        "from": _from_email(from_email),
+        "to": [to_email],
+        "subject": subject,
+        "text": _email_body_with_footer(body),
+        "headers": _resend_headers(),
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+
+    with httpx.Client(timeout=20.0) as client:
+        response = client.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {settings.resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+    response.raise_for_status()
+    result = {"sent": True, "message_id": response.json().get("id")}
+    return result if include_metadata else result["sent"]
+
+
 def send_email(
     to_email: str,
     subject: str,
@@ -63,6 +120,16 @@ def send_email(
     include_metadata: bool = False,
     is_marketing: bool = False,
 ) -> bool | dict[str, Any]:
+    if settings.resend_api_key:
+        return _send_resend_email(
+            to_email,
+            subject,
+            body,
+            from_email=from_email,
+            reply_to=reply_to,
+            include_metadata=include_metadata,
+        )
+
     if not settings.smtp_host:
         result = {"sent": False, "message_id": None}
         return result if include_metadata else result["sent"]
@@ -70,7 +137,7 @@ def send_email(
     msg = EmailMessage()
     message_id = make_msgid()
     msg["Subject"] = subject
-    msg["From"] = from_email or settings.smtp_from
+    msg["From"] = _from_email(from_email)
     msg["To"] = to_email
     msg["Message-ID"] = message_id
     if reply_to:
@@ -92,7 +159,7 @@ def send_email(
         "or visit " + base_url + "/unsubscribe\n"
         "SynapTec Pvt. Ltd. · [INSERT REGISTERED ADDRESS]"
     )
-    msg.set_content(body + unsubscribe_notice)
+    msg.set_content(_email_body_with_footer(body))
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
         server.starttls()
