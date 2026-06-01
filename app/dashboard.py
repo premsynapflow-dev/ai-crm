@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db.models import Client
 from app.db.session import get_db
+from app.dependencies.auth import get_current_admin_user
 
 router = APIRouter()
 settings = get_settings()
@@ -47,7 +48,11 @@ def clients_dashboard():
 
 
 @router.post("/legacy-admin/create-client")
-def create_client(name: str, db: Session = Depends(get_db)):
+def create_client(
+    name: str,
+    db: Session = Depends(get_db),
+    _admin=Depends(get_current_admin_user),
+):
     import secrets
 
     api_key = secrets.token_hex(24)
