@@ -288,8 +288,27 @@ app.include_router(metrics_router)
 
 frontend_dir = Path("frontend/out")
 
+_IMMUTABLE_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_SHORT_CACHE = {"Cache-Control": "public, max-age=3600"}
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
+
+def _static_cache_headers(path: Path) -> dict[str, str]:
+    suffix = path.suffix.lower()
+    if suffix in {".js", ".css", ".woff", ".woff2", ".ttf", ".otf", ".eot"}:
+        return _IMMUTABLE_CACHE
+    if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico"}:
+        return _SHORT_CACHE
+    return _NO_CACHE
+
+
 if (frontend_dir / "_next").exists():
-    app.mount("/_next", StaticFiles(directory=frontend_dir / "_next"), name="next-static")
+    @app.api_route("/_next/{file_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    async def serve_next_static(file_path: str):
+        full_path = frontend_dir / "_next" / file_path
+        if not full_path.is_file():
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        return FileResponse(full_path, headers=_IMMUTABLE_CACHE)
 
 
 if frontend_dir.exists():
@@ -307,14 +326,14 @@ if frontend_dir.exists():
 
         file_path = frontend_dir / full_path
         if file_path.is_file():
-            return FileResponse(file_path)
+            return FileResponse(file_path, headers=_static_cache_headers(file_path))
 
         html_path = frontend_dir / f"{full_path}.html"
         if html_path.is_file():
-            return FileResponse(html_path)
+            return FileResponse(html_path, headers=_NO_CACHE)
 
         index_path = frontend_dir / full_path / "index.html"
         if index_path.is_file():
-            return FileResponse(index_path)
+            return FileResponse(index_path, headers=_NO_CACHE)
 
-        return FileResponse(frontend_dir / "index.html")
+        return FileResponse(frontend_dir / "index.html", headers=_NO_CACHE)
