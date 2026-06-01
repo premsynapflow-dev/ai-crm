@@ -30,6 +30,7 @@ import {
   Check,
   Loader2,
   X,
+  MessageSquare,
 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -38,6 +39,7 @@ import { Label } from '@/components/ui/label'
 import { getCompanySectorLabel, isRbiEligibleCompany } from '@/lib/company-profile'
 import { settingsAPI, type SettingsSummary } from '@/lib/api/settings'
 import { promptsAPI, type ClientPromptConfig } from '@/lib/api/prompts'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import ConnectionsPage from '@/app/settings/connections/page'
@@ -215,6 +217,10 @@ export function SettingsContent() {
             <Bell className="h-4 w-4" />
             Notifications
           </TabsTrigger>
+          <TabsTrigger value="widget" className="gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Widget
+          </TabsTrigger>
           <TabsTrigger value="ai-prompts" className="gap-2">
             <Bot className="h-4 w-4" />
             AI Prompts
@@ -233,8 +239,13 @@ export function SettingsContent() {
         <TabsContent value="profile">
           <Card>
             <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Live account details for the current signed-in user</CardDescription>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Profile Information</CardTitle>
+                  <CardDescription>Live account details for the current signed-in user</CardDescription>
+                </div>
+                <ThemeToggle showLabel className="w-fit" />
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center gap-6">
@@ -482,6 +493,23 @@ export function SettingsContent() {
                   </p>
                 </CardContent>
               </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="widget">
+          <Card>
+            <CardHeader>
+              <CardTitle>Live Chat Widget</CardTitle>
+              <CardDescription>Configure the embeddable support widget from Settings.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                The widget setup page includes your embed snippet, live preview, and API key details.
+              </p>
+              <Button asChild>
+                <Link href="/settings/widget">Open widget settings</Link>
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

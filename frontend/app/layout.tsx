@@ -5,7 +5,6 @@ import { Toaster } from '@/components/ui/sonner'
 
 import { AuthProvider } from '@/lib/auth-context'
 import { ThemeProvider } from '@/components/theme-provider'
-import { ThemeToggle } from '@/components/theme-toggle'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -52,7 +51,6 @@ export default function RootLayout({
           <AuthProvider>
             {children}
           </AuthProvider>
-          <ThemeToggle />
           <Toaster position="top-right" richColors />
           {enableVercelAnalytics ? <Analytics /> : null}
         </ThemeProvider>

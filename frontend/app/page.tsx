@@ -203,31 +203,31 @@ export default function LandingPage() {
   const [isAnnual, setIsAnnual] = useState(false)
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f7f4ed_0%,#fffdf8_28%,#ffffff_100%)] text-slate-900">
-      <div className="pointer-events-none fixed inset-x-0 top-0 h-[32rem] bg-[radial-gradient(circle_at_top_left,rgba(9,105,218,0.14),transparent_38%),radial-gradient(circle_at_top_right,rgba(180,83,9,0.14),transparent_34%)]" />
+    <main className="landing-page min-h-screen bg-[linear-gradient(180deg,#f7f4ed_0%,#fffdf8_28%,#ffffff_100%)] text-slate-900 dark:bg-[linear-gradient(180deg,#020617_0%,#0f172a_42%,#111827_100%)] dark:text-slate-100">
+      <div className="pointer-events-none fixed inset-x-0 top-0 h-[32rem] bg-[radial-gradient(circle_at_top_left,rgba(9,105,218,0.14),transparent_38%),radial-gradient(circle_at_top_right,rgba(180,83,9,0.14),transparent_34%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.20),transparent_38%),radial-gradient(circle_at_top_right,rgba(217,119,6,0.13),transparent_34%)]" />
 
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Logo />
-          <nav className="hidden items-center gap-8 text-sm text-slate-600 md:flex">
-            <a href="#features" className="transition hover:text-slate-900">
+          <nav className="hidden items-center gap-8 text-sm text-slate-600 dark:text-slate-300 md:flex">
+            <a href="#features" className="transition hover:text-slate-900 dark:hover:text-white">
               Features
             </a>
-            <a href="#pricing" className="transition hover:text-slate-900">
+            <a href="#pricing" className="transition hover:text-slate-900 dark:hover:text-white">
               Pricing
             </a>
-            <a href="#results" className="transition hover:text-slate-900">
+            <a href="#results" className="transition hover:text-slate-900 dark:hover:text-white">
               Outcomes
             </a>
           </nav>
           <div className="flex items-center gap-3">
             <Link href="/login">
-              <Button variant="ghost" className="text-slate-700">
+              <Button variant="ghost" className="text-slate-700 dark:text-slate-200">
                 Log in
               </Button>
             </Link>
             <Link href="/signup">
-              <Button className="bg-slate-900 text-white hover:bg-slate-800">
+              <Button className="bg-slate-900 text-white hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500">
                 Start free
               </Button>
             </Link>
@@ -238,19 +238,19 @@ export default function LandingPage() {
       <section className="relative overflow-hidden px-4 pb-20 pt-16 sm:px-6 lg:px-8 lg:pb-24 lg:pt-24">
         <div className="mx-auto grid max-w-7xl gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div>
-            <Badge className="mb-6 rounded-full bg-amber-100 px-4 py-1 text-amber-900 hover:bg-amber-100">
+            <Badge className="mb-6 rounded-full bg-amber-100 px-4 py-1 text-amber-900 hover:bg-amber-100 dark:bg-amber-400/15 dark:text-amber-200 dark:hover:bg-amber-400/15">
               AI-powered complaint management for regulated teams
             </Badge>
-            <h1 className="max-w-3xl text-5xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
+            <h1 className="max-w-3xl text-5xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-6xl">
               Turn complaint operations into a measurable competitive edge.
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 dark:text-slate-300 sm:text-xl">
               SynapFlow helps support and compliance teams classify complaints, route work,
               enforce SLAs, and draft high-confidence replies without losing human control.
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <Link href="/signup">
-                <Button size="lg" className="w-full bg-slate-900 text-white hover:bg-slate-800 sm:w-auto">
+                <Button size="lg" className="w-full bg-slate-900 text-white hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 sm:w-auto">
                   Start free
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -259,13 +259,13 @@ export default function LandingPage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="w-full border-slate-300 bg-white/80 text-slate-900 hover:bg-slate-50 sm:w-auto"
+                  className="w-full border-slate-300 bg-white/80 text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:bg-slate-800 sm:w-auto"
                 >
                   View pricing
                 </Button>
               </a>
             </div>
-            <div className="mt-8 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:gap-6">
+            <div className="mt-8 flex flex-col gap-3 text-sm text-slate-600 dark:text-slate-300 sm:flex-row sm:gap-6">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                 Free plan available
@@ -283,13 +283,13 @@ export default function LandingPage() {
 
           <div className="relative">
             <div className="absolute -inset-6 rounded-[2rem] bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.18),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.16),transparent_40%)] blur-2xl" />
-            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.14)]">
-              <div className="border-b border-slate-200 bg-slate-950 px-6 py-4 text-slate-50">
+            <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.14)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
+              <div className="border-b border-slate-200 bg-slate-950 px-6 py-4 text-slate-50 dark:border-slate-800">
                 <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Operations cockpit</p>
                 <h2 className="mt-1 text-xl font-semibold">Daily complaint flow</h2>
               </div>
               <div className="grid gap-4 p-6 sm:grid-cols-2">
-                <Card className="border-slate-200 bg-[#fcfbf7] shadow-none">
+                <Card className="border-slate-200 bg-[#fcfbf7] shadow-none dark:border-slate-800 dark:bg-slate-950">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium text-slate-500">SLA on track</CardTitle>
                   </CardHeader>
@@ -298,7 +298,7 @@ export default function LandingPage() {
                     <p className="mt-2 text-sm text-slate-500">Across all active complaint queues this month</p>
                   </CardContent>
                 </Card>
-                <Card className="border-slate-200 bg-[#f5f9ff] shadow-none">
+                <Card className="border-slate-200 bg-[#f5f9ff] shadow-none dark:border-slate-800 dark:bg-slate-950">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium text-slate-500">AI-assisted replies</CardTitle>
                   </CardHeader>
@@ -307,7 +307,7 @@ export default function LandingPage() {
                     <p className="mt-2 text-sm text-slate-500">Draft acceptance rate with human review controls</p>
                   </CardContent>
                 </Card>
-                <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:col-span-2">
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950 sm:col-span-2">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-slate-500">Queue pressure snapshot</p>
@@ -342,13 +342,13 @@ export default function LandingPage() {
       </section>
 
       <section id="results" className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur sm:grid-cols-3 lg:p-8">
+        <div className="mx-auto grid max-w-7xl gap-4 rounded-[2rem] border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 sm:grid-cols-3 lg:p-8">
           {[
             ['10x faster', 'First-response turnaround'],
             ['85%+', 'High-confidence AI draft coverage'],
             ['1 platform', 'Tenant, compliance, and ops visibility'],
           ].map(([value, label]) => (
-            <div key={label} className="rounded-2xl bg-slate-50 p-5">
+            <div key={label} className="rounded-2xl bg-slate-50 p-5 dark:bg-slate-950">
               <div className="text-3xl font-semibold text-slate-950">{value}</div>
               <p className="mt-2 text-sm text-slate-600">{label}</p>
             </div>
@@ -360,7 +360,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-7xl">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-700">What teams get</p>
-            <h2 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+            <h2 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-5xl">
               A complaint platform that helps operators move faster without losing control.
             </h2>
           </div>
@@ -368,7 +368,7 @@ export default function LandingPage() {
             {features.map((feature) => {
               const Icon = feature.icon
               return (
-                <Card key={feature.title} className="h-full rounded-[1.75rem] border-slate-200 bg-white/90 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+                <Card key={feature.title} className="h-full rounded-[1.75rem] border-slate-200 bg-white/90 shadow-sm transition hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/90">
                   <CardHeader>
                     <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white">
                       <Icon className="h-5 w-5" />
@@ -421,8 +421,8 @@ export default function LandingPage() {
                 key={plan.name}
                 className={`rounded-[1.8rem] border ${
                   plan.featured
-                    ? 'border-amber-300 bg-[linear-gradient(180deg,#fffdf8_0%,#fff3cf_100%)] text-slate-950'
-                    : 'border-white/10 bg-white/5 text-white'
+                    ? 'border-amber-300 bg-[linear-gradient(180deg,#fffdf8_0%,#fff3cf_100%)] text-slate-950 dark:bg-[linear-gradient(180deg,rgba(251,191,36,0.20)_0%,rgba(30,41,59,0.98)_100%)] dark:text-white'
+                    : 'border-white/10 bg-white/5 text-white dark:bg-white/10'
                 } shadow-none`}
               >
                 <CardHeader>
@@ -441,17 +441,17 @@ export default function LandingPage() {
                   </div>
                   <div className="pt-6">
                     <div className="text-4xl font-semibold">{formatLandingPrice(displayedPrice)}</div>
-                    <p className={`mt-2 text-sm ${plan.featured ? 'text-slate-600' : 'text-slate-300'}`}>
+                    <p className={`mt-2 text-sm ${plan.featured ? 'text-slate-600 dark:text-slate-300' : 'text-slate-300'}`}>
                       {displayedPrice == null ? 'Tailored rollout' : `/${isAnnual ? 'year' : 'month'}`}
                     </p>
-                    <div className={`mt-4 grid gap-2 text-sm ${plan.featured ? 'text-slate-700' : 'text-slate-300'}`}>
+                    <div className={`mt-4 grid gap-2 text-sm ${plan.featured ? 'text-slate-700 dark:text-slate-200' : 'text-slate-300'}`}>
                       <p>{plan.volume}</p>
                       <p>{plan.seats}</p>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <ul className={`space-y-3 text-sm ${plan.featured ? 'text-slate-700' : 'text-slate-200'}`}>
+                  <ul className={`space-y-3 text-sm ${plan.featured ? 'text-slate-700 dark:text-slate-200' : 'text-slate-200'}`}>
                     {plan.points.map((point) => (
                       <li key={point} className="flex items-start gap-3">
                         <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${plan.featured ? 'text-emerald-600' : 'text-emerald-300'}`} />
@@ -479,7 +479,7 @@ export default function LandingPage() {
       </section>
 
       <section className="px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 rounded-[2rem] border border-slate-200 bg-[linear-gradient(135deg,#10243a_0%,#1e3a5f_45%,#7c2d12_100%)] px-6 py-10 text-white shadow-2xl lg:flex-row lg:items-center lg:justify-between lg:px-10">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 rounded-[2rem] border border-slate-200 bg-[linear-gradient(135deg,#10243a_0%,#1e3a5f_45%,#7c2d12_100%)] px-6 py-10 text-white shadow-2xl dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between lg:px-10">
           <div className="max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-amber-200">Ready when you are</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-tight">
@@ -508,45 +508,45 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-slate-200 bg-white px-4 py-10 sm:px-6 lg:px-8">
+      <footer className="border-t border-slate-200 bg-white px-4 py-10 dark:border-slate-800 dark:bg-slate-950 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <p className="text-sm font-semibold text-slate-900">Legal</p>
-              <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                <li><Link href="/legal/privacy-policy" className="hover:text-slate-900">Privacy Policy</Link></li>
-                <li><Link href="/legal/terms-of-service" className="hover:text-slate-900">Terms of Service</Link></li>
-                <li><Link href="/legal/cookie-policy" className="hover:text-slate-900">Cookie Policy</Link></li>
-                <li><Link href="/legal/dpa" className="hover:text-slate-900">Data Processing Agreement</Link></li>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Legal</p>
+              <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li><Link href="/legal/privacy-policy" className="hover:text-slate-900 dark:hover:text-white">Privacy Policy</Link></li>
+                <li><Link href="/legal/terms-of-service" className="hover:text-slate-900 dark:hover:text-white">Terms of Service</Link></li>
+                <li><Link href="/legal/cookie-policy" className="hover:text-slate-900 dark:hover:text-white">Cookie Policy</Link></li>
+                <li><Link href="/legal/dpa" className="hover:text-slate-900 dark:hover:text-white">Data Processing Agreement</Link></li>
               </ul>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">Grievance Officer</p>
-              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Grievance Officer</p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-400">
                 <li>[INSERT NAME]</li>
                 <li>SynapTec Pvt. Ltd.</li>
-                <li><a href="mailto:grievance@synapflow.in" className="hover:text-slate-900">grievance@synapflow.in</a></li>
+                <li><a href="mailto:grievance@synapflow.in" className="hover:text-slate-900 dark:hover:text-white">grievance@synapflow.in</a></li>
                 <li>Mon–Fri, 9 AM–6 PM IST</li>
                 <li className="text-xs text-slate-400">Response within 48 hours · IT Act §5(9)</li>
               </ul>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">Data Protection</p>
-              <ul className="mt-3 space-y-1 text-sm text-slate-600">
-                <li><a href="mailto:dpo@synapflow.in" className="hover:text-slate-900">dpo@synapflow.in</a></li>
-                <li><a href="mailto:privacy@synapflow.in" className="hover:text-slate-900">privacy@synapflow.in</a></li>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Data Protection</p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                <li><a href="mailto:dpo@synapflow.in" className="hover:text-slate-900 dark:hover:text-white">dpo@synapflow.in</a></li>
+                <li><a href="mailto:privacy@synapflow.in" className="hover:text-slate-900 dark:hover:text-white">privacy@synapflow.in</a></li>
                 <li className="text-xs text-slate-400 mt-2">DPDP Act 2023 · GDPR · CCPA</li>
               </ul>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">SynapTec Pvt. Ltd.</p>
-              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">SynapTec Pvt. Ltd.</p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600 dark:text-slate-400">
                 <li>[INSERT REGISTERED ADDRESS]</li>
                 <li className="text-xs text-slate-400 mt-2">GSTIN: [INSERT GSTIN]</li>
               </ul>
             </div>
           </div>
-          <div className="mt-8 border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
+          <div className="mt-8 border-t border-slate-200 pt-6 text-center text-xs text-slate-400 dark:border-slate-800">
             © 2026 SynapTec Pvt. Ltd. All rights reserved. · SynapFlow is a registered trademark. ·
             {' '}<Link href="/legal/privacy-policy" className="underline">Privacy</Link>
             {' · '}<Link href="/legal/terms-of-service" className="underline">Terms</Link>

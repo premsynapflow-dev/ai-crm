@@ -39,15 +39,14 @@ import {
   Menu,
   ChevronLeft,
   User,
-  Users,
   FolderKanban,
   Sparkles,
   ShieldCheck,
-  MessageSquare,
   BookOpen,
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isRbiEligibleCompany } from '@/lib/company-profile'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -121,21 +120,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [lastReadAt, notifications])
 
   const unreadCount = unreadNotifications.length
+  const isRbiEligible = isRbiEligibleCompany(user?.business_sector, user?.is_rbi_regulated)
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/complaints', icon: Inbox, label: 'Complaints Inbox' },
     { href: '/customers', icon: User, label: 'Customer 360' },
     { href: '/assignments', icon: FolderKanban, label: 'Assignments' },
-    { href: '/settings/teams', icon: Users, label: 'Teams' },
     { href: '/reply-queue', icon: Sparkles, label: 'AI Reply Queue' },
-    { href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' },
+    ...(isRbiEligible ? [{ href: '/compliance', icon: ShieldCheck, label: 'RBI Compliance' }] : []),
     { href: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
     { href: '/workflows', icon: Zap, label: 'Automation' },
     { href: '/analytics', icon: BarChart3, label: 'Analytics' },
     { href: '/pricing', icon: CreditCard, label: 'Billing & Plans' },
     { href: '/usage', icon: Activity, label: 'Usage & Limits' },
     { href: '/settings', icon: Settings, label: 'Settings' },
-    { href: '/settings/widget', icon: MessageSquare, label: 'Live Chat Widget' },
   ]
 
   const handleLogout = () => {
