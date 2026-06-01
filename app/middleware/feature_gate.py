@@ -121,25 +121,30 @@ class FeatureGateMiddleware(BaseHTTPMiddleware):
         if not required_feature:
             return await call_next(request)
 
-        client = self._resolve_client(request)
-        if client:
-            db = SessionLocal()
-            try:
-                if not has_feature_access(client, required_feature, db=db):
-                    required_plan_name = get_required_plan(required_feature, db=db)
-                    return JSONResponse(
-                        status_code=403,
-                        content={
-                            "detail": {
-                                "message": f"This feature requires {required_plan_name} plan or higher",
-                                "feature_flag": required_feature,
-                                "required_plan": required_plan_name,
-                                "current_plan": PLANS.get(client.plan_id, {}).get("name", client.plan_id),
-                            }
-                        },
-                    )
-            finally:
-                db.close()
+        # Resolve client_id — RLSContextMiddleware may have already set it on request.state
+        client_id = resolve_client_id_from_request(request)
+        if not client_id:
+            return await call_next(request)
+
+        # Single DB session for both Client lookup and feature check
+        db = SessionLocal()
+        try:
+            client = db.query(Client).filter(Client.id == self._as_uuid(client_id)).first()
+            if client and not has_feature_access(client, required_feature, db=db):
+                required_plan_name = get_required_plan(required_feature, db=db)
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": {
+                            "message": f"This feature requires {required_plan_name} plan or higher",
+                            "feature_flag": required_feature,
+                            "required_plan": required_plan_name,
+                            "current_plan": PLANS.get(client.plan_id, {}).get("name", client.plan_id),
+                        }
+                    },
+                )
+        finally:
+            db.close()
 
         return await call_next(request)
 
@@ -148,17 +153,6 @@ class FeatureGateMiddleware(BaseHTTPMiddleware):
             if path.startswith(route_prefix):
                 return feature_flag
         return None
-
-    def _resolve_client(self, request: Request) -> Client | None:
-        client_id = resolve_client_id_from_request(request)
-        if not client_id:
-            return None
-
-        db = SessionLocal()
-        try:
-            return db.query(Client).filter(Client.id == self._as_uuid(client_id)).first()
-        finally:
-            db.close()
 
     @staticmethod
     def _as_uuid(value):

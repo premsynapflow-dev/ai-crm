@@ -13,6 +13,9 @@ from app.security.session import BadSignature, decode_session
 
 settings = get_settings()
 
+# Paths that don't carry tenant identity — skip DB lookup entirely
+_SKIP_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/health", "/metrics", "/static/")
+
 
 def _normalize_user_id(value: str | UUID | None) -> UUID | str | None:
     if value in (None, ""):
@@ -80,6 +83,9 @@ class RLSContextMiddleware(BaseHTTPMiddleware):
     """Expose request tenant identity to the DB session layer."""
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith(_SKIP_PREFIXES):
+            return await call_next(request)
+
         client_id = resolve_client_id_from_request(request)
         token = set_current_client_context(client_id)
         try:

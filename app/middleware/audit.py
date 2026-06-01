@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -6,6 +8,16 @@ from app.db.session import SessionLocal
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Dedicated thread pool so audit writes never compete with the main executor
+_audit_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="audit")
+
+# Paths that don't need auditing — skip to save DB connections
+_SKIP_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/health", "/metrics", "/static/")
+
+
+def _should_skip_audit(path: str) -> bool:
+    return path.startswith(_SKIP_PREFIXES)
 
 
 def _parse_uuid(value):
@@ -19,31 +31,41 @@ def _parse_uuid(value):
         return None
 
 
+def _write_audit_sync(client_id, request_id, path, method, ip_address, user_agent, status_code):
+    try:
+        db = SessionLocal()
+        audit = RequestAudit(
+            client_id=client_id,
+            request_id=request_id,
+            path=path,
+            method=method,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            status_code=status_code,
+        )
+        db.add(audit)
+        db.commit()
+        db.close()
+    except Exception as exc:
+        logger.warning("Audit logging failed: %s", exc)
+
+
 class RequestAuditMiddleware(BaseHTTPMiddleware):
-    """Async audit logging - doesn't block request"""
-    
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        
-        # Audit in background (non-blocking)
-        try:
-            db = SessionLocal()
-            client_id = _parse_uuid(getattr(request.state, "client_id", None))
-            
-            audit = RequestAudit(
-                client_id=client_id,
-                request_id=getattr(request.state, "request_id", str(uuid.uuid4())),
-                path=request.url.path,
-                method=request.method,
-                ip_address=request.client.host if request.client else "unknown",
-                user_agent=request.headers.get("user-agent"),
-                status_code=response.status_code,
+
+        if not _should_skip_audit(request.url.path):
+            # Fire-and-forget: response is returned immediately, DB write happens in background thread
+            asyncio.get_event_loop().run_in_executor(
+                _audit_executor,
+                _write_audit_sync,
+                _parse_uuid(getattr(request.state, "client_id", None)),
+                getattr(request.state, "request_id", str(uuid.uuid4())),
+                request.url.path,
+                request.method,
+                request.client.host if request.client else "unknown",
+                request.headers.get("user-agent"),
+                response.status_code,
             )
-            db.add(audit)
-            db.commit()
-            db.close()
-        except Exception as e:
-            logger.warning(f"Audit logging failed: {e}")
-            # Don't fail the request
-        
+
         return response

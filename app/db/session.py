@@ -21,10 +21,10 @@ _is_postgres = "postgresql" in db_url
 engine = create_engine(
     db_url,
     connect_args={"sslmode": "require"} if _is_postgres else {},
-    pool_size=5,
-    max_overflow=10,
+    pool_size=15,
+    max_overflow=20,
     pool_timeout=30,
-    pool_recycle=1800,
+    pool_recycle=600,
     pool_pre_ping=True,
     echo=False,
     future=True,
