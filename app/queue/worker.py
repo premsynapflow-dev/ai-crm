@@ -249,46 +249,64 @@ def process_inbox_poll():
     return result
 
 
+def _run_step(name: str, fn, *args, **kwargs):
+    """Run a single worker step, logging and suppressing any exception so other steps still run."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:
+        if "does not exist" in str(exc).lower():
+            logger.warning("Worker step %s skipped (schema not ready): %s", name, exc)
+        else:
+            logger.exception("Worker step %s failed: %s", name, exc)
+        return None
+
+
 def worker_loop(interval_seconds=30):
     logger.info("Simple queue worker started")
     while not _stop_event.is_set():
-        try:
-            processed = process_jobs()
-            if processed:
-                logger.info("Processed %s queued jobs", processed)
-            retried = process_retry_queue()
-            if retried:
-                logger.info("Retried %s failed channel messages", retried)
-            follow_up_actions = process_follow_up_automation()
-            if follow_up_actions:
-                logger.info("Processed %s follow-up automation actions", follow_up_actions)
-            sla_updates = process_sla_monitor()
-            if sla_updates:
-                logger.info("Processed %s SLA status updates", sla_updates)
-            rbi_updates = process_rbi_tat_monitor()
-            if rbi_updates:
-                logger.info("Processed %s RBI TAT status updates", rbi_updates)
-            mis_reports = process_rbi_monthly_reports()
-            if mis_reports:
-                logger.info("Generated %s RBI MIS reports", mis_reports)
-            escalations = process_escalations_monitor()
-            if escalations:
-                logger.info("Processed %s escalations", escalations)
-            spikes = process_spike_detection()
-            if spikes:
-                logger.info("Detected %s complaint spikes", spikes)
-            inbox_poll = process_inbox_poll()
-            if inbox_poll["inboxes"] or inbox_poll["fetched"] or inbox_poll["errors"]:
-                logger.info(
-                    "Polled %s inboxes fetched=%s processed=%s duplicates=%s errors=%s",
-                    inbox_poll["inboxes"],
-                    inbox_poll["fetched"],
-                    inbox_poll["processed"],
-                    inbox_poll["duplicates"],
-                    inbox_poll["errors"],
-                )
-        except Exception as exc:
-            logger.exception("Queue worker error: %s", exc)
+        processed = _run_step("process_jobs", process_jobs)
+        if processed:
+            logger.info("Processed %s queued jobs", processed)
+
+        retried = _run_step("process_retry_queue", process_retry_queue)
+        if retried:
+            logger.info("Retried %s failed channel messages", retried)
+
+        follow_up_actions = _run_step("process_follow_up_automation", process_follow_up_automation)
+        if follow_up_actions:
+            logger.info("Processed %s follow-up automation actions", follow_up_actions)
+
+        sla_updates = _run_step("process_sla_monitor", process_sla_monitor)
+        if sla_updates:
+            logger.info("Processed %s SLA status updates", sla_updates)
+
+        rbi_updates = _run_step("process_rbi_tat_monitor", process_rbi_tat_monitor)
+        if rbi_updates:
+            logger.info("Processed %s RBI TAT status updates", rbi_updates)
+
+        mis_reports = _run_step("process_rbi_monthly_reports", process_rbi_monthly_reports)
+        if mis_reports:
+            logger.info("Generated %s RBI MIS reports", mis_reports)
+
+        escalations = _run_step("process_escalations_monitor", process_escalations_monitor)
+        if escalations:
+            logger.info("Processed %s escalations", escalations)
+
+        spikes = _run_step("process_spike_detection", process_spike_detection)
+        if spikes:
+            logger.info("Detected %s complaint spikes", spikes)
+
+        inbox_poll = _run_step("process_inbox_poll", process_inbox_poll)
+        if inbox_poll and (inbox_poll["inboxes"] or inbox_poll["fetched"] or inbox_poll["errors"]):
+            logger.info(
+                "Polled %s inboxes fetched=%s processed=%s duplicates=%s errors=%s",
+                inbox_poll["inboxes"],
+                inbox_poll["fetched"],
+                inbox_poll["processed"],
+                inbox_poll["duplicates"],
+                inbox_poll["errors"],
+            )
+
         _stop_event.wait(interval_seconds)
 
 

@@ -100,15 +100,23 @@ def poll_all_inboxes(*, max_results: int = 20) -> dict[str, int]:
         "errors": 0,
     }
     try:
-        inboxes = (
-            db.query(Inbox)
-            .filter(
-                Inbox.provider_type.in_(["gmail", "imap"]),
-                Inbox.is_active == True,
+        try:
+            inboxes = (
+                db.query(Inbox)
+                .filter(
+                    Inbox.provider_type.in_(["gmail", "imap"]),
+                    Inbox.is_active == True,
+                )
+                .order_by(Inbox.created_at.asc())
+                .all()
             )
-            .order_by(Inbox.created_at.asc())
-            .all()
-        )
+        except Exception as exc:
+            db.rollback()
+            if "does not exist" in str(exc).lower():
+                logger.warning("inbox_poller: inboxes table not available yet, skipping: %s", exc)
+                return totals
+            raise
+
         totals["inboxes"] = len(inboxes)
 
         for inbox in inboxes:
