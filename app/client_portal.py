@@ -74,7 +74,7 @@ async def portal_login_submit(
         )
 
     request.session["client_user_id"] = str(user.id)
-    response = RedirectResponse(url="/complaints", status_code=303)
+    response = RedirectResponse(url="/app/complaints", status_code=303)
     response.set_cookie(
         key="portal_session",
         value=create_session(str(user.id)),
@@ -101,52 +101,52 @@ def portal_logout(request: Request):
 @router.get("/portal")
 @router.get("/portal/complaints")
 def portal_home():
-    return RedirectResponse(url="/complaints", status_code=302)
+    return RedirectResponse(url="/app/complaints", status_code=302)
 
 
 @router.get("/portal/inbox")
 def portal_inbox():
-    return RedirectResponse(url="/complaints", status_code=302)
+    return RedirectResponse(url="/app/complaints", status_code=302)
 
 
 @router.get("/portal/leads")
 def portal_leads():
-    return RedirectResponse(url="/complaints?intent=sales_lead", status_code=302)
+    return RedirectResponse(url="/app/complaints?intent=sales_lead", status_code=302)
 
 
 @router.get("/portal/analytics")
 def portal_analytics():
-    return RedirectResponse(url="/analytics", status_code=302)
+    return RedirectResponse(url="/app/analytics", status_code=302)
 
 
 @router.get("/portal/billing")
 def portal_billing():
-    return RedirectResponse(url="/pricing", status_code=302)
+    return RedirectResponse(url="/app/billing", status_code=302)
 
 
 @router.get("/portal/usage")
 def portal_usage():
-    return RedirectResponse(url="/usage", status_code=302)
+    return RedirectResponse(url="/app/billing", status_code=302)
 
 
 @router.get("/portal/upgrade")
 def portal_upgrade():
-    return RedirectResponse(url="/pricing", status_code=302)
+    return RedirectResponse(url="/app/billing", status_code=302)
 
 
 @router.get("/portal/automation")
 def portal_automation():
-    return RedirectResponse(url="/workflows", status_code=302)
+    return RedirectResponse(url="/app/settings/automations", status_code=302)
 
 
 @router.get("/portal/ticket/{ticket_id}")
 def portal_ticket(ticket_id: str):
-    return RedirectResponse(url=f"/complaints?ticket_id={ticket_id}", status_code=302)
+    return RedirectResponse(url=f"/app/complaints?ticket_id={ticket_id}", status_code=302)
 
 
 @router.get("/portal/settings")
 def portal_settings():
-    return RedirectResponse(url="/settings", status_code=302)
+    return RedirectResponse(url="/app/settings", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +164,10 @@ def portal_upgrade_submit(
         return RedirectResponse(url="/login", status_code=303)
     client = db.query(Client).filter(Client.id == user.client_id).first()
     if not client or plan_id not in PLANS:
-        return RedirectResponse(url="/pricing", status_code=303)
+        return RedirectResponse(url="/app/billing", status_code=303)
     apply_plan_to_client(client, plan_id)
     db.commit()
-    return RedirectResponse(url="/pricing", status_code=303)
+    return RedirectResponse(url="/app/billing", status_code=303)
 
 
 @router.get("/portal/invoice/{invoice_id}")
@@ -214,7 +214,7 @@ def create_rule(
     )
     db.add(rule)
     db.commit()
-    return RedirectResponse(url="/workflows", status_code=303)
+    return RedirectResponse(url="/app/settings/automations", status_code=303)
 
 
 @router.post("/portal/settings")
@@ -229,18 +229,18 @@ def portal_settings_submit(
 
     client = db.query(Client).filter(Client.id == user.client_id).first()
     if not client:
-        return RedirectResponse(url="/settings?error=Client+not+found", status_code=303)
+        return RedirectResponse(url="/app/settings?error=Client+not+found", status_code=303)
 
     url = slack_webhook_url.strip()
     if url and not url.startswith("https://hooks.slack.com/"):
         return RedirectResponse(
-            url="/settings?error=Invalid+Slack+webhook+URL",
+            url="/app/settings?error=Invalid+Slack+webhook+URL",
             status_code=303,
         )
 
     client.slack_webhook_url = url or None
     db.commit()
-    return RedirectResponse(url="/settings?saved=1", status_code=303)
+    return RedirectResponse(url="/app/settings?saved=1", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +350,7 @@ def approve_ai_reply(
     ).first()
     client = db.query(Client).filter(Client.id == user.client_id).first()
     if not complaint or not client:
-        return RedirectResponse(url=f"/complaints?ticket_id={ticket_id}", status_code=303)
+        return RedirectResponse(url=f"/app/complaints?ticket_id={ticket_id}", status_code=303)
 
     queue_entry = complaint.reply_queue
     if queue_entry and queue_entry.status == "pending":
@@ -373,7 +373,7 @@ def approve_ai_reply(
             reply_text=complaint.ai_reply,
         )
     db.commit()
-    return RedirectResponse(url=f"/complaints?ticket_id={ticket_id}", status_code=303)
+    return RedirectResponse(url=f"/app/complaints?ticket_id={ticket_id}", status_code=303)
 
 
 @router.post("/client/reply/edit")
@@ -394,7 +394,7 @@ def edit_ai_reply(
     ).first()
     client = db.query(Client).filter(Client.id == user.client_id).first()
     if not complaint or not client:
-        return RedirectResponse(url=f"/complaints?ticket_id={ticket_id}", status_code=303)
+        return RedirectResponse(url=f"/app/complaints?ticket_id={ticket_id}", status_code=303)
 
     complaint.ai_reply = reply_text.strip()
     queue_entry = complaint.reply_queue
@@ -419,7 +419,7 @@ def edit_ai_reply(
             reply_text=complaint.ai_reply,
         )
     db.commit()
-    return RedirectResponse(url=f"/complaints?ticket_id={ticket_id}", status_code=303)
+    return RedirectResponse(url=f"/app/complaints?ticket_id={ticket_id}", status_code=303)
 
 
 @router.post("/client/reply/escalate")
@@ -475,7 +475,7 @@ def escalate_ai_reply(
         )
         db.commit()
 
-    return RedirectResponse(url=f"/complaints?ticket_id={ticket_id}", status_code=303)
+    return RedirectResponse(url=f"/app/complaints?ticket_id={ticket_id}", status_code=303)
 
 
 @router.post("/portal/settings/test")

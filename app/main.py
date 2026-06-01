@@ -315,6 +315,17 @@ if (frontend_dir / "_next").exists():
         return FileResponse(full_path, headers=_IMMUTABLE_CACHE)
 
 
+_LEGACY_PATH_REDIRECTS = {
+    "dashboard": "/app/dashboard",
+    "complaints": "/app/complaints",
+    "analytics": "/app/analytics",
+    "settings": "/app/settings",
+    "workflows": "/app/settings/automations",
+    "usage": "/app/billing",
+    "pricing": "/app/billing",
+    "inbox": "/app/complaints",
+}
+
 if frontend_dir.exists():
     @app.api_route("/customers/{customer_id}", methods=["GET", "HEAD"], include_in_schema=False)
     async def redirect_legacy_customer_route(customer_id: str):
@@ -327,6 +338,11 @@ if frontend_dir.exists():
 
         if first_segment in reserved_prefixes:
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+        # Redirect legacy Next.js-era paths to new SPA paths
+        bare_path = full_path.split("?")[0].strip("/")
+        if bare_path in _LEGACY_PATH_REDIRECTS:
+            return RedirectResponse(url=_LEGACY_PATH_REDIRECTS[bare_path], status_code=302)
 
         file_path = frontend_dir / full_path
         if file_path.is_file():

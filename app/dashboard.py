@@ -24,7 +24,7 @@ def login_page():
 def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     if username == settings.admin_username and password == settings.admin_password:
         request.session["admin"] = True
-        return RedirectResponse(url="/dashboard", status_code=303)
+        return RedirectResponse(url="/admin", status_code=303)
     return JSONResponse(
         status_code=401,
         content={"error": "Invalid username or password"},
@@ -39,12 +39,12 @@ def logout(request: Request):
 
 @router.get("/legacy-admin/dashboard")
 def dashboard():
-    return RedirectResponse(url="/dashboard", status_code=302)
+    return RedirectResponse(url="/admin", status_code=302)
 
 
 @router.get("/legacy-admin/dashboard/clients")
 def clients_dashboard():
-    return RedirectResponse(url="/dashboard", status_code=302)
+    return RedirectResponse(url="/admin", status_code=302)
 
 
 @router.post("/legacy-admin/create-client")
