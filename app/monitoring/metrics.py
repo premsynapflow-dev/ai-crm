@@ -1,3 +1,7 @@
+import asyncio
+import concurrent.futures
+import threading
+from collections import deque
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter
@@ -8,16 +12,41 @@ from app.db.session import SessionLocal
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
+# In-memory buffer — metrics are queued here, flushed to DB by background thread
+# maxlen=2000 prevents unbounded growth; oldest entries are dropped under pressure
+_buffer: deque = deque(maxlen=2000)
+_buffer_lock = threading.Lock()
+_flush_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="metrics")
 
-def record_metric(metric_name: str, metric_value: float, dimensions: dict | None = None):
-    db = SessionLocal()
+
+def record_metric(metric_name: str, metric_value: float, dimensions: dict | None = None) -> None:
+    """Non-blocking: append to in-memory buffer. Never opens a DB connection."""
+    with _buffer_lock:
+        _buffer.append({
+            "metric_name": metric_name,
+            "metric_value": metric_value,
+            "dimensions": dimensions or {},
+        })
+
+
+def flush_metrics() -> None:
+    """Drain the in-memory buffer to the DB. Called by background worker."""
+    with _buffer_lock:
+        if not _buffer:
+            return
+        batch = list(_buffer)
+        _buffer.clear()
+
+    if not batch:
+        return
+
     try:
-        db.add(MonitoringMetric(metric_name=metric_name, metric_value=metric_value, dimensions=dimensions or {}))
+        db = SessionLocal()
+        db.bulk_insert_mappings(MonitoringMetric, batch)
         db.commit()
-    except Exception:
-        db.rollback()
-    finally:
         db.close()
+    except Exception:
+        pass  # Metrics are best-effort; never raise
 
 
 def _aggregate(metric_name: str, minutes: int = 60):

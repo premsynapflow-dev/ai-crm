@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.analytics import router as analytics_api_router
@@ -144,6 +145,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=512)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 app.add_middleware(RLSContextMiddleware)
 app.add_middleware(FeatureGateMiddleware)
@@ -155,6 +157,9 @@ app.add_middleware(RequestAuditMiddleware)
 os.makedirs("public", exist_ok=True)
 app.mount("/public", StaticFiles(directory="public"), name="public")
 
+
+
+_SKIP_LOGGING_PREFIXES = ("/_next/", "/public/", "/favicon.ico", "/static/")
 
 
 @app.middleware("http")
@@ -169,27 +174,26 @@ async def request_logging(request: Request, call_next):
         raise
 
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
-    client_id = getattr(request.state, "client_id", None) or "-"
-    logger.info(
-        {
-            "request_id": request_id,
-            "method": request.method,
-            "path": request.url.path,
-            "client_id": client_id,
-            "status": response.status_code,
-            "latency_ms": duration_ms,
-        }
-    )
-    record_metric("request_duration_ms", duration_ms, {"path": request.url.path, "method": request.method})
-    if response.status_code >= 400:
-        record_metric("error_count", 1, {"path": request.url.path, "status": response.status_code})
+
+    # Skip metric recording and verbose logging for static asset requests
+    if not request.url.path.startswith(_SKIP_LOGGING_PREFIXES):
+        client_id = getattr(request.state, "client_id", None) or "-"
+        logger.info(
+            {
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "client_id": client_id,
+                "status": response.status_code,
+                "latency_ms": duration_ms,
+            }
+        )
+        record_metric("request_duration_ms", duration_ms, {"path": request.url.path, "method": request.method})
+        if response.status_code >= 400:
+            record_metric("error_count", 1, {"path": request.url.path, "status": response.status_code})
+
     response.headers["X-Request-ID"] = request_id
     return response
-
-
-@app.middleware("http")
-async def error_handling_middleware(request: Request, call_next):
-    return await call_next(request)
 
 
 @app.exception_handler(RequestValidationError)

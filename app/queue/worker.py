@@ -264,6 +264,9 @@ def _run_step(name: str, fn, *args, **kwargs):
 def worker_loop(interval_seconds=30):
     logger.info("Simple queue worker started")
     while not _stop_event.is_set():
+        from app.monitoring.metrics import flush_metrics
+        _run_step("flush_metrics", flush_metrics)
+
         processed = _run_step("process_jobs", process_jobs)
         if processed:
             logger.info("Processed %s queued jobs", processed)
