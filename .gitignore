@@ -6,6 +6,11 @@ __pycache__/
 backups/
 .pytest_cache/
 
+# Claude / Claude Code
+CLAUDE.md
+.claude/
+.mcp.json
+
 # Next.js
 frontend/.next/
 frontend/out/
