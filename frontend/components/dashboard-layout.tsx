@@ -438,8 +438,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-border py-4 px-6 text-center text-sm text-muted-foreground">
-          &copy; 2026 SynapTec Pvt. Ltd. All rights reserved.
+        <footer className="border-t border-border py-4 px-6 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>&copy; 2026 SynapTec Pvt. Ltd. All rights reserved.</span>
+            <div className="flex flex-wrap gap-4">
+              <a href="/legal/privacy-policy" className="hover:underline">Privacy Policy</a>
+              <a href="/legal/terms-of-service" className="hover:underline">Terms of Service</a>
+              <a href="/legal/cookie-policy" className="hover:underline">Cookie Policy</a>
+              <a href="/legal/dpa" className="hover:underline">DPA</a>
+              <a href="mailto:grievance@synapflow.in" className="hover:underline">Grievance Officer</a>
+            </div>
+          </div>
         </footer>
       </div>
     </div>

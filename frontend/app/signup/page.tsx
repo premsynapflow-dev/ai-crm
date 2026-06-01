@@ -10,6 +10,7 @@ import { Logo } from '@/components/logo'
 import { COMPANY_SECTOR_OPTIONS } from '@/lib/company-profile'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -21,10 +22,20 @@ export default function SignupPage() {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [businessSector, setBusinessSector] = useState('not_rbi_regulated')
   const [password, setPassword] = useState('')
+  const [ageConfirmed, setAgeConfirmed] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!ageConfirmed) {
+      toast.error('Age verification required', { description: 'You must confirm you are 18 years or older.' })
+      return
+    }
+    if (!termsAccepted) {
+      toast.error('Terms required', { description: 'Please accept the Terms of Service and Privacy Policy.' })
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -196,7 +207,41 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full bg-slate-900 text-white hover:bg-slate-800" disabled={isSubmitting}>
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="ageVerification"
+                    checked={ageConfirmed}
+                    onCheckedChange={(v) => setAgeConfirmed(v as boolean)}
+                    required
+                  />
+                  <label htmlFor="ageVerification" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
+                    I confirm that I am <strong>18 years of age or older</strong>.
+                    {' '}SynapFlow does not provide services to individuals under 18.
+                  </label>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="termsAccepted"
+                    checked={termsAccepted}
+                    onCheckedChange={(v) => setTermsAccepted(v as boolean)}
+                    required
+                  />
+                  <label htmlFor="termsAccepted" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
+                    I agree to SynapFlow's{' '}
+                    <Link href="/legal/terms-of-service" target="_blank" className="font-medium text-slate-950 underline underline-offset-4">
+                      Terms of Service
+                    </Link>
+                    {' '}and{' '}
+                    <Link href="/legal/privacy-policy" target="_blank" className="font-medium text-slate-950 underline underline-offset-4">
+                      Privacy Policy
+                    </Link>
+                    , and consent to the processing of my data as described therein.
+                  </label>
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full bg-slate-900 text-white hover:bg-slate-800" disabled={isSubmitting || !ageConfirmed || !termsAccepted}>
                 {isSubmitting ? 'Creating workspace...' : 'Create account'}
                 {!isSubmitting ? <ArrowRight className="ml-2 h-4 w-4" /> : null}
               </Button>

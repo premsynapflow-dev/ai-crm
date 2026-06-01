@@ -144,9 +144,26 @@ export function ReplyQueueContent() {
                         <CardDescription>{item.ticket_summary || 'No ticket summary available'}</CardDescription>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Badge variant="outline">{item.status}</Badge>
+                        {item.status === 'pending' && (
+                          <Badge className="bg-amber-100 text-amber-800 border border-amber-200">
+                            AI Draft — Pending Review
+                          </Badge>
+                        )}
+                        {item.status === 'approved' && (
+                          <Badge className="bg-green-100 text-green-800 border border-green-200">
+                            AI Draft — Approved
+                          </Badge>
+                        )}
+                        {item.status === 'rejected' && (
+                          <Badge variant="outline" className="text-slate-500">
+                            AI Draft — Rejected
+                          </Badge>
+                        )}
+                        {item.status !== 'pending' && item.status !== 'approved' && item.status !== 'rejected' && (
+                          <Badge variant="outline">{item.status}</Badge>
+                        )}
                         <Badge className="bg-blue-100 text-blue-700">
-                          Confidence {Math.round((item.confidence_score || 0) * 100)}%
+                          AI Confidence {Math.round((item.confidence_score || 0) * 100)}%
                         </Badge>
                       </div>
                     </div>

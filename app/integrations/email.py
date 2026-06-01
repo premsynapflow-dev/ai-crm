@@ -61,6 +61,7 @@ def send_email(
     in_reply_to: str | None = None,
     references: str | None = None,
     include_metadata: bool = False,
+    is_marketing: bool = False,
 ) -> bool | dict[str, Any]:
     if not settings.smtp_host:
         result = {"sent": False, "message_id": None}
@@ -78,7 +79,20 @@ def send_email(
         msg["In-Reply-To"] = in_reply_to
     if references:
         msg["References"] = references
-    msg.set_content(body)
+
+    # CAN-SPAM / DPDP: List-Unsubscribe header on all outbound emails
+    unsubscribe_email = f"privacy@synapflow.in"
+    base_url = settings.app_base_url.rstrip("/")
+    msg["List-Unsubscribe"] = f"<mailto:{unsubscribe_email}?subject=unsubscribe>, <{base_url}/unsubscribe>"
+    msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
+    unsubscribe_notice = (
+        "\n\n---\n"
+        "To unsubscribe from SynapFlow notifications, email privacy@synapflow.in "
+        "or visit " + base_url + "/unsubscribe\n"
+        "SynapTec Pvt. Ltd. · [INSERT REGISTERED ADDRESS]"
+    )
+    msg.set_content(body + unsubscribe_notice)
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
         server.starttls()

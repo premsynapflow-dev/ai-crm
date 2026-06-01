@@ -507,6 +507,53 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <footer className="border-t border-slate-200 bg-white px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Legal</p>
+              <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                <li><Link href="/legal/privacy-policy" className="hover:text-slate-900">Privacy Policy</Link></li>
+                <li><Link href="/legal/terms-of-service" className="hover:text-slate-900">Terms of Service</Link></li>
+                <li><Link href="/legal/cookie-policy" className="hover:text-slate-900">Cookie Policy</Link></li>
+                <li><Link href="/legal/dpa" className="hover:text-slate-900">Data Processing Agreement</Link></li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Grievance Officer</p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+                <li>[INSERT NAME]</li>
+                <li>SynapTec Pvt. Ltd.</li>
+                <li><a href="mailto:grievance@synapflow.in" className="hover:text-slate-900">grievance@synapflow.in</a></li>
+                <li>Mon–Fri, 9 AM–6 PM IST</li>
+                <li className="text-xs text-slate-400">Response within 48 hours · IT Act §5(9)</li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Data Protection</p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+                <li><a href="mailto:dpo@synapflow.in" className="hover:text-slate-900">dpo@synapflow.in</a></li>
+                <li><a href="mailto:privacy@synapflow.in" className="hover:text-slate-900">privacy@synapflow.in</a></li>
+                <li className="text-xs text-slate-400 mt-2">DPDP Act 2023 · GDPR · CCPA</li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">SynapTec Pvt. Ltd.</p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-600">
+                <li>[INSERT REGISTERED ADDRESS]</li>
+                <li className="text-xs text-slate-400 mt-2">GSTIN: [INSERT GSTIN]</li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-8 border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
+            © 2026 SynapTec Pvt. Ltd. All rights reserved. · SynapFlow is a registered trademark. ·
+            {' '}<Link href="/legal/privacy-policy" className="underline">Privacy</Link>
+            {' · '}<Link href="/legal/terms-of-service" className="underline">Terms</Link>
+            {' · '}<Link href="/legal/cookie-policy" className="underline">Cookies</Link>
+          </div>
+        </div>
+      </footer>
     </main>
   )
 }
