@@ -53,6 +53,7 @@ REQUIRED_TABLES = [
     "message_events",
     "customer_events",
     "workflow_executions",
+    "job_queue",
     "churn_outcomes",
     "agent_corrections",
     "knowledge_snippets",
