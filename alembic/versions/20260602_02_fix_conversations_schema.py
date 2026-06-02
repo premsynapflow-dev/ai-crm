@@ -113,6 +113,10 @@ def upgrade():
         )
 
     # 3. Unique constraint required by the ON CONFLICT upsert in ensure_conversation().
+    # Fix event_logs: action column is NOT NULL but the ORM never sets it.
+    conn.execute(sa.text("ALTER TABLE event_logs ALTER COLUMN action DROP NOT NULL"))
+    conn.execute(sa.text("ALTER TABLE event_logs ALTER COLUMN client_id DROP NOT NULL"))
+
     if not _has_constraint(conn, "conversations", "uq_conversations_client_channel_thread"):
         op.create_unique_constraint(
             "uq_conversations_client_channel_thread",
