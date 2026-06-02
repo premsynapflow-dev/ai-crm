@@ -88,7 +88,7 @@ export function Teams() {
   const loadTeams = async () => {
     setLoading(true);
     try {
-      const data = await api.teams.list();
+      const data = await api.teams.listRaw();
       setTeams(data.items);
     } catch {
       toast.error("Failed to load teams");

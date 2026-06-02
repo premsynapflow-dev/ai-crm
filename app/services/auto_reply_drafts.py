@@ -312,14 +312,10 @@ class AutoReplyDraftService:
         if not allow_disabled and not self._is_auto_reply_enabled(ticket):
             return False, "auto_reply_disabled"
 
-        if int(ticket.priority or 0) >= HIGH_PRIORITY_THRESHOLD:
-            return False, "high_priority"
-
+        # High-priority, legal/escalation and high-churn tickets still get a draft — the
+        # caller sets ai_reply_status = "agent_review" so they land in the HITL queue.
         if self._has_legal_or_escalation_flag(ticket, recent_messages):
             return False, "legal_or_escalation"
-
-        if customer is not None and float(customer.churn_risk_score or 0.0) >= HIGH_CHURN_RISK_THRESHOLD:
-            return False, "high_churn_risk"
 
         return True, None
 
@@ -332,7 +328,10 @@ class AutoReplyDraftService:
             )
             .first()
         )
-        return bool(setting and setting.auto_reply_enabled)
+        # Default to enabled when no setting record exists — opt-out model.
+        if setting is None:
+            return True
+        return bool(setting.auto_reply_enabled)
 
     def _has_legal_or_escalation_flag(
         self,

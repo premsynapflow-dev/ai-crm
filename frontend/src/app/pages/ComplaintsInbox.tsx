@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -18,21 +18,38 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { api, Complaint } from "../lib/api";
-import { Search, Filter, Mail, MessageSquare, Phone, Globe, Clock, AlertCircle, RefreshCw } from "lucide-react";
+import { api, Complaint, Team } from "../lib/api";
+import {
+  Search,
+  Filter,
+  Mail,
+  MessageSquare,
+  Phone,
+  Globe,
+  Clock,
+  AlertCircle,
+  RefreshCw,
+  TrendingUp,
+  CheckCircle,
+} from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
+const AUTO_REFRESH_MS = 30_000;
+
 export function ComplaintsInbox() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadComplaints = useCallback(async () => {
-    setLoading(true);
+  const loadComplaints = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const data = await api.complaints.list({
@@ -43,10 +60,10 @@ export function ComplaintsInbox() {
       setComplaints(data);
     } catch (err: unknown) {
       const msg = (err as Error)?.message || "Failed to load complaints";
-      setError(msg);
+      if (!silent) setError(msg);
       console.error("Failed to load complaints:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [statusFilter, priorityFilter, searchQuery]);
 
@@ -54,6 +71,77 @@ export function ComplaintsInbox() {
   useEffect(() => {
     loadComplaints();
   }, [loadComplaints]);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    refreshTimerRef.current = setInterval(() => loadComplaints(true), AUTO_REFRESH_MS);
+    return () => {
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+    };
+  }, [loadComplaints]);
+
+  // Load teams once
+  useEffect(() => {
+    api.teams.list().then(setTeams).catch(() => null);
+  }, []);
+
+  const allAgents = teams.flatMap((t) => t.members);
+
+  const setAction = (id: string, on: boolean) =>
+    setActionLoading((prev) => ({ ...prev, [id]: on }));
+
+  const handleAssignTeam = async (complaint: Complaint, teamId: string) => {
+    setAction(complaint.id, true);
+    try {
+      await api.complaints.assign(complaint.id, teamId === "unassigned" ? null : teamId, null);
+      await loadComplaints(true);
+      toast.success("Team assigned");
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Failed to assign team");
+    } finally {
+      setAction(complaint.id, false);
+    }
+  };
+
+  const handleAssignAgent = async (complaint: Complaint, agentId: string) => {
+    setAction(complaint.id, true);
+    try {
+      await api.complaints.assign(complaint.id, complaint.team_id, agentId === "unassigned" ? null : agentId);
+      await loadComplaints(true);
+      toast.success("Agent assigned");
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Failed to assign agent");
+    } finally {
+      setAction(complaint.id, false);
+    }
+  };
+
+  const handleEscalate = async (complaint: Complaint) => {
+    setAction(complaint.id, true);
+    try {
+      await api.complaints.setStatus(complaint.id, "escalated");
+      await loadComplaints(true);
+      toast.success("Ticket escalated");
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Failed to escalate");
+    } finally {
+      setAction(complaint.id, false);
+    }
+  };
+
+  const handleResolve = async (complaint: Complaint) => {
+    const isResolved = complaint.status === "resolved";
+    setAction(complaint.id, true);
+    try {
+      await api.complaints.setStatus(complaint.id, isResolved ? "in-progress" : "resolved");
+      await loadComplaints(true);
+      toast.success(isResolved ? "Ticket re-opened" : "Ticket resolved");
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Failed to update status");
+    } finally {
+      setAction(complaint.id, false);
+    }
+  };
 
   const getSourceIcon = (source: string) => {
     switch (source) {
@@ -98,17 +186,25 @@ export function ComplaintsInbox() {
 
   const getPriorityBadge = (priority: number) => {
     const labels = ["", "Low", "Low", "Medium", "High", "Critical"];
-    const colors = ["", "text-gray-600", "text-gray-600", "text-yellow-600", "text-orange-600", "text-red-600"];
+    const colors = [
+      "",
+      "text-gray-600",
+      "text-gray-600",
+      "text-yellow-600",
+      "text-orange-600",
+      "text-red-600",
+    ];
     const idx = Math.max(0, Math.min(5, priority));
     return (
-      <span className={`text-sm font-medium ${colors[idx]}`}>
-        {labels[idx]}
-      </span>
+      <span className={`text-sm font-medium ${colors[idx]}`}>{labels[idx]}</span>
     );
   };
 
   const getSLABadge = (sla_status: string) => {
-    const variants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; icon?: React.ReactNode }> = {
+    const variants: Record<
+      string,
+      { variant: "default" | "secondary" | "destructive" | "outline"; icon?: React.ReactNode }
+    > = {
       on_track: { variant: "outline" },
       at_risk: { variant: "secondary" },
       breached: { variant: "destructive", icon: <AlertCircle className="size-3 mr-1" /> },
@@ -128,9 +224,23 @@ export function ComplaintsInbox() {
       return;
     }
     const csv = [
-      ["Ticket", "Summary", "Customer", "Email", "Source", "Status", "Priority", "Sentiment", "SLA", "Created"].join(","),
-      ...complaints.map((c) =>
-        [
+      [
+        "Ticket",
+        "Summary",
+        "Customer",
+        "Email",
+        "Source",
+        "Status",
+        "Priority",
+        "Sentiment",
+        "SLA",
+        "Team",
+        "Created",
+      ].join(","),
+      ...complaints.map((c) => {
+        const teamName =
+          teams.find((t) => t.id === c.team_id)?.name ?? "";
+        return [
           c.ticket_number,
           `"${(c.summary || "").replace(/"/g, '""')}"`,
           `"${c.customer_name}"`,
@@ -140,9 +250,10 @@ export function ComplaintsInbox() {
           c.priority,
           c.sentiment_label,
           c.sla_status,
+          `"${teamName}"`,
           new Date(c.created_at).toLocaleDateString(),
-        ].join(",")
-      ),
+        ].join(",");
+      }),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -153,7 +264,11 @@ export function ComplaintsInbox() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    toast.success(`Exported ${complaints.length} complaint${complaints.length !== 1 ? "s" : ""}`);
   };
+
+  const teamAgents = (teamId: string | null) =>
+    teamId ? (teams.find((t) => t.id === teamId)?.members ?? allAgents) : allAgents;
 
   return (
     <div className="space-y-6">
@@ -163,7 +278,7 @@ export function ComplaintsInbox() {
           <p className="text-gray-600">Review and manage customer complaints</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadComplaints} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => loadComplaints()} disabled={loading}>
             <RefreshCw className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -212,7 +327,7 @@ export function ComplaintsInbox() {
               </SelectContent>
             </Select>
 
-            <Button variant="outline" onClick={loadComplaints} disabled={loading}>
+            <Button variant="outline" onClick={() => loadComplaints()} disabled={loading}>
               <Filter className="size-4 mr-2" />
               Apply Filters
             </Button>
@@ -224,7 +339,11 @@ export function ComplaintsInbox() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {loading ? "Loading…" : error ? "Error" : `${complaints.length} Complaint${complaints.length !== 1 ? "s" : ""}`}
+            {loading
+              ? "Loading…"
+              : error
+              ? "Error"
+              : `${complaints.length} Complaint${complaints.length !== 1 ? "s" : ""}`}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -238,7 +357,7 @@ export function ComplaintsInbox() {
               <AlertCircle className="size-8 text-red-500" />
               <p className="text-red-600 font-medium">Failed to load complaints</p>
               <p className="text-sm text-gray-500">{error}</p>
-              <Button variant="outline" size="sm" onClick={loadComplaints}>
+              <Button variant="outline" size="sm" onClick={() => loadComplaints()}>
                 <RefreshCw className="size-4 mr-2" />
                 Try Again
               </Button>
@@ -254,60 +373,143 @@ export function ComplaintsInbox() {
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ticket</TableHead>
-                  <TableHead>Summary</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Sentiment</TableHead>
-                  <TableHead>SLA</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {complaints.map((complaint) => (
-                  <TableRow key={complaint.id}>
-                    <TableCell className="font-medium text-xs text-gray-500">
-                      {complaint.ticket_number || complaint.id.slice(0, 8)}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {complaint.summary}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{complaint.customer_name}</div>
-                        <div className="text-gray-500 text-xs">{complaint.customer_email}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getSourceIcon(complaint.source)}
-                        <span className="text-sm capitalize">{complaint.source}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(complaint.status)}</TableCell>
-                    <TableCell>{getPriorityBadge(complaint.priority)}</TableCell>
-                    <TableCell>{getSentimentBadge(complaint.sentiment_label)}</TableCell>
-                    <TableCell>{getSLABadge(complaint.sla_status)}</TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {new Date(complaint.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Link to={`/app/complaints/${complaint.id}`}>
-                        <Button size="sm" variant="ghost">
-                          View
-                        </Button>
-                      </Link>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ticket</TableHead>
+                    <TableHead>Summary</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Sentiment</TableHead>
+                    <TableHead>SLA</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Agent</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {complaints.map((complaint) => {
+                    const busy = actionLoading[complaint.id];
+                    const isResolved = complaint.status === "resolved";
+                    const isEscalated = complaint.status === "escalated";
+                    const agents = teamAgents(complaint.team_id);
+                    return (
+                      <TableRow key={complaint.id}>
+                        <TableCell className="font-medium text-xs text-gray-500">
+                          {complaint.ticket_number || complaint.id.slice(0, 8)}
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate">
+                          {complaint.summary}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div className="font-medium">{complaint.customer_name}</div>
+                            <div className="text-gray-500 text-xs">{complaint.customer_email}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getSourceIcon(complaint.source)}
+                            <span className="text-sm capitalize">{complaint.source}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getStatusBadge(complaint.status)}</TableCell>
+                        <TableCell>{getPriorityBadge(complaint.priority)}</TableCell>
+                        <TableCell>{getSentimentBadge(complaint.sentiment_label)}</TableCell>
+                        <TableCell>{getSLABadge(complaint.sla_status)}</TableCell>
+
+                        {/* Team assignment */}
+                        <TableCell className="min-w-[130px]">
+                          <Select
+                            value={complaint.team_id ?? "unassigned"}
+                            onValueChange={(v) => handleAssignTeam(complaint, v)}
+                            disabled={busy}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Assign team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {teams.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+
+                        {/* Agent assignment */}
+                        <TableCell className="min-w-[140px]">
+                          <Select
+                            value={complaint.assigned_to ?? "unassigned"}
+                            onValueChange={(v) => handleAssignAgent(complaint, v)}
+                            disabled={busy}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Assign agent" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {agents.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+
+                        <TableCell className="text-sm text-gray-500 whitespace-nowrap">
+                          {new Date(complaint.created_at).toLocaleDateString()}
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Link to={`/app/complaints/${complaint.id}`}>
+                              <Button size="sm" variant="ghost" className="text-xs px-2">
+                                View
+                              </Button>
+                            </Link>
+                            {!isEscalated && !isResolved && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs px-2 text-orange-600 hover:text-orange-700"
+                                onClick={() => handleEscalate(complaint)}
+                                disabled={busy}
+                                title="Escalate"
+                              >
+                                <TrendingUp className="size-3.5" />
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant={isResolved ? "secondary" : "ghost"}
+                              className={`text-xs px-2 ${
+                                isResolved
+                                  ? "text-green-700"
+                                  : "text-gray-500 hover:text-green-700"
+                              }`}
+                              onClick={() => handleResolve(complaint)}
+                              disabled={busy}
+                              title={isResolved ? "Re-open" : "Mark resolved"}
+                            >
+                              <CheckCircle className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

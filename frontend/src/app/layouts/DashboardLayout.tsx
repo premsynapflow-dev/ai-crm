@@ -30,9 +30,29 @@ import {
   Webhook,
   ChevronDown,
   ChevronRight,
+  Mail,
+  Globe,
+  Phone,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, Complaint } from "../lib/api";
+
+const NOTIF_POLL_MS = 30_000;
+const NOTIF_MAX_SHOW = 8;
+
+function sourceIcon(source: string) {
+  switch (source) {
+    case "email":
+    case "gmail":
+      return <Mail className="size-3.5 shrink-0" />;
+    case "whatsapp":
+      return <MessageSquare className="size-3.5 shrink-0" />;
+    case "voice":
+      return <Phone className="size-3.5 shrink-0" />;
+    default:
+      return <Globe className="size-3.5 shrink-0" />;
+  }
+}
 
 export function DashboardLayout() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -42,6 +62,10 @@ export function DashboardLayout() {
     location.pathname.startsWith("/app/settings")
   );
   const [replyQueueCount, setReplyQueueCount] = useState(0);
+  const [notifications, setNotifications] = useState<Complaint[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+  const notifTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -55,6 +79,33 @@ export function DashboardLayout() {
       .then((data) => setReplyQueueCount(Array.isArray(data) ? data.length : 0))
       .catch(() => null);
   }, [isAuthenticated]);
+
+  // Poll for recent new complaints and surface as notifications
+  const pollNotifications = useRef(async () => {
+    try {
+      const items = await api.complaints.list({ status: "new" });
+      const recent = items.slice(0, NOTIF_MAX_SHOW);
+      setNotifications(recent);
+    } catch {
+      // silently ignore
+    }
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    pollNotifications.current();
+    notifTimerRef.current = setInterval(() => pollNotifications.current(), NOTIF_POLL_MS);
+    return () => {
+      if (notifTimerRef.current) clearInterval(notifTimerRef.current);
+    };
+  }, [isAuthenticated]);
+
+  const unseenCount = notifications.filter((n) => !seenIds.has(n.id)).length;
+
+  const handleOpenNotifications = () => {
+    setNotifOpen((o) => !o);
+    setSeenIds(new Set(notifications.map((n) => n.id)));
+  };
 
   // Auto-expand settings when navigating to a settings page
   useEffect(() => {
@@ -262,9 +313,71 @@ export function DashboardLayout() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Bell className="size-5" />
-            </Button>
+            <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative"
+                  onClick={handleOpenNotifications}
+                >
+                  <Bell className="size-5" />
+                  {unseenCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                      {unseenCount > 9 ? "9+" : unseenCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel className="flex items-center justify-between">
+                  <span>New Complaints</span>
+                  {notifications.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {notifications.length}
+                    </Badge>
+                  )}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-gray-500">
+                    No new complaints
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <DropdownMenuItem key={n.id} asChild>
+                      <Link
+                        to={`/app/complaints/${n.id}`}
+                        className="flex flex-col items-start gap-1 px-3 py-2 cursor-pointer"
+                        onClick={() => setNotifOpen(false)}
+                      >
+                        <div className="flex items-center gap-2 w-full">
+                          {sourceIcon(n.source)}
+                          <span className="text-xs font-medium text-gray-500">
+                            {n.ticket_number || n.id.slice(0, 8)}
+                          </span>
+                          <span className="ml-auto text-[10px] text-gray-400">
+                            {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium line-clamp-1">{n.summary}</p>
+                        <p className="text-xs text-gray-500">{n.customer_email}</p>
+                      </Link>
+                    </DropdownMenuItem>
+                  ))
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/app/complaints"
+                    className="text-center text-sm text-blue-600 font-medium py-2"
+                    onClick={() => setNotifOpen(false)}
+                  >
+                    View all complaints →
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
