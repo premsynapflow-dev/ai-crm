@@ -161,7 +161,7 @@ export function DashboardLayout() {
       <aside className="w-64 bg-white border-r flex flex-col">
         <div className="p-4 border-b">
           <Link to="/app/dashboard" className="flex items-center gap-2">
-            <Bot className="size-8 text-blue-600" />
+            <img src="/logo.png" alt="SynapFlow" className="size-8 object-contain" />
             <div>
               <div className="font-semibold">SynapFlow</div>
               <div className="text-xs text-gray-500">{user.companyName || "Demo Company"}</div>

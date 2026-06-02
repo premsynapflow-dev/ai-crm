@@ -35,7 +35,7 @@ export function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Bot className="size-8 text-blue-600" />
+            <img src="/logo.png" alt="SynapFlow" className="size-8 object-contain" />
             <span className="text-2xl font-semibold">SynapFlow</span>
           </div>
           <CardTitle>Welcome back</CardTitle>

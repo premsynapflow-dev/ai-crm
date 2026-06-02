@@ -61,7 +61,7 @@ export function LandingPage() {
       <header className="border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Bot className="size-8 text-blue-600" />
+            <img src="/logo.png" alt="SynapFlow" className="size-8 object-contain" />
             <span className="text-2xl font-semibold">SynapFlow</span>
           </div>
           <div className="flex items-center gap-4">
