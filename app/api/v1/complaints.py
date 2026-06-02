@@ -267,6 +267,7 @@ def _serialize_complaint(complaint: Complaint, *, subject_override: str | None =
         "resolved_at": complaint.resolved_at.isoformat() if complaint.resolved_at else None,
         "ai_confidence": round(confidence, 2),
         "ai_reply": complaint.ai_reply,
+        "ai_reply_status": complaint.ai_reply_status,
         "ticket_id": complaint.ticket_id,
         "ticket_number": complaint.ticket_number or complaint.ticket_id,
         "customer_id": str(complaint.customer_id) if complaint.customer_id else None,
@@ -723,11 +724,13 @@ def generate_ai_reply_for_complaint(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    HardenedAutoReplyService(db).generate_and_queue_reply(
+    queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(
         complaint,
         force_human_review=True,
         commit=True,
     )
+    if queue_entry is None:
+        raise HTTPException(status_code=422, detail="AI reply could not be generated for this complaint")
     db.refresh(complaint)
     return _serialize_complaint_detail(db, complaint)
 

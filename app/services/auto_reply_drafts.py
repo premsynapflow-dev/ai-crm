@@ -312,9 +312,9 @@ class AutoReplyDraftService:
         if not allow_disabled and not self._is_auto_reply_enabled(ticket):
             return False, "auto_reply_disabled"
 
-        # High-priority, legal/escalation and high-churn tickets still get a draft — the
-        # caller sets ai_reply_status = "agent_review" so they land in the HITL queue.
-        if self._has_legal_or_escalation_flag(ticket, recent_messages):
+        # Escalation/legal check only blocks automatic generation; manual requests
+        # (allow_disabled=True from the "Generate AI Reply" button) always proceed.
+        if not allow_disabled and self._has_legal_or_escalation_flag(ticket, recent_messages):
             return False, "legal_or_escalation"
 
         return True, None
