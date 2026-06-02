@@ -90,10 +90,14 @@ def mirror_legacy_event(
         return None
 
     payload = dict(metadata if metadata is not None else (getattr(legacy_event, "payload", None) or {}))
+    customer_id = getattr(legacy_event, "customer_id", None) or payload.get("customer_id")
+    # customer_events.customer_id is NOT NULL — skip mirror if customer isn't resolved yet.
+    if not customer_id:
+        return None
     return log_customer_event(
         db,
         client_id=client_id,
-        customer_id=getattr(legacy_event, "customer_id", None) or payload.get("customer_id"),
+        customer_id=customer_id,
         complaint_id=getattr(legacy_event, "complaint_id", None) or payload.get("complaint_id"),
         conversation_id=payload.get("conversation_id"),
         message_id=message_id or getattr(legacy_event, "message_id", None) or payload.get("message_id"),
