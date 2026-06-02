@@ -109,6 +109,55 @@ export function BillingPage() {
     Enterprise: "enterprise",
   };
 
+  const loadRazorpayScript = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if ((window as unknown as Record<string, unknown>).Razorpay) { resolve(); return; }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Failed to load Razorpay checkout"));
+      document.body.appendChild(script);
+    });
+
+  const openRazorpayModal = async (data: {
+    order_id: string;
+    razorpay_key: string;
+    amount: number;
+    currency: string;
+    plan_id: string;
+    plan_name: string;
+    billing_cycle: string;
+  }) => {
+    await loadRazorpayScript();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Razorpay = (window as any).Razorpay;
+    const options = {
+      key: data.razorpay_key,
+      amount: data.amount,
+      currency: data.currency,
+      name: "SynapFlow",
+      description: `${data.plan_name} Plan (${data.billing_cycle})`,
+      order_id: data.order_id,
+      handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+        try {
+          await api.billing.verifyPayment({
+            order_id: response.razorpay_order_id,
+            payment_id: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+            plan_id: data.plan_id,
+            billing_cycle: data.billing_cycle,
+          });
+          toast.success(`You're now on the ${data.plan_name} plan!`);
+          window.location.reload();
+        } catch {
+          toast.error("Payment received but plan activation failed — contact support.");
+        }
+      },
+      theme: { color: "#2563eb" },
+    };
+    new Razorpay(options).open();
+  };
+
   const handleUpgrade = async (planName: string) => {
     if (planName === "Enterprise") {
       window.open("mailto:sales@synapflow.ai?subject=Enterprise%20Plan%20Inquiry", "_blank");
@@ -125,6 +174,20 @@ export function BillingPage() {
       if (data.payment_url) {
         toast.success(`Redirecting to payment for ${planName}…`);
         window.location.href = data.payment_url;
+        return;
+      }
+
+      if (data.checkout_mode === "order" && data.order_id && data.razorpay_key) {
+        setUpgrading(null);
+        await openRazorpayModal({
+          order_id: data.order_id,
+          razorpay_key: data.razorpay_key,
+          amount: data.amount!,
+          currency: data.currency || "INR",
+          plan_id: data.plan_id,
+          plan_name: data.plan_name || planName,
+          billing_cycle: data.billing_cycle || billingCycle,
+        });
         return;
       }
 

@@ -1,14 +1,17 @@
+import hashlib
+import hmac
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_client
 from app.billing.plan_application import apply_plan_to_client
+from app.db.models import Client, Invoice
 from app.billing.plans import PLANS, ALLOWED_UPGRADES, is_upgrade_allowed
-from app.billing.razorpay_service import create_payment_link, create_subscription
+from app.billing.razorpay_service import create_order, create_payment_link, create_subscription, verify_order_payment
 from app.billing.usage import get_usage_summary
 from app.config import get_settings
-from app.db.models import Client
 from app.db.session import get_db
 from app.utils.logging import get_logger
 
@@ -89,6 +92,7 @@ def upgrade_plan(
                 payload.plan_id,
             )
 
+            # Try payment link first
             try:
                 payment_link = create_payment_link(
                     client.id,
@@ -106,9 +110,32 @@ def upgrade_plan(
                     payload.plan_id,
                     payment_url,
                 )
-            except Exception as exc:
-                logger.exception("Unable to initiate Razorpay payment link for client=%s", client.id)
-                raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
+            except Exception:
+                logger.warning("Razorpay payment link failed for client=%s, falling back to order", client.id)
+                # Final fallback: Razorpay Order — frontend opens checkout modal
+                try:
+                    order = create_order(
+                        client.id,
+                        amount=int(price) * 100,
+                        plan_id=payload.plan_id,
+                        billing_cycle=payload.billing_cycle,
+                    )
+                    return {
+                        "ok": True,
+                        "status": "payment_pending",
+                        "checkout_mode": "order",
+                        "order_id": order["id"],
+                        "razorpay_key": settings.razorpay_key_id,
+                        "amount": int(price) * 100,
+                        "currency": "INR",
+                        "plan_id": payload.plan_id,
+                        "plan_name": plan["name"],
+                        "billing_cycle": payload.billing_cycle,
+                        "payment_url": None,
+                    }
+                except Exception as exc:
+                    logger.exception("Unable to initiate Razorpay order for client=%s", client.id)
+                    raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
         else:
             razorpay_subscription_id = subscription.get("id")
             logger.info(
@@ -139,4 +166,39 @@ def upgrade_plan(
         "razorpay_subscription_id": razorpay_subscription_id,
         "payment_url": payment_url,
         "plan_applied": plan_applied,
+    }
+
+
+class VerifyPaymentRequest(BaseModel):
+    order_id: str
+    payment_id: str
+    signature: str
+    plan_id: str
+    billing_cycle: str = Field(default="monthly")
+
+
+@router.post("/verify-payment")
+def verify_payment_endpoint(
+    payload: VerifyPaymentRequest,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+):
+    if not verify_order_payment(payload.order_id, payload.payment_id, payload.signature):
+        logger.warning("verify_payment signature mismatch client=%s order_id=%s", client.id, payload.order_id)
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    plan = PLANS.get(payload.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+
+    logger.info("verify_payment success client=%s plan=%s order=%s payment=%s", client.id, payload.plan_id, payload.order_id, payload.payment_id)
+    apply_plan_to_client(client, payload.plan_id)
+    db.commit()
+    db.refresh(client)
+
+    return {
+        "ok": True,
+        "status": "upgraded",
+        "plan_id": payload.plan_id,
+        "plan_name": plan["name"],
     }

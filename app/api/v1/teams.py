@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_client, get_current_client_user
-from app.db.models import Client, ClientUser, Team, TeamMember
+from app.db.models import Client, ClientUser, RoutingRule, Team, TeamMember
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api/v1", tags=["teams-v1"])
@@ -123,7 +123,18 @@ def list_teams(
         .order_by(Team.name.asc())
         .all()
     )
-    return {"items": [_serialize_team(team, member_count, active_tasks) for team, member_count, active_tasks in rows]}
+    result = []
+    for team, member_count, active_tasks in rows:
+        rules = (
+            db.query(RoutingRule.category)
+            .filter(RoutingRule.team_id == team.id, RoutingRule.client_id == client.id)
+            .order_by(RoutingRule.category.asc())
+            .all()
+        )
+        t = _serialize_team(team, member_count, active_tasks)
+        t["routing_categories"] = [r.category for r in rules]
+        result.append(t)
+    return {"items": result}
 
 
 @router.post("/teams", status_code=201)
@@ -249,3 +260,136 @@ def update_team_member(
     db.commit()
     db.refresh(member)
     return {"member": _serialize_member(member)}
+
+
+@router.delete("/teams/{team_id}", status_code=204)
+def delete_team(
+    team_id: str,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    user: ClientUser = Depends(get_current_client_user),
+):
+    team = _get_team_or_404(db, client.id, team_id)
+    db.delete(team)
+    db.commit()
+
+
+@router.delete("/team-members/{member_id}", status_code=204)
+def remove_team_member(
+    member_id: str,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    user: ClientUser = Depends(get_current_client_user),
+):
+    member = _get_member_or_404(db, client.id, member_id)
+    db.delete(member)
+    db.commit()
+
+
+@router.get("/users")
+def list_users(
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+):
+    users = (
+        db.query(ClientUser)
+        .filter(ClientUser.client_id == client.id)
+        .order_by(ClientUser.created_at.asc())
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "name": _display_name_from_email(u.email),
+                "role": u.role,
+            }
+            for u in users
+        ]
+    }
+
+
+@router.get("/teams/{team_id}/routing-rules")
+def list_routing_rules(
+    team_id: str,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+):
+    team = _get_team_or_404(db, client.id, team_id)
+    rules = (
+        db.query(RoutingRule)
+        .filter(RoutingRule.team_id == team.id, RoutingRule.client_id == client.id)
+        .order_by(RoutingRule.category.asc())
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "category": r.category,
+                "team_id": str(r.team_id),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rules
+        ]
+    }
+
+
+class RoutingRuleCreateRequest(BaseModel):
+    category: str = Field(..., min_length=1, max_length=100)
+
+
+@router.post("/teams/{team_id}/routing-rules", status_code=201)
+def add_routing_rule(
+    team_id: str,
+    payload: RoutingRuleCreateRequest,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    user: ClientUser = Depends(get_current_client_user),
+):
+    team = _get_team_or_404(db, client.id, team_id)
+    category = " ".join(payload.category.split()).strip()
+    if not category:
+        raise HTTPException(status_code=400, detail="Category is required")
+
+    existing = (
+        db.query(RoutingRule)
+        .filter(
+            RoutingRule.client_id == client.id,
+            func.lower(RoutingRule.category) == category.lower(),
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail=f"Category '{category}' is already assigned to a team")
+
+    rule = RoutingRule(client_id=client.id, team_id=team.id, category=category)
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return {
+        "id": str(rule.id),
+        "category": rule.category,
+        "team_id": str(rule.team_id),
+        "created_at": rule.created_at.isoformat() if rule.created_at else None,
+    }
+
+
+@router.delete("/routing-rules/{rule_id}", status_code=204)
+def delete_routing_rule(
+    rule_id: str,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+    user: ClientUser = Depends(get_current_client_user),
+):
+    parsed_rule_id = _parse_uuid(rule_id, detail="Invalid rule id")
+    rule = (
+        db.query(RoutingRule)
+        .filter(RoutingRule.id == parsed_rule_id, RoutingRule.client_id == client.id)
+        .first()
+    )
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Routing rule not found")
+    db.delete(rule)
+    db.commit()

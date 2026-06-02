@@ -785,6 +785,19 @@ export const api = {
         body: JSON.stringify({ slack_webhook_url: slackWebhookUrl }),
       });
     },
+
+    updateNotificationPrefs: async (prefs: {
+      sla_breach: boolean;
+      new_escalation: boolean;
+      daily_digest: boolean;
+      ticket_assigned: boolean;
+      ai_draft_expired: boolean;
+    }): Promise<void> => {
+      await request("/api/settings/notifications", {
+        method: "PUT",
+        body: JSON.stringify(prefs),
+      });
+    },
   },
 
   billing: {
@@ -826,11 +839,31 @@ export const api = {
         ok: boolean;
         status: "upgraded" | "payment_pending";
         plan_id: string;
+        plan_name?: string;
         payment_url: string | null;
         plan_applied: boolean;
+        checkout_mode?: "order";
+        order_id?: string;
+        razorpay_key?: string;
+        amount?: number;
+        currency?: string;
+        billing_cycle?: string;
       }>("/api/upgrade", {
         method: "POST",
         body: JSON.stringify({ plan_id: planId, billing_cycle: billingCycle }),
+      });
+    },
+
+    verifyPayment: async (data: {
+      order_id: string;
+      payment_id: string;
+      signature: string;
+      plan_id: string;
+      billing_cycle: string;
+    }) => {
+      return request<{ ok: boolean; status: string; plan_id: string; plan_name: string }>("/api/verify-payment", {
+        method: "POST",
+        body: JSON.stringify(data),
       });
     },
   },
@@ -851,22 +884,60 @@ export const api = {
 
   teams: {
     list: async () => {
-      return request<{ items: unknown[] }>("/api/v1/teams");
+      return request<{ items: Array<{
+        id: string; name: string; member_count: number; active_tasks: number;
+        routing_categories: string[]; created_at: string | null;
+      }> }>("/api/v1/teams");
     },
     create: async (name: string) => {
-      return request("/api/v1/teams", {
+      return request<{ team: { id: string; name: string } }>("/api/v1/teams", {
         method: "POST",
         body: JSON.stringify({ name }),
       });
     },
+    delete: async (teamId: string) => {
+      await request(`/api/v1/teams/${teamId}`, { method: "DELETE" });
+    },
     getMembers: async (teamId: string) => {
-      return request<{ items: unknown[] }>(`/api/v1/teams/${teamId}/members`);
+      return request<{ team: unknown; items: Array<{
+        id: string; team_id: string; user_id: string; name: string; email: string;
+        role: string; capacity: number; active_tasks: number; is_active: boolean;
+      }> }>(`/api/v1/teams/${teamId}/members`);
     },
     addMember: async (teamId: string, data: { user_id: string; role: string; capacity: number }) => {
       return request(`/api/v1/teams/${teamId}/members`, {
         method: "POST",
         body: JSON.stringify(data),
       });
+    },
+    removeMember: async (memberId: string) => {
+      await request(`/api/v1/team-members/${memberId}`, { method: "DELETE" });
+    },
+    updateMember: async (memberId: string, data: { role?: string; capacity?: number; is_active?: boolean }) => {
+      return request(`/api/v1/team-members/${memberId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+    },
+    getRoutingRules: async (teamId: string) => {
+      return request<{ items: Array<{ id: string; category: string; team_id: string }> }>(
+        `/api/v1/teams/${teamId}/routing-rules`
+      );
+    },
+    addRoutingRule: async (teamId: string, category: string) => {
+      return request(`/api/v1/teams/${teamId}/routing-rules`, {
+        method: "POST",
+        body: JSON.stringify({ category }),
+      });
+    },
+    deleteRoutingRule: async (ruleId: string) => {
+      await request(`/api/v1/routing-rules/${ruleId}`, { method: "DELETE" });
+    },
+  },
+
+  users: {
+    list: async () => {
+      return request<{ items: Array<{ id: string; email: string; name: string; role: string }> }>("/api/v1/users");
     },
   },
 

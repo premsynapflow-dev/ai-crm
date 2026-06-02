@@ -70,6 +70,7 @@ def get_settings_summary(
             }
             for member in members
         ],
+        "notification_preferences": (client.custom_prompt_config or {}).get("notification_preferences", {}),
     }
 
 
@@ -104,6 +105,27 @@ def update_slack_webhook(
             else None
         ),
     }
+
+
+class NotificationPreferencesRequest(BaseModel):
+    sla_breach: bool = False
+    new_escalation: bool = False
+    daily_digest: bool = False
+    ticket_assigned: bool = False
+    ai_draft_expired: bool = False
+
+
+@router.put("/settings/notifications")
+def update_notification_preferences(
+    payload: NotificationPreferencesRequest,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+):
+    existing = client.custom_prompt_config or {}
+    existing["notification_preferences"] = payload.model_dump()
+    client.custom_prompt_config = existing
+    db.commit()
+    return {"success": True, "notification_preferences": payload.model_dump()}
 
 
 @router.post("/settings/webhooks/slack/test")

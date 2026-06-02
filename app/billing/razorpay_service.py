@@ -101,6 +101,38 @@ def create_subscription(client_id, plan_id, billing_cycle="monthly"):
     return subscription
 
 
+def create_order(client_id, amount, *, plan_id=None, billing_cycle=None):
+    client = _get_razorpay_client()
+    notes = {"client_id": str(client_id)}
+    if plan_id:
+        notes["plan_id"] = str(plan_id)
+    if billing_cycle:
+        notes["billing_cycle"] = str(billing_cycle)
+
+    logger.info("create_order client_id=%s plan_id=%s billing_cycle=%s amount=%s", client_id, plan_id, billing_cycle, amount)
+    payload = {
+        "amount": amount,
+        "currency": "INR",
+        "receipt": f"order_{uuid.uuid4().hex[:16]}",
+        "notes": notes,
+    }
+    result = client.order.create(payload)
+    if not result or not result.get("id"):
+        logger.error("create_order failed: invalid response for client_id=%s", client_id)
+        raise RuntimeError("invalid Razorpay order response")
+    logger.info("create_order succeeded order_id=%s", result.get("id"))
+    return result
+
+
+def verify_order_payment(order_id: str, payment_id: str, signature: str) -> bool:
+    expected = hmac.new(
+        settings.razorpay_key_secret.encode(),
+        f"{order_id}|{payment_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
 def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, description=None):
     client = _get_razorpay_client()
     notes = {"client_id": str(client_id)}

@@ -32,6 +32,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 
 export function DashboardLayout() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -40,12 +41,20 @@ export function DashboardLayout() {
   const [settingsOpen, setSettingsOpen] = useState(
     location.pathname.startsWith("/app/settings")
   );
+  const [replyQueueCount, setReplyQueueCount] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
     }
   }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.replyQueue.list("pending")
+      .then((data) => setReplyQueueCount(Array.isArray(data) ? data.length : 0))
+      .catch(() => null);
+  }, [isAuthenticated]);
 
   // Auto-expand settings when navigating to a settings page
   useEffect(() => {
@@ -61,7 +70,7 @@ export function DashboardLayout() {
   const navigation = [
     { name: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
     { name: "Complaints", href: "/app/complaints", icon: MessageSquare },
-    { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: 6 },
+    { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: replyQueueCount || undefined },
     { name: "Customers", href: "/app/customers", icon: Users },
     { name: "Assignments", href: "/app/assignments", icon: UserCog },
     { name: "Analytics", href: "/app/analytics", icon: BarChart3 },
