@@ -723,10 +723,16 @@ export const api = {
       );
     },
 
-    upgrade: async (planId: string) => {
-      return request("/api/upgrade", {
+    upgrade: async (planId: string, billingCycle: "monthly" | "annual" = "monthly") => {
+      return request<{
+        ok: boolean;
+        status: "upgraded" | "payment_pending";
+        plan_id: string;
+        payment_url: string | null;
+        plan_applied: boolean;
+      }>("/api/upgrade", {
         method: "POST",
-        body: JSON.stringify({ plan_id: planId }),
+        body: JSON.stringify({ plan_id: planId, billing_cycle: billingCycle }),
       });
     },
   },

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -11,6 +11,8 @@ export function BillingPage() {
   const { user } = useAuth();
   const [usage, setUsage] = useState<{ tickets_used: number; tickets_quota: number; next_billing_date?: string } | null>(null);
   const [invoices, setInvoices] = useState<Array<{ id: string; amount: number; date: string; plan: string }>>([]);
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+  const [upgrading, setUpgrading] = useState<string | null>(null);
 
   useEffect(() => {
     api.billing.getUsage().then(setUsage).catch(() => null);
@@ -67,8 +69,53 @@ export function BillingPage() {
     }
   ];
 
-  const handleUpgrade = (planName: string) => {
-    toast.success(`Upgrade to ${planName} initiated!`);
+  const PLAN_ID_MAP: Record<string, string> = {
+    Free: "free",
+    Starter: "starter",
+    Pro: "pro",
+    Max: "max",
+    Scale: "scale",
+    Enterprise: "enterprise",
+  };
+
+  const handleUpgrade = async (planName: string) => {
+    if (planName === "Enterprise") {
+      window.open("mailto:sales@synapflow.ai?subject=Enterprise%20Plan%20Inquiry", "_blank");
+      return;
+    }
+
+    const planId = PLAN_ID_MAP[planName];
+    if (!planId) return;
+
+    setUpgrading(planName);
+    try {
+      const data = await api.billing.upgrade(planId, billingCycle);
+
+      if (data.payment_url) {
+        toast.success(`Redirecting to payment for ${planName}…`);
+        window.location.href = data.payment_url;
+        return;
+      }
+
+      if (data.status === "upgraded" && data.plan_applied) {
+        toast.success(`You're now on the ${planName} plan!`);
+        window.location.reload();
+        return;
+      }
+
+      toast.info("Upgrade initiated — check your email for next steps.");
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message;
+      if (msg?.includes("Upgrade not allowed")) {
+        toast.error("You cannot downgrade via this page. Contact support.");
+      } else if (msg?.includes("Razorpay is not configured")) {
+        toast.error("Payment gateway not configured. Contact support.");
+      } else {
+        toast.error(msg || "Upgrade failed. Please try again.");
+      }
+    } finally {
+      setUpgrading(null);
+    }
   };
 
   return (
@@ -111,7 +158,32 @@ export function BillingPage() {
 
       {/* Available Plans */}
       <div>
-        <h2 className="text-2xl font-bold mb-4">Available Plans</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Available Plans</h2>
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setBillingCycle("monthly")}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                billingCycle === "monthly"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBillingCycle("annual")}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                billingCycle === "annual"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Annual
+              <span className="ml-1.5 text-xs text-green-600 font-semibold">2 months free</span>
+            </button>
+          </div>
+        </div>
         <div className="grid md:grid-cols-3 gap-6">
           {plans.map((plan) => {
             const isCurrentPlan = user?.plan === plan.name.toLowerCase();
@@ -156,10 +228,21 @@ export function BillingPage() {
                   <Button
                     className="w-full"
                     variant={plan.popular ? "default" : "outline"}
-                    disabled={isCurrentPlan}
+                    disabled={isCurrentPlan || upgrading === plan.name}
                     onClick={() => handleUpgrade(plan.name)}
                   >
-                    {isCurrentPlan ? "Current Plan" : "Upgrade"}
+                    {upgrading === plan.name ? (
+                      <>
+                        <Loader2 className="size-4 mr-2 animate-spin" />
+                        Processing…
+                      </>
+                    ) : isCurrentPlan ? (
+                      "Current Plan"
+                    ) : plan.name === "Enterprise" ? (
+                      "Contact Sales"
+                    ) : (
+                      "Upgrade"
+                    )}
                   </Button>
                 </CardContent>
               </Card>
