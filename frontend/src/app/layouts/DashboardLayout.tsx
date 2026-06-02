@@ -26,19 +26,33 @@ import {
   Zap,
   LogOut,
   User,
+  Link2,
+  Webhook,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function DashboardLayout() {
   const { user, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [settingsOpen, setSettingsOpen] = useState(
+    location.pathname.startsWith("/app/settings")
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
     }
   }, [isAuthenticated, navigate]);
+
+  // Auto-expand settings when navigating to a settings page
+  useEffect(() => {
+    if (location.pathname.startsWith("/app/settings")) {
+      setSettingsOpen(true);
+    }
+  }, [location.pathname]);
 
   if (!isAuthenticated || !user) {
     return null;
@@ -61,12 +75,12 @@ export function DashboardLayout() {
   ];
 
   const settingsNav = [
-    { name: "Profile", href: "/app/settings" },
-    { name: "Connections", href: "/app/settings/connections" },
-    { name: "Notifications", href: "/app/settings/notifications" },
-    { name: "Webhooks", href: "/app/settings/webhooks" },
-    { name: "Teams", href: "/app/settings/teams" },
-    { name: "Automations", href: "/app/settings/automations" },
+    { name: "Profile", href: "/app/settings", icon: User },
+    { name: "Connections", href: "/app/settings/connections", icon: Link2 },
+    { name: "Notifications", href: "/app/settings/notifications", icon: Bell },
+    { name: "Webhooks", href: "/app/settings/webhooks", icon: Webhook },
+    { name: "Teams", href: "/app/settings/teams", icon: Users },
+    { name: "Automations", href: "/app/settings/automations", icon: Zap },
   ];
 
   const handleLogout = () => {
@@ -129,28 +143,42 @@ export function DashboardLayout() {
           </nav>
 
           <div className="mt-6 pt-6 border-t">
-            <div className="px-3 mb-2 text-xs font-semibold text-gray-500 uppercase">
-              Settings
-            </div>
-            <nav className="space-y-1">
-              {settingsNav.map((item) => {
-                const active = location.pathname === item.href;
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                      active
-                        ? "bg-blue-50 text-blue-600"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <Settings className="size-4 shrink-0" />
-                    <span>{item.name}</span>
-                  </Link>
-                );
-              })}
-            </nav>
+            <button
+              onClick={() => setSettingsOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-100 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Settings className="size-4" />
+                <span>Settings</span>
+              </div>
+              {settingsOpen ? (
+                <ChevronDown className="size-4" />
+              ) : (
+                <ChevronRight className="size-4" />
+              )}
+            </button>
+            {settingsOpen && (
+              <nav className="mt-1 space-y-1">
+                {settingsNav.map((item) => {
+                  const Icon = item.icon;
+                  const active = location.pathname === item.href;
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                        active
+                          ? "bg-blue-50 text-blue-600"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      <Icon className="size-4 shrink-0" />
+                      <span>{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
           </div>
         </ScrollArea>
 
