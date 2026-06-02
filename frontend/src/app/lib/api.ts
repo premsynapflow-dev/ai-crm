@@ -253,7 +253,7 @@ function normalizeComplaint(raw: Record<string, unknown>): Complaint {
 function normalizeMessage(raw: Record<string, unknown>): ThreadMessage {
   return {
     id: String(raw.id || Math.random()),
-    content: String(raw.body || raw.content || raw.text || ""),
+    content: String(raw.message_text || raw.body || raw.content || raw.text || ""),
     direction: (raw.direction as ThreadMessage["direction"]) || "inbound",
     channel: String(raw.channel || "email"),
     timestamp: String(raw.timestamp || raw.created_at || new Date().toISOString()),

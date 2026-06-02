@@ -5,21 +5,92 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Separator } from "../components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Progress } from "../components/ui/progress";
 import { api, Complaint } from "../lib/api";
 import {
   ArrowLeft,
   Mail,
   MessageSquare,
-  Clock,
-  AlertCircle,
+  Phone,
+  Globe,
   CheckCircle,
   TrendingUp,
   Send,
-  Edit,
+  Edit3,
+  Bot,
+  User,
+  RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+
+function SourceBadge({ source }: { source: string }) {
+  const icons: Record<string, React.ReactNode> = {
+    email: <Mail className="size-3.5" />,
+    gmail: <Mail className="size-3.5" />,
+    whatsapp: <MessageSquare className="size-3.5" />,
+    voice: <Phone className="size-3.5" />,
+  };
+  return (
+    <Badge variant="outline" className="flex items-center gap-1 capitalize">
+      {icons[source] ?? <Globe className="size-3.5" />}
+      {source}
+    </Badge>
+  );
+}
+
+function MessageBubble({
+  sender,
+  content,
+  timestamp,
+  direction,
+}: {
+  sender: string;
+  content: string;
+  timestamp: string;
+  direction: "inbound" | "outbound";
+}) {
+  const isOutbound = direction === "outbound";
+  const initials = (sender || "?")
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div className={`flex gap-3 ${isOutbound ? "flex-row-reverse" : ""}`}>
+      {/* Avatar */}
+      <div
+        className={`size-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
+          isOutbound
+            ? "bg-blue-600 text-white"
+            : "bg-gray-200 text-gray-700"
+        }`}
+      >
+        {isOutbound ? <Bot className="size-4" /> : initials}
+      </div>
+
+      {/* Bubble */}
+      <div className={`max-w-[75%] space-y-1 ${isOutbound ? "items-end" : "items-start"} flex flex-col`}>
+        <div className={`flex items-center gap-2 text-xs text-gray-500 ${isOutbound ? "flex-row-reverse" : ""}`}>
+          <span className="font-medium">{sender || (isOutbound ? "Support" : "Customer")}</span>
+          <span>·</span>
+          <span>{new Date(timestamp).toLocaleString()}</span>
+        </div>
+        <div
+          className={`rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap break-words ${
+            isOutbound
+              ? "bg-blue-600 text-white rounded-tr-sm"
+              : "bg-gray-100 text-gray-900 rounded-tl-sm"
+          }`}
+        >
+          {content || <span className="opacity-50 italic">No content</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function ComplaintDetail() {
   const { id } = useParams<{ id: string }>();
@@ -27,12 +98,11 @@ export function ComplaintDetail() {
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState("");
-  const [editedAIReply, setEditedAIReply] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      loadComplaint(id);
-    }
+    if (id) loadComplaint(id);
   }, [id]);
 
   const loadComplaint = async (complaintId: string) => {
@@ -40,50 +110,55 @@ export function ComplaintDetail() {
     try {
       const data = await api.complaints.get(complaintId);
       setComplaint(data);
-      setEditedAIReply(data?.ai_reply || "");
-    } catch (error) {
-      console.error("Failed to load complaint:", error);
+      setReplyText(data?.ai_reply || "");
+    } catch {
       toast.error("Failed to load complaint");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApproveAIReply = async () => {
+  const handleSendApprove = async () => {
     if (!complaint) return;
+    setSending(true);
     try {
-      await api.replyQueue.approve(complaint.id, editedAIReply);
-      toast.success("AI reply approved and sent!");
-      navigate("/app/reply-queue");
-    } catch (error) {
-      toast.error("Failed to approve reply");
+      if (complaint.ai_reply_status === "pending") {
+        await api.replyQueue.approve(complaint.id, replyText || complaint.ai_reply);
+        toast.success("Reply approved and sent!");
+      } else {
+        await api.complaints.sendReply(complaint.id, replyText);
+        toast.success("Reply sent!");
+      }
+      await loadComplaint(complaint.id);
+      setEditing(false);
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Failed to send reply");
+    } finally {
+      setSending(false);
     }
   };
 
-  const handleRejectAIReply = async () => {
+  const handleReject = async () => {
     if (!complaint) return;
+    setSending(true);
     try {
       await api.replyQueue.reject(complaint.id);
-      toast.success("AI reply rejected");
-      setComplaint({ ...complaint, ai_reply_status: "rejected" });
-    } catch (error) {
-      toast.error("Failed to reject reply");
-    }
-  };
-
-  const handleSendManualReply = async () => {
-    if (!complaint || !replyText.trim()) return;
-    try {
-      await api.complaints.update(complaint.id, { status: "in-progress" });
-      toast.success("Reply sent successfully!");
-      setReplyText("");
-    } catch (error) {
-      toast.error("Failed to send reply");
+      toast.success("Draft rejected");
+      await loadComplaint(complaint.id);
+    } catch {
+      toast.error("Failed to reject");
+    } finally {
+      setSending(false);
     }
   };
 
   if (loading || !complaint) {
-    return <div className="p-6">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center p-12 text-gray-500 gap-2">
+        <RefreshCw className="size-4 animate-spin" />
+        Loading…
+      </div>
+    );
   }
 
   const emotionData = Object.entries(complaint.sentiment_indicators).map(([name, value]) => ({
@@ -91,20 +166,40 @@ export function ComplaintDetail() {
     value: Math.round((value as number) * 100),
   }));
 
+  // Build a unified chronological thread — include the complaint itself if no thread messages
+  const threadMessages = (() => {
+    if (complaint.thread_messages.length > 0) return complaint.thread_messages;
+    // Fallback: show the complaint summary as the original inbound message
+    return [
+      {
+        id: `synthetic-${complaint.id}`,
+        content: complaint.summary,
+        direction: "inbound" as const,
+        channel: complaint.source,
+        timestamp: complaint.created_at,
+        sender: complaint.customer_name || complaint.customer_email,
+      },
+    ];
+  })();
+
+  const aiDraftExists = Boolean(complaint.ai_reply);
+  const isPending = complaint.ai_reply_status === "pending";
+  const isSent = complaint.ai_reply_status === "sent" || complaint.ai_reply_status === "approved";
+  const isRejected = complaint.ai_reply_status === "rejected";
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/app/complaints")}>
           <ArrowLeft className="size-5" />
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{complaint.ticket_number}</h1>
-          <p className="text-gray-600">{complaint.summary}</p>
+          <p className="text-gray-600 text-sm">{complaint.summary}</p>
         </div>
         <div className="flex gap-2">
-          <Badge variant="outline" className="capitalize">
-            {complaint.source}
-          </Badge>
+          <SourceBadge source={complaint.source} />
           <Badge variant={complaint.sla_status === "breached" ? "destructive" : "secondary"}>
             {complaint.sla_status.replace("_", " ")}
           </Badge>
@@ -112,92 +207,127 @@ export function ComplaintDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
+        {/* Left column */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Conversation Thread */}
+
+          {/* ── Conversation thread ── */}
           <Card>
-            <CardHeader>
-              <CardTitle>Conversation</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="size-4" />
+                Conversation
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {complaint.thread_messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`p-4 rounded-lg ${
-                    message.direction === "inbound"
-                      ? "bg-gray-100"
-                      : "bg-blue-50 ml-8"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{message.sender}</span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(message.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                  <p className="text-sm">{message.content}</p>
-                </div>
-              ))}
+            <CardContent>
+              <div className="space-y-5 max-h-[520px] overflow-y-auto pr-1">
+                {threadMessages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    sender={msg.sender}
+                    content={msg.content}
+                    timestamp={msg.timestamp}
+                    direction={msg.direction}
+                  />
+                ))}
+              </div>
             </CardContent>
           </Card>
 
-          {/* AI Reply Draft */}
-          {complaint.ai_reply && complaint.ai_reply_status === "pending" && (
-            <Card className="border-blue-200">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="size-5 text-blue-600" />
-                    <CardTitle>AI-Generated Reply</CardTitle>
-                  </div>
-                  <Badge variant="secondary">
-                    {Math.round((complaint.ai_reply_confidence || 0) * 100)}% Confidence
-                  </Badge>
+          {/* ── Unified Reply Card ── */}
+          <Card className={aiDraftExists && isPending ? "border-blue-300 shadow-sm" : ""}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {aiDraftExists ? (
+                    <Bot className="size-5 text-blue-600" />
+                  ) : (
+                    <User className="size-5 text-gray-500" />
+                  )}
+                  <CardTitle className="text-base">
+                    {isSent
+                      ? "Reply Sent"
+                      : isRejected
+                      ? "Write Reply"
+                      : aiDraftExists
+                      ? "AI-Drafted Reply"
+                      : "Write Reply"}
+                  </CardTitle>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Textarea
-                  value={editedAIReply}
-                  onChange={(e) => setEditedAIReply(e.target.value)}
-                  rows={6}
-                  className="font-sans"
-                />
-                <div className="flex gap-2">
-                  <Button onClick={handleApproveAIReply} className="flex-1">
-                    <CheckCircle className="size-4 mr-2" />
-                    Approve & Send
-                  </Button>
-                  <Button variant="destructive" onClick={handleRejectAIReply}>
-                    Reject
-                  </Button>
+                <div className="flex items-center gap-2">
+                  {aiDraftExists && !isSent && (
+                    <Badge variant="secondary" className="text-xs">
+                      {Math.round((complaint.ai_reply_confidence || 0) * 100)}% confidence
+                    </Badge>
+                  )}
+                  {!isSent && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => setEditing((e) => !e)}
+                    >
+                      <Edit3 className="size-3.5" />
+                      {editing ? "Preview" : "Edit"}
+                    </Button>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Manual Reply */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Send Manual Reply</CardTitle>
+              </div>
             </CardHeader>
+
             <CardContent className="space-y-4">
-              <Textarea
-                placeholder="Type your response..."
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                rows={6}
-              />
-              <Button onClick={handleSendManualReply} disabled={!replyText.trim()}>
-                <Send className="size-4 mr-2" />
-                Send Reply
-              </Button>
+              {isSent ? (
+                /* Sent — read-only */
+                <div className="rounded-lg bg-gray-50 border px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">
+                  {complaint.ai_reply}
+                </div>
+              ) : (
+                <>
+                  <Textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder={
+                      aiDraftExists
+                        ? "AI draft loaded — edit or send as-is"
+                        : "Type your reply…"
+                    }
+                    rows={7}
+                    readOnly={!editing && aiDraftExists}
+                    className={!editing && aiDraftExists ? "bg-blue-50 border-blue-200 text-gray-800" : ""}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      onClick={handleSendApprove}
+                      disabled={!replyText.trim() || sending}
+                    >
+                      {sending ? (
+                        <RefreshCw className="size-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="size-4 mr-2" />
+                      )}
+                      {isPending ? "Approve & Send" : "Send Reply"}
+                    </Button>
+                    {isPending && (
+                      <Button
+                        variant="outline"
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={handleReject}
+                        disabled={sending}
+                      >
+                        <XCircle className="size-4 mr-1" />
+                        Reject
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Sidebar */}
+        {/* ── Right sidebar ── */}
         <div className="space-y-6">
-          {/* Customer Info */}
+          {/* Customer */}
           <Card>
             <CardHeader>
               <CardTitle>Customer</CardTitle>
@@ -216,14 +346,14 @@ export function ComplaintDetail() {
             </CardContent>
           </Card>
 
-          {/* Sentiment Analysis */}
+          {/* Sentiment */}
           <Card>
             <CardHeader>
               <CardTitle>Sentiment Analysis</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span>Overall</span>
+                <span className="text-sm">Overall</span>
                 <Badge
                   className={
                     complaint.sentiment_label === "positive"
@@ -250,12 +380,16 @@ export function ComplaintDetail() {
             </CardContent>
           </Card>
 
-          {/* Metadata */}
+          {/* Details */}
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Status</span>
+                <span className="font-medium capitalize">{complaint.status}</span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Priority</span>
                 <span className="font-medium">
@@ -264,7 +398,7 @@ export function ComplaintDetail() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Category</span>
-                <span className="font-medium">{complaint.category}</span>
+                <span className="font-medium capitalize">{complaint.category || "—"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Assigned To</span>
@@ -279,17 +413,73 @@ export function ComplaintDetail() {
               <Separator />
               <div className="flex justify-between">
                 <span className="text-gray-600">Created</span>
-                <span>{new Date(complaint.created_at).toLocaleString()}</span>
+                <span className="text-xs">{new Date(complaint.created_at).toLocaleString()}</span>
               </div>
+              {complaint.resolved_at && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Resolved</span>
+                  <span className="text-xs">{new Date(complaint.resolved_at).toLocaleString()}</span>
+                </div>
+              )}
               {complaint.rbi_reference && (
                 <>
                   <Separator />
                   <div className="flex justify-between">
-                    <span className="text-gray-600">RBI Reference</span>
+                    <span className="text-gray-600">RBI Ref</span>
                     <span className="font-mono text-xs">{complaint.rbi_reference}</span>
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Quick actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {complaint.status !== "escalated" && complaint.status !== "resolved" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-orange-600 border-orange-200 hover:bg-orange-50"
+                  onClick={async () => {
+                    try {
+                      await api.complaints.setStatus(complaint.id, "escalated");
+                      toast.success("Ticket escalated");
+                      await loadComplaint(complaint.id);
+                    } catch { toast.error("Failed to escalate"); }
+                  }}
+                >
+                  <TrendingUp className="size-4 mr-2" />
+                  Escalate
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className={`w-full ${
+                  complaint.status === "resolved"
+                    ? "text-gray-600"
+                    : "text-green-600 border-green-200 hover:bg-green-50"
+                }`}
+                onClick={async () => {
+                  try {
+                    await api.complaints.setStatus(
+                      complaint.id,
+                      complaint.status === "resolved" ? "in-progress" : "resolved"
+                    );
+                    toast.success(
+                      complaint.status === "resolved" ? "Ticket re-opened" : "Ticket resolved"
+                    );
+                    await loadComplaint(complaint.id);
+                  } catch { toast.error("Failed to update"); }
+                }}
+              >
+                <CheckCircle className="size-4 mr-2" />
+                {complaint.status === "resolved" ? "Re-open" : "Mark Resolved"}
+              </Button>
             </CardContent>
           </Card>
         </div>
