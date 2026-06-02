@@ -12,6 +12,11 @@ class InboxSummary(BaseModel):
     provider: str
     status: str
     created_at: datetime | None = None
+    last_synced_at: datetime | None = None
+    token_expiry: datetime | None = None
+    last_poll_error: str | None = None
+    last_poll_error_at: str | None = None
+    needs_reauth: bool = False
 
 
 class GmailConnectUrlResponse(BaseModel):

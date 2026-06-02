@@ -125,12 +125,14 @@ def _customer_fields_for_message(message: IncomingMessage) -> tuple[str | None, 
 
 def _resolve_message_conversation(db: Session, message: IncomingMessage) -> Conversation:
     external_thread_id = message.external_thread_id or message.external_message_id
+    # customer_id (UUID) is resolved later via CustomerProfileService and patched onto the
+    # conversation at that point — sender_id is an email/phone string, not a UUID.
     return ensure_conversation(
         db,
         client_id=message.client_id,
         channel=message.channel,
         external_thread_id=external_thread_id,
-        customer_id=message.sender_id,
+        customer_id=None,
         timestamp=message.timestamp,
     )
 
@@ -375,7 +377,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
     if resolved_customer is not None:
         unified_message.customer_id = resolved_customer.id
         conversation.customer_id = str(resolved_customer.id)
-    spam_filtered = str(category or "").strip().lower() == "spam" and existing_complaint is None
+    # Inbox-originated messages (gmail/imap connected accounts) are trusted sources — skip spam filter.
+    is_inbox_message = bool(message.raw_payload.get("inbox_id"))
+    spam_filtered = (
+        str(category or "").strip().lower() == "spam"
+        and existing_complaint is None
+        and not is_inbox_message
+    )
 
     if spam_filtered:
         _mark_message_processed(

@@ -17,6 +17,36 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _store_inbox_poll_result(inbox_id: str, *, error: str | None) -> None:
+    """Persist poll error/success state using a separate session so it survives rollbacks."""
+    from app.inboxes.models import Inbox as _Inbox
+    error_db = SessionLocal()
+    try:
+        target = error_db.query(_Inbox).filter(_Inbox.id == inbox_id).first()
+        if target is None:
+            return
+        meta = dict(target.metadata_json or {})
+        now_iso = _utcnow().isoformat()
+        if error is None:
+            meta["last_poll_error"] = None
+            meta["last_poll_error_at"] = None
+            meta["consecutive_poll_failures"] = 0
+            meta["last_successful_poll_at"] = now_iso
+        else:
+            meta["last_poll_error"] = error[:500]
+            meta["last_poll_error_at"] = now_iso
+            meta["consecutive_poll_failures"] = int(meta.get("consecutive_poll_failures", 0)) + 1
+            # Permanently deactivate after 5 consecutive failures so the UI shows reauth needed
+            if int(meta["consecutive_poll_failures"]) >= 5:
+                target.is_active = False
+        target.metadata_json = meta
+        error_db.commit()
+    except Exception:
+        logger.warning("Failed to persist poll result for inbox=%s", inbox_id, exc_info=True)
+    finally:
+        error_db.close()
+
+
 def _process_messages(db: Session, messages: list[IncomingMessage]) -> tuple[int, int, int]:
     processed = 0
     duplicates = 0
@@ -129,6 +159,8 @@ def poll_all_inboxes(*, max_results: int = 20) -> dict[str, int]:
                 totals["processed"] += int(result["processed"])
                 totals["duplicates"] += int(result["duplicates"])
                 totals["errors"] += int(result.get("errors", 0))
+                # Clear any stored poll error on success
+                _store_inbox_poll_result(inbox_id, error=None)
                 db.commit()
             except Exception as exc:
                 db.rollback()
@@ -140,6 +172,7 @@ def poll_all_inboxes(*, max_results: int = 20) -> dict[str, int]:
                     email_address,
                     exc,
                 )
+                _store_inbox_poll_result(inbox_id, error=str(exc))
         return totals
     finally:
         db.close()

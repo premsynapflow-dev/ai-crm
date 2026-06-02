@@ -96,8 +96,9 @@ def gmail_callback(
         logger.info("Gmail inbox stored for tenant=%s email=%s", oauth_state["tenant_id"], email_address)
         return RedirectResponse(url=oauth_state["redirect_path"], status_code=307)
     except Exception as exc:
-        logger.error("Gmail OAuth callback failed: %s", exc)
-        return RedirectResponse(url="/app/settings/connections?gmail_error=true", status_code=307)
+        logger.error("Gmail OAuth callback failed: %s", exc, exc_info=True)
+        error_code = type(exc).__name__
+        return RedirectResponse(url=f"/app/settings/connections?gmail_error={error_code}", status_code=307)
 
 
 def _connect_imap(

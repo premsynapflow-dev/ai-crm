@@ -240,8 +240,27 @@ def _refresh_access_token(source: GmailSource, *, force: bool = False) -> str:
         },
     )
     if response.status_code >= 400:
+        error_detail = f"Token refresh failed: HTTP {response.status_code}"
         if isinstance(source, Inbox):
             source.is_active = False
+            # Commit via a separate session so this survives any rollback in the caller.
+            try:
+                from app.db.session import SessionLocal as _SessionLocal
+                _db = _SessionLocal()
+                try:
+                    _inbox = _db.query(Inbox).filter(Inbox.id == source.id).first()
+                    if _inbox is not None:
+                        _inbox.is_active = False
+                        _meta = dict(_inbox.metadata_json or {})
+                        from datetime import datetime, timezone as _tz
+                        _meta["last_poll_error"] = error_detail
+                        _meta["last_poll_error_at"] = datetime.now(_tz.utc).isoformat()
+                        _inbox.metadata_json = _meta
+                        _db.commit()
+                finally:
+                    _db.close()
+            except Exception:
+                logger.warning("Failed to persist token refresh failure for %s", _source_label(source))
         else:
             source.status = "expired"
         raise _request_error(response)

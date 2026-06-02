@@ -198,12 +198,20 @@ def fetch_google_user_email(access_token: str) -> str:
 
 
 def serialize_inbox(inbox: Inbox) -> dict[str, Any]:
+    meta = inbox.metadata_json or {}
+    consecutive_failures = int(meta.get("consecutive_poll_failures", 0))
+    needs_reauth = not inbox.is_active or consecutive_failures >= 3
     return {
         "id": str(inbox.id),
         "email": inbox.email_address,
         "provider": inbox.provider_type,
         "status": "active" if inbox.is_active else "inactive",
         "created_at": inbox.created_at,
+        "last_synced_at": inbox.last_synced_at,
+        "token_expiry": inbox.token_expiry,
+        "last_poll_error": meta.get("last_poll_error"),
+        "last_poll_error_at": meta.get("last_poll_error_at"),
+        "needs_reauth": needs_reauth,
     }
 
 
