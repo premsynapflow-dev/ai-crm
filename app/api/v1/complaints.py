@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import decode_token
@@ -360,11 +360,17 @@ def _delete_complaint_graph(db: Session, complaint: Complaint) -> None:
     db.query(TicketComment).filter(TicketComment.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(TicketStateTransition).filter(TicketStateTransition.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(Escalation).filter(Escalation.ticket_id == complaint_id).delete(synchronize_session=False)
-    # Nullable FKs — set to NULL to preserve audit/log records
-    # Note: CustomerEvent is append-only and cannot be updated; leave its complaint_id intact for audit trail
-    for model in (CustomerInteraction, EventLog, WorkflowExecution, AgentCorrection, ModelAuditLog, MessageEvent):
+    # Nullable ORM-mapped FKs — set to NULL to preserve audit/log records
+    for model in (CustomerInteraction, CustomerEvent, EventLog, WorkflowExecution, AgentCorrection, ModelAuditLog, MessageEvent):
         db.query(model).filter(model.complaint_id == complaint_id).update(
             {model.complaint_id: None}, synchronize_session=False
+        )
+    # Nullable FKs that exist in the DB but are not reflected in the ORM models —
+    # must be NULLed explicitly to avoid NO ACTION FK violations on deletion.
+    for table in ("conversations", "rbi_escalation_log", "reply_quality_metrics", "churn_outcomes"):
+        db.execute(
+            text(f"UPDATE {table} SET complaint_id = NULL WHERE complaint_id = :cid"),  # noqa: S608
+            {"cid": str(complaint_id)},
         )
     db.delete(complaint)
 
