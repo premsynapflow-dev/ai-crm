@@ -28,7 +28,6 @@ from app.db.models import (
     Client,
     ClientUser,
     Complaint,
-    CustomerEvent,
     CustomerInteraction,
     Escalation,
     EventLog,
@@ -361,7 +360,9 @@ def _delete_complaint_graph(db: Session, complaint: Complaint) -> None:
     db.query(TicketStateTransition).filter(TicketStateTransition.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(Escalation).filter(Escalation.ticket_id == complaint_id).delete(synchronize_session=False)
     # Nullable ORM-mapped FKs — set to NULL to preserve audit/log records
-    for model in (CustomerInteraction, CustomerEvent, EventLog, WorkflowExecution, AgentCorrection, ModelAuditLog, MessageEvent):
+    # CustomerEvent is excluded: the table has an append-only trigger that blocks UPDATE/DELETE,
+    # and the FK was dropped in migration 20260603_01 so complaint deletion no longer needs it.
+    for model in (CustomerInteraction, EventLog, WorkflowExecution, AgentCorrection, ModelAuditLog, MessageEvent):
         db.query(model).filter(model.complaint_id == complaint_id).update(
             {model.complaint_id: None}, synchronize_session=False
         )
