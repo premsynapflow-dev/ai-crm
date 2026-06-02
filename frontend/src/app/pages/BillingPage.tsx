@@ -10,13 +10,25 @@ import { api } from "../lib/api";
 export function BillingPage() {
   const { user } = useAuth();
   const [usage, setUsage] = useState<{ tickets_used: number; tickets_quota: number; next_billing_date?: string } | null>(null);
-  const [invoices, setInvoices] = useState<Array<{ id: string; amount: number; date: string; plan: string }>>([]);
+  const [invoices, setInvoices] = useState<Array<{
+    id: string;
+    invoice_number: string;
+    status: string;
+    total: number;
+    subtotal: number;
+    tax: number;
+    invoice_date: string | null;
+    paid_at: string | null;
+    payment_method: string | null;
+    plan: string;
+  }>>([]);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [upgrading, setUpgrading] = useState<string | null>(null);
 
   useEffect(() => {
     api.billing.getUsage().then(setUsage).catch(() => null);
-    api.billing.getInvoices().then((d) => setInvoices(d?.invoices || [])).catch(() => null);
+    api.billing.getInvoices().then(setInvoices).catch(() => null);
   }, []);
 
   const plans = [
@@ -68,6 +80,25 @@ export function BillingPage() {
       features: ["Everything in Scale", "Custom AI prompts", "SSO/SAML", "SLA guarantees", "White-label options"]
     }
   ];
+
+  const handleDownloadInvoice = async (invoiceId: string, invoiceNumber: string) => {
+    setDownloadingId(invoiceId);
+    try {
+      const blob = await api.billing.downloadInvoice(invoiceId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `synapflow-invoice-${invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to download invoice. Please try again.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const PLAN_ID_MAP: Record<string, string> = {
     Free: "free",
@@ -261,18 +292,47 @@ export function BillingPage() {
             {invoices.length === 0 ? (
               <p className="text-center text-gray-500 py-4">No invoices yet</p>
             ) : (
-              invoices.map((inv) => (
-                <div key={inv.id} className="flex items-center justify-between p-3 border rounded">
-                  <div>
-                    <div className="font-medium">{new Date(inv.date).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</div>
-                    <div className="text-sm text-gray-600 capitalize">{inv.plan} Plan</div>
+              invoices.map((inv) => {
+                const date = inv.invoice_date ? new Date(inv.invoice_date) : null;
+                const isPaid = inv.status === "paid";
+                return (
+                  <div key={inv.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50 transition-colors">
+                    <div>
+                      <div className="font-medium">
+                        {date
+                          ? date.toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+                          : inv.invoice_number}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-sm text-gray-600">{inv.plan} Plan</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                          isPaid
+                            ? "bg-green-100 text-green-700"
+                            : "bg-yellow-100 text-yellow-700"
+                        }`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">#{inv.invoice_number}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="font-medium">₹{Math.round(inv.total).toLocaleString("en-IN")}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={downloadingId === inv.id}
+                        onClick={() => handleDownloadInvoice(inv.id, inv.invoice_number)}
+                      >
+                        {downloadingId === inv.id ? (
+                          <><Loader2 className="size-3 mr-1.5 animate-spin" />Downloading…</>
+                        ) : (
+                          "Download PDF"
+                        )}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium">₹{inv.amount.toLocaleString("en-IN")}</span>
-                    <Button size="sm" variant="outline">Download</Button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </CardContent>

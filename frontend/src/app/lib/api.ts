@@ -718,9 +718,30 @@ export const api = {
     },
 
     getInvoices: async () => {
-      return request<{ invoices: Array<{ id: string; amount: number; date: string; plan: string }> }>(
-        "/api/invoices"
-      );
+      const raw = await request<Array<{
+        id: string;
+        invoice_number: string;
+        status: string;
+        total: number;
+        subtotal: number;
+        tax: number;
+        invoice_date: string | null;
+        paid_at: string | null;
+        payment_method: string | null;
+        plan: string;
+      }>>("/api/invoices");
+      return Array.isArray(raw) ? raw : [];
+    },
+
+    downloadInvoice: async (invoiceId: string): Promise<Blob> => {
+      const token = localStorage.getItem("synapflow_token");
+      const apiKey = localStorage.getItem("synapflow_api_key");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const res = await fetch(`/api/invoices/${invoiceId}/download`, { headers });
+      if (!res.ok) throw new Error("Failed to download invoice");
+      return res.blob();
     },
 
     upgrade: async (planId: string, billingCycle: "monthly" | "annual" = "monthly") => {
