@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { User } from "./api";
 
 interface AuthContextType {
@@ -13,23 +13,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const storedToken = localStorage.getItem("synapflow_token");
-    const storedUser = localStorage.getItem("synapflow_user");
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem("synapflow_token");
-        localStorage.removeItem("synapflow_user");
-        localStorage.removeItem("synapflow_api_key");
-      }
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("synapflow_token"));
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem("synapflow_user");
+      return stored ? (JSON.parse(stored) as User) : null;
+    } catch {
+      localStorage.removeItem("synapflow_token");
+      localStorage.removeItem("synapflow_user");
+      localStorage.removeItem("synapflow_api_key");
+      return null;
     }
-  }, []);
+  });
 
   const login = async (email: string, password: string) => {
     const { api } = await import("./api");
