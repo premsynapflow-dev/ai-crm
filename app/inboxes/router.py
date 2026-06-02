@@ -62,7 +62,7 @@ def gmail_callback(
     logger.info("Gmail OAuth callback received")
     if not code.strip():
         logger.warning("Gmail OAuth callback missing code")
-        return RedirectResponse(url="/settings?gmail_error=true", status_code=307)
+        return RedirectResponse(url="/app/settings/connections?gmail_error=true", status_code=307)
     try:
         oauth_state = inbox_service.load_oauth_state(state)
         token_payload = inbox_service.exchange_google_code(code)
@@ -97,7 +97,7 @@ def gmail_callback(
         return RedirectResponse(url=oauth_state["redirect_path"], status_code=307)
     except Exception as exc:
         logger.error("Gmail OAuth callback failed: %s", exc)
-        return RedirectResponse(url="/settings?gmail_error=true", status_code=307)
+        return RedirectResponse(url="/app/settings/connections?gmail_error=true", status_code=307)
 
 
 def _connect_imap(
@@ -147,6 +147,17 @@ def _connect_imap(
         password=payload.password,
     )
     return inbox_service.serialize_inbox(inbox)
+
+
+@router.delete("/inboxes/{inbox_id}", status_code=204)
+def delete_inbox(
+    inbox_id: str,
+    client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+):
+    deleted = inbox_service.delete_inbox(db, inbox_id=inbox_id, tenant_id=client.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Inbox not found")
 
 
 @router.post("/inboxes/connect-imap", response_model=InboxSummary)

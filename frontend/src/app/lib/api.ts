@@ -683,6 +683,46 @@ export const api = {
     },
   },
 
+  inboxes: {
+    list: async () => {
+      const raw = await request<Array<{ id: string; email: string; provider: string; status: string }>>("/inboxes");
+      return Array.isArray(raw) ? raw : [];
+    },
+
+    getGmailConnectUrl: async () => {
+      return request<{ connect_url: string }>("/inboxes/gmail/connect-url");
+    },
+
+    connectImap: async (payload: {
+      email: string;
+      password: string;
+      host?: string;
+      port?: number;
+      use_ssl?: boolean;
+    }) => {
+      return request<{ id: string; email: string; provider: string; status: string }>("/inboxes/connect-imap", {
+        method: "POST",
+        body: JSON.stringify({
+          email: payload.email,
+          password: payload.password,
+          imap_host: payload.host,
+          imap_port: payload.port ?? 993,
+          use_ssl: payload.use_ssl ?? true,
+        }),
+      });
+    },
+
+    disconnect: async (inboxId: string) => {
+      const token = localStorage.getItem("synapflow_token");
+      const apiKey = localStorage.getItem("synapflow_api_key");
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const res = await fetch(`/inboxes/${inboxId}`, { method: "DELETE", headers });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to disconnect");
+    },
+  },
+
   settings: {
     get: async () => {
       return request<{

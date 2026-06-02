@@ -33,7 +33,7 @@ GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
-DEFAULT_SETTINGS_REDIRECT = "/settings?gmail_connected=true"
+DEFAULT_SETTINGS_REDIRECT = "/app/settings/connections?gmail_connected=true"
 
 connect_token_serializer = URLSafeTimedSerializer(settings.secret_key, salt="inboxes-gmail-connect")
 oauth_state_serializer = URLSafeTimedSerializer(settings.secret_key, salt="inboxes-gmail-state")
@@ -205,6 +205,21 @@ def serialize_inbox(inbox: Inbox) -> dict[str, Any]:
         "status": "active" if inbox.is_active else "inactive",
         "created_at": inbox.created_at,
     }
+
+
+def delete_inbox(db: Session, *, inbox_id: str, tenant_id) -> bool:
+    tenant_uuid = _coerce_uuid(tenant_id)
+    inbox = (
+        db.query(Inbox)
+        .filter(Inbox.id == inbox_id, Inbox.tenant_id == tenant_uuid)
+        .first()
+    )
+    if inbox is None:
+        return False
+    db.delete(inbox)
+    db.commit()
+    logger.info("Deleted inbox id=%s tenant=%s", inbox_id, tenant_id)
+    return True
 
 
 def list_inboxes(db: Session, *, tenant_id) -> list[dict[str, Any]]:
