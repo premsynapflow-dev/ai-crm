@@ -49,6 +49,7 @@ from app.api.v1.security_test import router as security_test_router
 from app.api.v1.teams import router as teams_v1_router
 from app.api.v1.tickets import router as tickets_v1_router
 from app.api.v1.workflows import router as workflows_v1_router
+from app.api.v1.channel_connections import router as channel_connections_v1_router
 from app.api.v1.prompts import router as prompts_v1_router
 from app.api.admin_prompts import router as admin_prompts_router
 from app.billing.router import router as billing_router
@@ -282,6 +283,7 @@ app.include_router(security_test_router)
 app.include_router(teams_v1_router)
 app.include_router(tickets_v1_router)
 app.include_router(workflows_v1_router)
+app.include_router(channel_connections_v1_router)
 app.include_router(prompts_v1_router)
 app.include_router(plans_router)
 app.include_router(invoices_router)

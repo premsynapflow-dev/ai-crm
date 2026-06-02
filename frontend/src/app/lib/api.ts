@@ -683,6 +683,43 @@ export const api = {
     },
   },
 
+  channels: {
+    list: async (type?: string) => {
+      const url = type ? `/api/v1/channel-connections?type=${type}` : "/api/v1/channel-connections";
+      const raw = await request<Array<{
+        id: string;
+        channel_type: string;
+        account_identifier: string | null;
+        status: string;
+        metadata: Record<string, unknown>;
+        created_at: string | null;
+      }>>(url);
+      return Array.isArray(raw) ? raw : [];
+    },
+
+    connectWhatsApp: async (payload: {
+      phone_number_id: string;
+      access_token: string;
+      business_account_id?: string;
+      verify_token?: string;
+    }) => {
+      return request<{ status: string; connection_id: string; account_identifier: string }>(
+        "/integrations/whatsapp/connect",
+        { method: "POST", body: JSON.stringify(payload) }
+      );
+    },
+
+    disconnect: async (id: string) => {
+      const token = localStorage.getItem("synapflow_token");
+      const apiKey = localStorage.getItem("synapflow_api_key");
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const res = await fetch(`/api/v1/channel-connections/${id}`, { method: "DELETE", headers });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to disconnect");
+    },
+  },
+
   inboxes: {
     list: async () => {
       const raw = await request<Array<{ id: string; email: string; provider: string; status: string }>>("/inboxes");
