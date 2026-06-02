@@ -9,6 +9,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +61,8 @@ jobs:
           ADMIN_USERNAME: admin
           ADMIN_PASSWORD: adminpass123
           JWT_SECRET_KEY: 0123456789abcdef0123456789abcdef
+          DISABLE_BACKGROUND_WORKERS: "1"
+          DISABLE_SCHEMA_GUARD: "1"
         run: |
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --lifespan off &
           UVICORN_PID=$!

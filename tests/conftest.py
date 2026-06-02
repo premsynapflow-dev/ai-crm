@@ -57,27 +57,11 @@ def client(test_db):
     original_audit_session_local = audit_middleware.SessionLocal
     original_feature_gate_session_local = feature_gate_middleware.SessionLocal
     original_rls_session_local = rls_context_middleware.SessionLocal
-    original_feature_gate_resolve_client = feature_gate_middleware.FeatureGateMiddleware._resolve_client
-
-    def safe_resolve_client(self, request):
-        client_id = feature_gate_middleware.resolve_client_id_from_request(request)
-        if not client_id:
-            return None
-        db = feature_gate_middleware.SessionLocal()
-        try:
-            try:
-                parsed_client_id = uuid.UUID(str(client_id))
-            except (TypeError, ValueError):
-                parsed_client_id = client_id
-            return db.query(feature_gate_middleware.Client).filter(feature_gate_middleware.Client.id == parsed_client_id).first()
-        finally:
-            db.close()
 
     billing_usage.SessionLocal = TestingSessionLocal
     audit_middleware.SessionLocal = TestingSessionLocal
     feature_gate_middleware.SessionLocal = TestingSessionLocal
     rls_context_middleware.SessionLocal = TestingSessionLocal
-    feature_gate_middleware.FeatureGateMiddleware._resolve_client = safe_resolve_client
     rate_limiter_middleware.rate_limiter.requests.clear()
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
@@ -88,7 +72,6 @@ def client(test_db):
     audit_middleware.SessionLocal = original_audit_session_local
     feature_gate_middleware.SessionLocal = original_feature_gate_session_local
     rls_context_middleware.SessionLocal = original_rls_session_local
-    feature_gate_middleware.FeatureGateMiddleware._resolve_client = original_feature_gate_resolve_client
 
 
 @pytest.fixture
