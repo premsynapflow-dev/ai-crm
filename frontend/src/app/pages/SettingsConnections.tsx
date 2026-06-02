@@ -21,6 +21,7 @@ import {
   EyeOff,
   Lock,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -66,6 +67,9 @@ export function SettingsConnections() {
 
   // Shared disconnect
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+
+  // Manual sync
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   const webhookUrl = `${window.location.origin}/webhook/complaints`;
   const waWebhookUrl = `${window.location.origin}/webhooks/whatsapp`;
@@ -114,6 +118,27 @@ export function SettingsConnections() {
     } catch {
       toast.error("Could not start Gmail OAuth. Ensure Google OAuth env vars are set.");
       setConnectingGmail(false);
+    }
+  };
+
+  const handleSyncInbox = async (id: string, email: string) => {
+    setSyncingId(id);
+    try {
+      const result = await api.inboxes.poll(id);
+      if (result.error) {
+        toast.error(`Sync failed: ${result.error}`);
+      } else if (result.result) {
+        const { fetched, processed, duplicates } = result.result;
+        if (fetched === 0) {
+          toast.info("No new messages found in inbox.");
+        } else {
+          toast.success(`Synced: ${fetched} fetched, ${processed} new complaint${processed !== 1 ? "s" : ""}, ${duplicates} already seen.`);
+        }
+      }
+    } catch {
+      toast.error("Sync request failed. Check server logs.");
+    } finally {
+      setSyncingId(null);
     }
   };
 
@@ -199,8 +224,8 @@ export function SettingsConnections() {
   // ── Shared UI helpers ──────────────────────────────────────────────────────
 
   const InboxRow = ({
-    id, label, sublabel, onDisconnect,
-  }: { id: string; label: string; sublabel?: string; onDisconnect: () => void }) => (
+    id, label, sublabel, onDisconnect, onSync,
+  }: { id: string; label: string; sublabel?: string; onDisconnect: () => void; onSync?: () => void }) => (
     <div className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
       <div className="flex items-center gap-3">
         <div className="size-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
@@ -212,17 +237,32 @@ export function SettingsConnections() {
           <div className="text-xs text-green-600 font-medium">● Active</div>
         </div>
       </div>
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-red-600 border-red-200 hover:bg-red-50 shrink-0"
-        disabled={disconnectingId === id}
-        onClick={onDisconnect}
-      >
-        {disconnectingId === id
-          ? <Loader2 className="size-4 animate-spin" />
-          : <><Trash2 className="size-4 mr-1.5" />Disconnect</>}
-      </Button>
+      <div className="flex items-center gap-2 shrink-0">
+        {onSync && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={syncingId === id}
+            onClick={onSync}
+            title="Manually trigger inbox sync now"
+          >
+            {syncingId === id
+              ? <Loader2 className="size-4 animate-spin" />
+              : <><RefreshCw className="size-4 mr-1.5" />Sync Now</>}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-red-600 border-red-200 hover:bg-red-50"
+          disabled={disconnectingId === id}
+          onClick={onDisconnect}
+        >
+          {disconnectingId === id
+            ? <Loader2 className="size-4 animate-spin" />
+            : <><Trash2 className="size-4 mr-1.5" />Disconnect</>}
+        </Button>
+      </div>
     </div>
   );
 
@@ -318,6 +358,7 @@ export function SettingsConnections() {
                       label={inbox.email}
                       sublabel="Gmail OAuth"
                       onDisconnect={() => handleDisconnectInbox(inbox.id, inbox.email)}
+                      onSync={() => handleSyncInbox(inbox.id, inbox.email)}
                     />
                   ))}
                   <Button variant="outline" size="sm" className="mt-2" onClick={handleConnectGmail} disabled={connectingGmail}>

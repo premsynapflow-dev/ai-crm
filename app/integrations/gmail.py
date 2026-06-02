@@ -328,18 +328,20 @@ def _fetch_gmail_message(source: GmailSource, message_id: str) -> dict[str, Any]
 
 
 def fetch_gmail_messages(source: GmailSource, *, max_results: int = 20) -> list[dict[str, Any]]:
+    # Only fetch INBOX messages — exclude SENT, DRAFTS, TRASH, SPAM
+    params = {"maxResults": max_results, "q": "in:inbox"}
     response = _google_request(
         "GET",
         f"{GMAIL_API_BASE}/users/me/messages",
         headers=_authorized_headers(source),
-        params={"maxResults": max_results},
+        params=params,
     )
     if response.status_code == 401:
         response = _google_request(
             "GET",
             f"{GMAIL_API_BASE}/users/me/messages",
             headers=_authorized_headers(source, force_refresh=True),
-            params={"maxResults": max_results},
+            params=params,
         )
     if response.status_code >= 400:
         raise _request_error(response)
@@ -351,7 +353,7 @@ def fetch_gmail_messages(source: GmailSource, *, max_results: int = 20) -> list[
         if not message_id:
             continue
         messages.append(_fetch_gmail_message(source, message_id))
-    logger.info("Fetched %s Gmail messages for %s", len(messages), _source_label(source))
+    logger.info("Fetched %s Gmail inbox messages for %s", len(messages), _source_label(source))
     return messages
 
 
@@ -368,6 +370,8 @@ def _incoming_from_gmail_message(
     sender_name, sender_email = _parse_sender(headers)
     body = _extract_gmail_body(message.get("payload", {}) or {}).strip()
     message_text = "\n\n".join(part for part in [subject, body] if part).strip()
+    gmail_labels = message.get("labelIds", [])
+    direction = "outbound" if "SENT" in gmail_labels else "inbound"
     return IncomingMessage(
         client_id=_source_client_id(source),
         channel="gmail",
@@ -378,14 +382,14 @@ def _incoming_from_gmail_message(
         message_text=message_text,
         attachments=_extract_gmail_attachments(message.get("payload", {}) or {}),
         timestamp=_parse_gmail_timestamp(message),
-        direction="inbound",
+        direction=direction,
         status="received",
         raw_payload={
             **_source_raw_payload(source),
             "headers": headers,
             "snippet": message.get("snippet"),
             "history_id": history_id or message.get("historyId"),
-            "gmail_labels": message.get("labelIds", []),
+            "gmail_labels": gmail_labels,
         },
     )
 

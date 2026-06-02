@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi import HTTPException
@@ -176,3 +176,52 @@ def connect_imap_alias(
     db: Session = Depends(get_db),
 ):
     return _connect_imap(payload, client=client, db=db)
+
+
+@router.post("/inboxes/{inbox_id}/poll")
+def manual_poll_inbox(
+    inbox_id: str,
+    client: Client = Depends(get_current_client),
+    db: Session = Depends(get_db),
+):
+    """Manually trigger an inbox poll for debugging. Returns messages found and processing result."""
+    from app.inboxes.models import Inbox
+    from app.services.inbox_poller import poll_inbox
+    from app.utils.crypto import decrypt_secret
+
+    inbox = (
+        db.query(Inbox)
+        .filter(Inbox.id == inbox_id, Inbox.tenant_id == client.id)
+        .first()
+    )
+    if inbox is None:
+        raise HTTPException(status_code=404, detail="Inbox not found")
+
+    diagnostics: dict[str, Any] = {
+        "inbox_id": str(inbox.id),
+        "email": inbox.email_address,
+        "provider": inbox.provider_type,
+        "is_active": inbox.is_active,
+        "last_synced_at": inbox.last_synced_at.isoformat() if inbox.last_synced_at else None,
+        "has_access_token": bool(inbox.access_token),
+        "has_refresh_token": bool(inbox.refresh_token),
+        "token_expiry": inbox.token_expiry.isoformat() if inbox.token_expiry else None,
+    }
+
+    if inbox.provider_type == "gmail":
+        try:
+            access_token = decrypt_secret(inbox.access_token)
+            diagnostics["access_token_decryptable"] = bool(access_token)
+        except Exception as exc:
+            diagnostics["access_token_decryptable"] = False
+            diagnostics["decrypt_error"] = str(exc)
+            return {"diagnostics": diagnostics, "error": "Token decryption failed — check CHANNEL_CRYPTO_KEY env var", "result": None}
+
+    try:
+        result = poll_inbox(db, inbox, max_results=20)
+        db.commit()
+        return {"diagnostics": diagnostics, "result": result}
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Manual inbox poll failed inbox=%s", inbox_id)
+        return {"diagnostics": diagnostics, "error": str(exc), "result": None}

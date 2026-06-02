@@ -721,6 +721,13 @@ export const api = {
   },
 
   inboxes: {
+    poll: async (inboxId: string) => {
+      return request<{
+        diagnostics: Record<string, unknown>;
+        result: { fetched: number; processed: number; duplicates: number; errors: number } | null;
+        error?: string;
+      }>(`/inboxes/${inboxId}/poll`, { method: "POST" });
+    },
     list: async () => {
       const raw = await request<Array<{ id: string; email: string; provider: string; status: string }>>("/inboxes");
       return Array.isArray(raw) ? raw : [];
