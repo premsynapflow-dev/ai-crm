@@ -36,6 +36,7 @@ from app.db.models import (
     ModelAuditLog,
     RBIComplaint,
     RBIEscalationLog,
+    ReplyDraft,
     ReplyFeedback,
     TicketAssignment,
     TicketComment,
@@ -353,6 +354,7 @@ def _delete_complaint_graph(db: Session, complaint: Complaint) -> None:
 
     db.query(ReplyFeedback).filter(ReplyFeedback.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(AIReplyQueue).filter(AIReplyQueue.complaint_id == complaint_id).delete(synchronize_session=False)
+    db.query(ReplyDraft).filter(ReplyDraft.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(RBIComplaint).filter(RBIComplaint.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(TicketAssignment).filter(TicketAssignment.complaint_id == complaint_id).delete(synchronize_session=False)
     db.query(TicketComment).filter(TicketComment.complaint_id == complaint_id).delete(synchronize_session=False)
