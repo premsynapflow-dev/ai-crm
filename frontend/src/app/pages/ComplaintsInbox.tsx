@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -31,6 +32,7 @@ import {
   RefreshCw,
   TrendingUp,
   CheckCircle,
+  Trash2,
 } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -46,6 +48,8 @@ export function ComplaintsInbox() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadComplaints = useCallback(async (silent = false) => {
@@ -58,6 +62,7 @@ export function ComplaintsInbox() {
         search: searchQuery || undefined,
       });
       setComplaints(data);
+      setSelectedIds(new Set());
     } catch (err: unknown) {
       const msg = (err as Error)?.message || "Failed to load complaints";
       if (!silent) setError(msg);
@@ -140,6 +145,67 @@ export function ComplaintsInbox() {
       toast.error((err as Error)?.message || "Failed to update status");
     } finally {
       setAction(complaint.id, false);
+    }
+  };
+
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === complaints.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(complaints.map((c) => c.id)));
+    }
+  };
+
+  const handleBulkEscalate = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      await Promise.all([...selectedIds].map((id) => api.complaints.setStatus(id, "escalated")));
+      toast.success(`Escalated ${selectedIds.size} ticket${selectedIds.size !== 1 ? "s" : ""}`);
+      setSelectedIds(new Set());
+      await loadComplaints(true);
+    } catch {
+      toast.error("Failed to escalate some tickets");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkResolve = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      await Promise.all([...selectedIds].map((id) => api.complaints.setStatus(id, "resolved")));
+      toast.success(`Resolved ${selectedIds.size} ticket${selectedIds.size !== 1 ? "s" : ""}`);
+      setSelectedIds(new Set());
+      await loadComplaints(true);
+    } catch {
+      toast.error("Failed to resolve some tickets");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} ticket${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setBulkLoading(true);
+    try {
+      await Promise.all([...selectedIds].map((id) => api.complaints.delete(id)));
+      toast.success(`Deleted ${selectedIds.size} ticket${selectedIds.size !== 1 ? "s" : ""}`);
+      setSelectedIds(new Set());
+      await loadComplaints(true);
+    } catch {
+      toast.error("Failed to delete some tickets");
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -338,13 +404,52 @@ export function ComplaintsInbox() {
       {/* Complaints Table */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            {loading
-              ? "Loading…"
-              : error
-              ? "Error"
-              : `${complaints.length} Complaint${complaints.length !== 1 ? "s" : ""}`}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>
+              {loading
+                ? "Loading…"
+                : error
+                ? "Error"
+                : `${complaints.length} Complaint${complaints.length !== 1 ? "s" : ""}`}
+            </CardTitle>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 mr-1">
+                  {selectedIds.size} selected
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-orange-600 border-orange-200 hover:bg-orange-50 h-8"
+                  onClick={handleBulkEscalate}
+                  disabled={bulkLoading}
+                >
+                  <TrendingUp className="size-3.5 mr-1.5" />
+                  Escalate
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-green-600 border-green-200 hover:bg-green-50 h-8"
+                  onClick={handleBulkResolve}
+                  disabled={bulkLoading}
+                >
+                  <CheckCircle className="size-3.5 mr-1.5" />
+                  Mark Resolved
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50 h-8"
+                  onClick={handleBulkDelete}
+                  disabled={bulkLoading}
+                >
+                  <Trash2 className="size-3.5 mr-1.5" />
+                  Delete
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -377,6 +482,13 @@ export function ComplaintsInbox() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={complaints.length > 0 && selectedIds.size === complaints.length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
                     <TableHead>Ticket</TableHead>
                     <TableHead>Summary</TableHead>
                     <TableHead>Customer</TableHead>
@@ -398,7 +510,17 @@ export function ComplaintsInbox() {
                     const isEscalated = complaint.status === "escalated";
                     const agents = teamAgents(complaint.team_id);
                     return (
-                      <TableRow key={complaint.id}>
+                      <TableRow
+                        key={complaint.id}
+                        className={selectedIds.has(complaint.id) ? "bg-blue-50" : ""}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(complaint.id)}
+                            onCheckedChange={() => toggleSelect(complaint.id)}
+                            aria-label={`Select ${complaint.ticket_number}`}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium text-xs text-gray-500">
                           {complaint.ticket_number || complaint.id.slice(0, 8)}
                         </TableCell>

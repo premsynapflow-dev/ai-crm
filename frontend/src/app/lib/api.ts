@@ -462,6 +462,10 @@ export const api = {
         body: JSON.stringify({ team_id: teamId, assigned_to: agentId }),
       });
     },
+
+    delete: async (id: string): Promise<void> => {
+      await request(`/api/v1/complaints/${id}`, { method: "DELETE" });
+    },
   },
 
   replyQueue: {
