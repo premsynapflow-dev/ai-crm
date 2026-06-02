@@ -707,6 +707,31 @@ def suggest_reply_for_complaint(
     return _serialize_complaint_detail(db, complaint)
 
 
+@router.post("/{complaint_id}/generate-reply")
+def generate_ai_reply_for_complaint(
+    complaint_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    user = _get_authenticated_user(request, db, authorization)
+    complaint = _get_scoped_complaint(db, user, complaint_id)
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    client = db.query(Client).filter(Client.id == user.client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    HardenedAutoReplyService(db).generate_and_queue_reply(
+        complaint,
+        force_human_review=True,
+        commit=True,
+    )
+    db.refresh(complaint)
+    return _serialize_complaint_detail(db, complaint)
+
+
 @router.get("/{complaint_id}/suggest-response")
 def get_suggested_response(
     complaint_id: str,

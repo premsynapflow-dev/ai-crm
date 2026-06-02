@@ -259,11 +259,14 @@ async def process_complaint_ai_job(payload: Dict):
         if has_feature_access(client, "rbi_compliance", db=db):
             RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
 
-        await HardenedAutoReplyService(db).generate_and_queue_reply_async(
-            complaint,
-            custom_config=client_config,
-            commit=False,
-        )
+        auto_ai_reply = (client.custom_prompt_config or {}).get("notification_preferences", {}).get("auto_ai_reply", True)
+        queue_entry = None
+        if auto_ai_reply:
+            queue_entry = await HardenedAutoReplyService(db).generate_and_queue_reply_async(
+                complaint,
+                custom_config=client_config,
+                commit=False,
+            )
 
         complaint.status = "PROCESSED"
         SLAManager(db).refresh_ticket_deadline(complaint, commit=False)
@@ -275,6 +278,21 @@ async def process_complaint_ai_job(payload: Dict):
             commit=False,
         )
         db.commit()
+
+        if auto_ai_reply and queue_entry is not None and (queue_entry.confidence_score or 0) >= 0.90:
+            try:
+                HardenedAutoReplyService(db).approve_reply(
+                    str(queue_entry.id),
+                    reviewer_email="system:auto",
+                    commit=True,
+                )
+                logger.info(
+                    "Auto-sent AI reply for complaint %s (confidence=%.2f)",
+                    complaint_id,
+                    queue_entry.confidence_score,
+                )
+            except Exception:
+                logger.exception("Auto-send failed for complaint %s, draft remains pending", complaint_id)
         
         logger.info(
             "Processed complaint %s in background (custom_prompt=%s escalation_rules=%s)",

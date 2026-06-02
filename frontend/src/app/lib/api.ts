@@ -466,6 +466,13 @@ export const api = {
     delete: async (id: string): Promise<void> => {
       await request(`/api/v1/complaints/${id}`, { method: "DELETE" });
     },
+
+    generateReply: async (id: string): Promise<Complaint> => {
+      const raw = await request<Record<string, unknown>>(`/api/v1/complaints/${id}/generate-reply`, {
+        method: "POST",
+      });
+      return normalizeComplaint(raw);
+    },
   },
 
   replyQueue: {
@@ -837,6 +844,7 @@ export const api = {
       daily_digest: boolean;
       ticket_assigned: boolean;
       ai_draft_expired: boolean;
+      auto_ai_reply: boolean;
     }): Promise<void> => {
       await request("/api/settings/notifications", {
         method: "PUT",

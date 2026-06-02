@@ -21,6 +21,7 @@ import {
   User,
   RefreshCw,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -100,6 +101,7 @@ export function ComplaintDetail() {
   const [replyText, setReplyText] = useState("");
   const [editing, setEditing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [generatingAI, setGeneratingAI] = useState(false);
 
   useEffect(() => {
     if (id) loadComplaint(id);
@@ -149,6 +151,22 @@ export function ComplaintDetail() {
       toast.error("Failed to reject");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleGenerateAIReply = async () => {
+    if (!complaint) return;
+    setGeneratingAI(true);
+    try {
+      const updated = await api.complaints.generateReply(complaint.id);
+      setComplaint(updated);
+      setReplyText(updated.ai_reply || "");
+      setEditing(false);
+      toast.success("AI reply generated");
+    } catch (err: unknown) {
+      toast.error((err as Error)?.message || "Failed to generate AI reply");
+    } finally {
+      setGeneratingAI(false);
     }
   };
 
@@ -246,11 +264,9 @@ export function ComplaintDetail() {
                   <CardTitle className="text-base">
                     {isSent
                       ? "Reply Sent"
-                      : isRejected
-                      ? "Write Reply"
                       : aiDraftExists
                       ? "AI-Drafted Reply"
-                      : "Write Reply"}
+                      : "Reply"}
                   </CardTitle>
                 </div>
                 <div className="flex items-center gap-2">
@@ -282,6 +298,21 @@ export function ComplaintDetail() {
                 </div>
               ) : (
                 <>
+                  {!aiDraftExists && (
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={handleGenerateAIReply}
+                      disabled={generatingAI || sending}
+                    >
+                      {generatingAI ? (
+                        <RefreshCw className="size-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="size-4" />
+                      )}
+                      {generatingAI ? "Generating…" : "Generate AI Reply"}
+                    </Button>
+                  )}
                   <Textarea
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}

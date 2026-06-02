@@ -113,6 +113,7 @@ class NotificationPreferencesRequest(BaseModel):
     daily_digest: bool = False
     ticket_assigned: bool = False
     ai_draft_expired: bool = False
+    auto_ai_reply: bool = True
 
 
 @router.put("/settings/notifications")
