@@ -133,7 +133,7 @@ class HardenedAutoReplyService:
         ticket.ai_reply_status = "pending"
 
         self.db.flush()
-        self._ensure_feedback_record(ticket.id, queue_entry.id)
+        self._ensure_feedback_record(ticket.id, queue_entry.id, ticket.client_id)
         log_event(
             self.db,
             ticket.client_id,
@@ -308,7 +308,7 @@ class HardenedAutoReplyService:
         commit: bool = True,
     ) -> ReplyFeedback:
         queue_entry = self.db.query(AIReplyQueue).filter(AIReplyQueue.complaint_id == complaint.id).first()
-        feedback = self._ensure_feedback_record(complaint.id, queue_entry.id if queue_entry else None)
+        feedback = self._ensure_feedback_record(complaint.id, queue_entry.id if queue_entry else None, complaint.client_id)
 
         if customer_responded is not None:
             feedback.customer_responded = customer_responded
@@ -346,10 +346,11 @@ class HardenedAutoReplyService:
             reply_subject=reply_subject,
         )
 
-    def _ensure_feedback_record(self, complaint_id, reply_queue_id) -> ReplyFeedback:
+    def _ensure_feedback_record(self, complaint_id, reply_queue_id, client_id=None) -> ReplyFeedback:
         feedback = self.db.query(ReplyFeedback).filter(ReplyFeedback.complaint_id == complaint_id).first()
         if feedback is None:
             feedback = ReplyFeedback(
+                client_id=client_id,
                 complaint_id=complaint_id,
                 reply_queue_id=reply_queue_id,
             )

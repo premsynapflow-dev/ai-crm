@@ -528,7 +528,8 @@ class ReplyFeedback(Base):
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=False, index=True)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id"), nullable=True, index=True)
     reply_queue_id = Column(Uuid(as_uuid=True), ForeignKey("ai_reply_queue.id"), nullable=True, index=True)
     customer_responded = Column(Boolean, nullable=False, default=False)
     customer_response_sentiment = Column(Float, nullable=True)
