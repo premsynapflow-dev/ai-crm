@@ -117,6 +117,9 @@ def upgrade():
     conn.execute(sa.text("ALTER TABLE event_logs ALTER COLUMN action DROP NOT NULL"))
     conn.execute(sa.text("ALTER TABLE event_logs ALTER COLUMN client_id DROP NOT NULL"))
 
+    # Fix usage_records: metric_type is NOT NULL but UsageRecord ORM doesn't set it.
+    conn.execute(sa.text("ALTER TABLE usage_records ALTER COLUMN metric_type SET DEFAULT 'tickets'"))
+
     if not _has_constraint(conn, "conversations", "uq_conversations_client_channel_thread"):
         op.create_unique_constraint(
             "uq_conversations_client_channel_thread",
