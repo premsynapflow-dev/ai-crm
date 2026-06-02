@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
 import { api } from "../lib/api";
 import { toast } from "sonner";
-import { Loader2, Bell, Bot } from "lucide-react";
+import { Loader2, Bell } from "lucide-react";
 
 interface NotifPrefs {
   sla_breach: boolean;
@@ -78,26 +78,6 @@ export function SettingsNotifications() {
           Save Preferences
         </Button>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="size-5" />
-            AI Automation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-base font-semibold">Auto AI Reply</Label>
-              <p className="text-sm text-gray-500 mt-0.5">
-                When on, an AI reply is generated as soon as a complaint arrives. If confidence is above 90%, the reply is sent automatically — no human review needed.
-              </p>
-            </div>
-            <Switch checked={prefs.auto_ai_reply} onCheckedChange={() => toggle("auto_ai_reply")} />
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>

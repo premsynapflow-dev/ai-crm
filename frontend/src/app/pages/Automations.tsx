@@ -3,15 +3,45 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
+import { Label } from "../components/ui/label";
 import { api, AutomationRule } from "../lib/api";
-import { Zap, Plus } from "lucide-react";
+import { Zap, Plus, Bot, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+type AllPrefs = {
+  sla_breach: boolean;
+  new_escalation: boolean;
+  daily_digest: boolean;
+  ticket_assigned: boolean;
+  ai_draft_expired: boolean;
+  auto_ai_reply: boolean;
+};
+
+const PREF_DEFAULTS: AllPrefs = {
+  sla_breach: false,
+  new_escalation: false,
+  daily_digest: false,
+  ticket_assigned: false,
+  ai_draft_expired: false,
+  auto_ai_reply: true,
+};
 
 export function Automations() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [allPrefs, setAllPrefs] = useState<AllPrefs>(PREF_DEFAULTS);
+  const [prefsSaving, setPrefsSaving] = useState(false);
 
   useEffect(() => {
     loadRules();
+    api.settings.get()
+      .then((data) => {
+        const saved = data.notification_preferences as Partial<AllPrefs> | undefined;
+        if (saved && typeof saved === "object") {
+          setAllPrefs({ ...PREF_DEFAULTS, ...saved });
+        }
+      })
+      .catch(() => null);
   }, []);
 
   const loadRules = async () => {
@@ -23,6 +53,21 @@ export function Automations() {
       console.error("Failed to load rules:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleAutoAiReply = async (checked: boolean) => {
+    const updated = { ...allPrefs, auto_ai_reply: checked };
+    setAllPrefs(updated);
+    setPrefsSaving(true);
+    try {
+      await api.settings.updateNotificationPrefs(updated);
+      toast.success(checked ? "Auto AI Reply enabled" : "Auto AI Reply disabled");
+    } catch {
+      setAllPrefs((p) => ({ ...p, auto_ai_reply: !checked }));
+      toast.error("Failed to save setting");
+    } finally {
+      setPrefsSaving(false);
     }
   };
 
@@ -47,6 +92,33 @@ export function Automations() {
           Create Rule
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="size-5 text-blue-600" />
+            AI Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-base font-semibold">Auto AI Reply</Label>
+              <p className="text-sm text-gray-500 mt-0.5">
+                When on, an AI reply is generated as soon as a complaint arrives. If confidence is above 90%, the reply is sent automatically — no human review needed.
+              </p>
+            </div>
+            {prefsSaving ? (
+              <Loader2 className="size-5 animate-spin text-gray-400" />
+            ) : (
+              <Switch
+                checked={allPrefs.auto_ai_reply}
+                onCheckedChange={toggleAutoAiReply}
+              />
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
