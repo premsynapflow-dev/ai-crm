@@ -873,6 +873,21 @@ export const api = {
         body: JSON.stringify(data),
       });
     },
+
+    verifyPaymentLink: async (data: {
+      razorpay_payment_id: string;
+      razorpay_payment_link_id: string;
+      razorpay_payment_link_reference_id: string;
+      razorpay_payment_link_status: string;
+      razorpay_signature: string;
+      plan_id: string;
+      billing_cycle: string;
+    }) => {
+      return request<{ ok: boolean; status: string; plan_id: string; plan_name: string }>("/api/verify-payment-link", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
   },
 
   admin: {

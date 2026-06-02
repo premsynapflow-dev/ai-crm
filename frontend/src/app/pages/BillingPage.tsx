@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -26,9 +26,40 @@ export function BillingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [upgrading, setUpgrading] = useState<string | null>(null);
 
+  const paymentLinkVerified = useRef(false);
+
   useEffect(() => {
     api.billing.getUsage().then(setUsage).catch(() => null);
     api.billing.getInvoices().then(setInvoices).catch(() => null);
+
+    // Handle return from Razorpay hosted payment link
+    const params = new URLSearchParams(window.location.search);
+    const rzpPaymentId = params.get("razorpay_payment_id");
+    const rzpLinkId = params.get("razorpay_payment_link_id");
+    const rzpRefId = params.get("razorpay_payment_link_reference_id");
+    const rzpStatus = params.get("razorpay_payment_link_status");
+    const rzpSig = params.get("razorpay_signature");
+    const rzpPlan = params.get("rzp_plan");
+    const rzpCycle = (params.get("rzp_cycle") as "monthly" | "annual") || "monthly";
+
+    if (rzpPaymentId && rzpLinkId && rzpRefId && rzpStatus && rzpSig && rzpPlan && !paymentLinkVerified.current) {
+      paymentLinkVerified.current = true;
+      window.history.replaceState({}, "", window.location.pathname);
+      api.billing.verifyPaymentLink({
+        razorpay_payment_id: rzpPaymentId,
+        razorpay_payment_link_id: rzpLinkId,
+        razorpay_payment_link_reference_id: rzpRefId,
+        razorpay_payment_link_status: rzpStatus,
+        razorpay_signature: rzpSig,
+        plan_id: rzpPlan,
+        billing_cycle: rzpCycle,
+      }).then(() => {
+        toast.success("Payment successful! Your plan has been upgraded.");
+        window.location.reload();
+      }).catch(() => {
+        toast.error("Payment received but plan activation failed — contact support.");
+      });
+    }
   }, []);
 
   const plans = [

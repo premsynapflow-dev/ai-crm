@@ -133,7 +133,7 @@ def verify_order_payment(order_id: str, payment_id: str, signature: str) -> bool
     return hmac.compare_digest(expected, signature)
 
 
-def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, description=None):
+def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, description=None, callback_url=None):
     client = _get_razorpay_client()
     notes = {"client_id": str(client_id)}
     if plan_id:
@@ -155,6 +155,9 @@ def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, 
         "description": description or f"SynapFlow plan payment for client {client_id}",
         "notes": notes,
     }
+    if callback_url:
+        payload["callback_url"] = callback_url
+        payload["callback_method"] = "get"
 
     logger.debug("create_payment_link payload=%s", payload)
     result = client.payment_link.create(payload)
@@ -164,6 +167,23 @@ def create_payment_link(client_id, amount, *, plan_id=None, billing_cycle=None, 
         raise RuntimeError("invalid Razorpay payment link response")
 
     return result
+
+
+def verify_payment_link_callback(
+    payment_link_id: str,
+    payment_link_reference_id: str,
+    payment_link_status: str,
+    razorpay_payment_id: str,
+    razorpay_signature: str,
+) -> bool:
+    """Verify the HMAC signature Razorpay appends to payment-link callback redirects."""
+    message = f"{payment_link_id}|{payment_link_reference_id}|{payment_link_status}|{razorpay_payment_id}"
+    expected = hmac.new(
+        settings.razorpay_key_secret.encode(),
+        message.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, razorpay_signature)
 
 
 def _extract_notes(payload: dict) -> dict:

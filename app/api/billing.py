@@ -9,7 +9,7 @@ from app.auth import get_current_client
 from app.billing.plan_application import apply_plan_to_client
 from app.db.models import Client, Invoice
 from app.billing.plans import PLANS, ALLOWED_UPGRADES, is_upgrade_allowed
-from app.billing.razorpay_service import create_order, create_payment_link, create_subscription, verify_order_payment
+from app.billing.razorpay_service import create_order, create_payment_link, create_subscription, verify_order_payment, verify_payment_link_callback
 from app.billing.usage import get_usage_summary
 from app.config import get_settings
 from app.db.session import get_db
@@ -87,55 +87,61 @@ def upgrade_plan(
             subscription = create_subscription(client.id, payload.plan_id, payload.billing_cycle)
         except Exception:
             logger.exception(
-                "Razorpay subscription creation failed for client=%s target_plan=%s, attempting payment link fallback",
+                "Razorpay subscription creation failed for client=%s target_plan=%s, trying order-based checkout",
                 client.id,
                 payload.plan_id,
             )
 
-            # Try payment link first
+            # Preferred fallback: Razorpay Order — frontend opens checkout modal, plan
+            # is activated immediately after payment via /api/verify-payment.
+            # This avoids dependency on webhooks and gives instant plan activation.
             try:
+                order = create_order(
+                    client.id,
+                    amount=int(price) * 100,
+                    plan_id=payload.plan_id,
+                    billing_cycle=payload.billing_cycle,
+                )
+                logger.info("Razorpay order created for upgrade client=%s plan=%s order=%s", client.id, payload.plan_id, order["id"])
+                return {
+                    "ok": True,
+                    "status": "payment_pending",
+                    "checkout_mode": "order",
+                    "order_id": order["id"],
+                    "razorpay_key": settings.razorpay_key_id,
+                    "amount": int(price) * 100,
+                    "currency": "INR",
+                    "plan_id": payload.plan_id,
+                    "plan_name": plan["name"],
+                    "billing_cycle": payload.billing_cycle,
+                    "payment_url": None,
+                }
+            except Exception:
+                logger.warning("Razorpay order creation failed for client=%s, falling back to payment link", client.id)
+
+            # Last resort: hosted payment link (no immediate plan activation;
+            # relies on Razorpay webhook OR callback_url redirect handling)
+            try:
+                callback_url = (
+                    f"{settings.app_base_url}/app/billing"
+                    f"?rzp_plan={payload.plan_id}"
+                    f"&rzp_cycle={payload.billing_cycle}"
+                )
                 payment_link = create_payment_link(
                     client.id,
                     amount=int(price) * 100,
                     plan_id=payload.plan_id,
                     billing_cycle=payload.billing_cycle,
                     description=f"SynapFlow {plan['name']} ({payload.billing_cycle}) plan payment",
+                    callback_url=callback_url,
                 )
                 payment_url = payment_link.get("short_url")
                 if not payment_url:
                     raise ValueError("Razorpay payment link response missing short_url")
-                logger.info(
-                    "Razorpay payment link created for upgrade client=%s plan=%s url=%s",
-                    client.id,
-                    payload.plan_id,
-                    payment_url,
-                )
-            except Exception:
-                logger.warning("Razorpay payment link failed for client=%s, falling back to order", client.id)
-                # Final fallback: Razorpay Order — frontend opens checkout modal
-                try:
-                    order = create_order(
-                        client.id,
-                        amount=int(price) * 100,
-                        plan_id=payload.plan_id,
-                        billing_cycle=payload.billing_cycle,
-                    )
-                    return {
-                        "ok": True,
-                        "status": "payment_pending",
-                        "checkout_mode": "order",
-                        "order_id": order["id"],
-                        "razorpay_key": settings.razorpay_key_id,
-                        "amount": int(price) * 100,
-                        "currency": "INR",
-                        "plan_id": payload.plan_id,
-                        "plan_name": plan["name"],
-                        "billing_cycle": payload.billing_cycle,
-                        "payment_url": None,
-                    }
-                except Exception as exc:
-                    logger.exception("Unable to initiate Razorpay order for client=%s", client.id)
-                    raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
+                logger.info("Razorpay payment link created for upgrade client=%s plan=%s url=%s", client.id, payload.plan_id, payment_url)
+            except Exception as exc:
+                logger.exception("Unable to initiate Razorpay payment for client=%s", client.id)
+                raise HTTPException(status_code=502, detail="Unable to initiate Razorpay payment") from exc
         else:
             razorpay_subscription_id = subscription.get("id")
             logger.info(
@@ -177,6 +183,16 @@ class VerifyPaymentRequest(BaseModel):
     billing_cycle: str = Field(default="monthly")
 
 
+class VerifyPaymentLinkRequest(BaseModel):
+    razorpay_payment_id: str
+    razorpay_payment_link_id: str
+    razorpay_payment_link_reference_id: str
+    razorpay_payment_link_status: str
+    razorpay_signature: str
+    plan_id: str
+    billing_cycle: str = Field(default="monthly")
+
+
 @router.post("/verify-payment")
 def verify_payment_endpoint(
     payload: VerifyPaymentRequest,
@@ -192,6 +208,42 @@ def verify_payment_endpoint(
         raise HTTPException(status_code=400, detail="Unknown plan")
 
     logger.info("verify_payment success client=%s plan=%s order=%s payment=%s", client.id, payload.plan_id, payload.order_id, payload.payment_id)
+    apply_plan_to_client(client, payload.plan_id)
+    db.commit()
+    db.refresh(client)
+
+    return {
+        "ok": True,
+        "status": "upgraded",
+        "plan_id": payload.plan_id,
+        "plan_name": plan["name"],
+    }
+
+
+@router.post("/verify-payment-link")
+def verify_payment_link_endpoint(
+    payload: VerifyPaymentLinkRequest,
+    db: Session = Depends(get_db),
+    client: Client = Depends(get_current_client),
+):
+    if not verify_payment_link_callback(
+        payment_link_id=payload.razorpay_payment_link_id,
+        payment_link_reference_id=payload.razorpay_payment_link_reference_id,
+        payment_link_status=payload.razorpay_payment_link_status,
+        razorpay_payment_id=payload.razorpay_payment_id,
+        razorpay_signature=payload.razorpay_signature,
+    ):
+        logger.warning("verify_payment_link signature mismatch client=%s link_id=%s", client.id, payload.razorpay_payment_link_id)
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    if payload.razorpay_payment_link_status != "paid":
+        raise HTTPException(status_code=400, detail="Payment not completed")
+
+    plan = PLANS.get(payload.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+
+    logger.info("verify_payment_link success client=%s plan=%s payment=%s", client.id, payload.plan_id, payload.razorpay_payment_id)
     apply_plan_to_client(client, payload.plan_id)
     db.commit()
     db.refresh(client)
