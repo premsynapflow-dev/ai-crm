@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     whatsapp_default_api_version: str = Field(default="v22.0", alias="WHATSAPP_DEFAULT_API_VERSION")
 
     jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
-    access_token_expire_minutes: int = Field(default=60, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    access_token_expire_minutes: int = Field(default=480, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
 
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
@@ -218,7 +218,7 @@ def _manual_settings_data() -> dict:
         "WHATSAPP_VERIFY_TOKEN": os.getenv("WHATSAPP_VERIFY_TOKEN", ""),
         "WHATSAPP_DEFAULT_API_VERSION": os.getenv("WHATSAPP_DEFAULT_API_VERSION", "v22.0"),
         "JWT_SECRET_KEY": os.getenv("JWT_SECRET_KEY", ""),
-        "ACCESS_TOKEN_EXPIRE_MINUTES": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"),
+        "ACCESS_TOKEN_EXPIRE_MINUTES": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"),
         "REFRESH_TOKEN_EXPIRE_DAYS": os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"),
         "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
         "SENTRY_DSN": os.getenv("SENTRY_DSN", ""),

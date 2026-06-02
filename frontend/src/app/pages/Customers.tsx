@@ -13,6 +13,7 @@ import {
 } from "../components/ui/table";
 import { api, Customer } from "../lib/api";
 import { Search, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { Link } from "react-router";
 
 export function Customers() {
@@ -27,10 +28,15 @@ export function Customers() {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const data = await api.customers.list();
+      const data = await api.customers.list({ search: searchQuery || undefined });
       setCustomers(data);
-    } catch (error) {
-      console.error("Failed to load customers:", error);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to load customers";
+      console.error("Failed to load customers:", err);
+      // 401 is handled globally in api.ts; show toast for other errors
+      if (!msg.includes("Session expired")) {
+        toast.error(msg);
+      }
     } finally {
       setLoading(false);
     }

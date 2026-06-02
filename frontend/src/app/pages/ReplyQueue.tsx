@@ -26,6 +26,7 @@ export function ReplyQueue() {
       setDrafts(data.filter(d => d.status === activeTab));
     } catch (error) {
       console.error("Failed to load drafts:", error);
+      toast.error("Failed to load reply queue");
     } finally {
       setLoading(false);
     }

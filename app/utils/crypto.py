@@ -32,5 +32,14 @@ def decrypt_secret(value: str | None) -> str | None:
         return None
     try:
         return _fernet().decrypt(value.encode("utf-8")).decode("utf-8")
-    except InvalidToken as exc:
-        raise RuntimeError("Unable to decrypt stored channel credential") from exc
+    except InvalidToken:
+        # Fallback: if CHANNEL_CRYPTO_KEY is set but the token was encrypted before it
+        # existed (i.e., encrypted with SECRET_KEY), try decrypting with SECRET_KEY.
+        if Fernet is not None and settings.channel_crypto_key:
+            try:
+                fallback_digest = hashlib.sha256(settings.secret_key.encode("utf-8")).digest()
+                fallback_fernet = Fernet(base64.urlsafe_b64encode(fallback_digest))
+                return fallback_fernet.decrypt(value.encode("utf-8")).decode("utf-8")
+            except InvalidToken:
+                pass
+        raise RuntimeError("Unable to decrypt stored channel credential")

@@ -251,6 +251,7 @@ def _serialize_complaint(complaint: Complaint, *, subject_override: str | None =
 
     return {
         "id": str(complaint.id),
+        "source": complaint.source or "api",
         "customer_name": _customer_name(complaint.customer_email),
         "customer_email": complaint.customer_email or "",
         "customer_phone": complaint.customer_phone or "",

@@ -160,11 +160,24 @@ async function request<T>(
     headers: authHeaders(extraHeaders),
   });
 
+  if (res.status === 401) {
+    // Session expired or invalid — clear stored credentials and redirect to login
+    localStorage.removeItem("synapflow_token");
+    localStorage.removeItem("synapflow_user");
+    localStorage.removeItem("synapflow_api_key");
+    if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/signup")) {
+      window.location.href = "/login";
+    }
+    throw new Error("Session expired. Please log in again.");
+  }
+
   if (!res.ok) {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || body.message || detail;
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (typeof body.detail === "object") detail = body.detail?.message || JSON.stringify(body.detail);
+      else if (body.message) detail = body.message;
     } catch {
       // ignore
     }

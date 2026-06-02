@@ -181,16 +181,24 @@ async def classify_message_async(message: str, client_config: Optional[dict] = N
 
 def classify_message(message: str, client_config: Optional[dict] = None) -> Dict:
     """
-    Sync wrapper for classification.
-    Use classify_message_async in async contexts.
+    Sync wrapper for classification. Safe to call from both sync and async contexts.
     """
     try:
-        asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
+        # No running loop in this thread — safe to use asyncio.run()
         return asyncio.run(classify_message_async(message, client_config))
 
-    logger.warning("classify_message called in async context; use classify_message_async instead")
-    return normalize_classification_output(_FALLBACK, message)
+    # Called from inside a running event loop (e.g. an async FastAPI route).
+    # Run the coroutine in a separate thread pool to avoid blocking.
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, classify_message_async(message, client_config))
+        try:
+            return future.result(timeout=30)
+        except Exception as exc:
+            logger.warning("classify_message thread-pool execution failed: %s", exc)
+            return normalize_classification_output(_FALLBACK, message)
 
 
 def summarize_if_needed(message: str, classification: dict) -> str:

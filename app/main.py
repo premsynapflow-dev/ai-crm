@@ -335,7 +335,7 @@ if frontend_dir.exists():
 
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve_frontend(full_path: str):
-        reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "webhooks", "integrations", "metrics", "docs", "redoc", "openapi.json"}
+        reserved_prefixes = {"api", "auth", "billing", "portal", "public", "webhook", "webhooks", "integrations", "inboxes", "health", "admin", "metrics", "docs", "redoc", "openapi.json"}
         first_segment = full_path.split("/", 1)[0]
 
         if first_segment in reserved_prefixes:

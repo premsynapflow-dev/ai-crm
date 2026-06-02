@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -19,31 +19,41 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { api, Complaint } from "../lib/api";
-import { Search, Filter, Mail, MessageSquare, Phone, Globe, Clock, AlertCircle } from "lucide-react";
+import { Search, Filter, Mail, MessageSquare, Phone, Globe, Clock, AlertCircle, RefreshCw } from "lucide-react";
 import { Link } from "react-router";
+import { toast } from "sonner";
 
 export function ComplaintsInbox() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
 
-  useEffect(() => {
-    loadComplaints();
-  }, []);
-
-  const loadComplaints = async () => {
+  const loadComplaints = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await api.complaints.list();
+      const data = await api.complaints.list({
+        status: statusFilter !== "all" ? statusFilter : undefined,
+        priority: priorityFilter !== "all" ? priorityFilter : undefined,
+        search: searchQuery || undefined,
+      });
       setComplaints(data);
-    } catch (error) {
-      console.error("Failed to load complaints:", error);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to load complaints";
+      setError(msg);
+      console.error("Failed to load complaints:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter, priorityFilter, searchQuery]);
+
+  // Initial load
+  useEffect(() => {
+    loadComplaints();
+  }, [loadComplaints]);
 
   const getSourceIcon = (source: string) => {
     switch (source) {
@@ -52,6 +62,8 @@ export function ComplaintsInbox() {
         return <Mail className="size-4" />;
       case "whatsapp":
         return <MessageSquare className="size-4" />;
+      case "voice":
+        return <Phone className="size-4" />;
       case "chat":
         return <MessageSquare className="size-4" />;
       default:
@@ -60,7 +72,7 @@ export function ComplaintsInbox() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       new: "default",
       "in-progress": "secondary",
       escalated: "destructive",
@@ -80,22 +92,23 @@ export function ComplaintsInbox() {
       negative: "bg-red-100 text-red-800",
     };
     return (
-      <Badge className={colors[label] || ""}>{label}</Badge>
+      <Badge className={colors[label] || "bg-gray-100 text-gray-800"}>{label || "neutral"}</Badge>
     );
   };
 
   const getPriorityBadge = (priority: number) => {
     const labels = ["", "Low", "Low", "Medium", "High", "Critical"];
     const colors = ["", "text-gray-600", "text-gray-600", "text-yellow-600", "text-orange-600", "text-red-600"];
+    const idx = Math.max(0, Math.min(5, priority));
     return (
-      <span className={`text-sm font-medium ${colors[priority]}`}>
-        {labels[priority]}
+      <span className={`text-sm font-medium ${colors[idx]}`}>
+        {labels[idx]}
       </span>
     );
   };
 
   const getSLABadge = (sla_status: string) => {
-    const variants: Record<string, { variant: any; icon?: any }> = {
+    const variants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; icon?: React.ReactNode }> = {
       on_track: { variant: "outline" },
       at_risk: { variant: "secondary" },
       breached: { variant: "destructive", icon: <AlertCircle className="size-3 mr-1" /> },
@@ -104,23 +117,43 @@ export function ComplaintsInbox() {
     return (
       <Badge variant={config.variant} className="capitalize flex items-center">
         {config.icon}
-        {sla_status.replace("_", " ")}
+        {(sla_status || "on_track").replace("_", " ")}
       </Badge>
     );
   };
 
-  const filteredComplaints = complaints.filter((complaint) => {
-    if (searchQuery && !complaint.summary.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
+  const handleExport = () => {
+    if (complaints.length === 0) {
+      toast.info("No complaints to export");
+      return;
     }
-    if (statusFilter !== "all" && complaint.status !== statusFilter) {
-      return false;
-    }
-    if (priorityFilter !== "all" && complaint.priority.toString() !== priorityFilter) {
-      return false;
-    }
-    return true;
-  });
+    const csv = [
+      ["Ticket", "Summary", "Customer", "Email", "Source", "Status", "Priority", "Sentiment", "SLA", "Created"].join(","),
+      ...complaints.map((c) =>
+        [
+          c.ticket_number,
+          `"${(c.summary || "").replace(/"/g, '""')}"`,
+          `"${c.customer_name}"`,
+          c.customer_email,
+          c.source,
+          c.status,
+          c.priority,
+          c.sentiment_label,
+          c.sla_status,
+          new Date(c.created_at).toLocaleDateString(),
+        ].join(",")
+      ),
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `complaints-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -129,7 +162,13 @@ export function ComplaintsInbox() {
           <h1 className="text-3xl font-bold">Complaints Inbox</h1>
           <p className="text-gray-600">Review and manage customer complaints</p>
         </div>
-        <Button>Export Data</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={loadComplaints} disabled={loading}>
+            <RefreshCw className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button onClick={handleExport}>Export CSV</Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -142,6 +181,7 @@ export function ComplaintsInbox() {
                 placeholder="Search complaints..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && loadComplaints()}
                 className="pl-10"
               />
             </div>
@@ -165,16 +205,16 @@ export function ComplaintsInbox() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Priorities</SelectItem>
-                <SelectItem value="5">Critical</SelectItem>
-                <SelectItem value="4">High</SelectItem>
-                <SelectItem value="3">Medium</SelectItem>
-                <SelectItem value="2">Low</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
               </SelectContent>
             </Select>
 
-            <Button variant="outline">
+            <Button variant="outline" onClick={loadComplaints} disabled={loading}>
               <Filter className="size-4 mr-2" />
-              More Filters
+              Apply Filters
             </Button>
           </div>
         </CardContent>
@@ -183,13 +223,36 @@ export function ComplaintsInbox() {
       {/* Complaints Table */}
       <Card>
         <CardHeader>
-          <CardTitle>{filteredComplaints.length} Complaints</CardTitle>
+          <CardTitle>
+            {loading ? "Loading…" : error ? "Error" : `${complaints.length} Complaint${complaints.length !== 1 ? "s" : ""}`}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-gray-500">Loading complaints...</div>
-          ) : filteredComplaints.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No complaints found</div>
+            <div className="flex items-center justify-center py-12 text-gray-500 gap-2">
+              <RefreshCw className="size-4 animate-spin" />
+              Loading complaints…
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <AlertCircle className="size-8 text-red-500" />
+              <p className="text-red-600 font-medium">Failed to load complaints</p>
+              <p className="text-sm text-gray-500">{error}</p>
+              <Button variant="outline" size="sm" onClick={loadComplaints}>
+                <RefreshCw className="size-4 mr-2" />
+                Try Again
+              </Button>
+            </div>
+          ) : complaints.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-500">
+              <Clock className="size-8" />
+              <p>No complaints found</p>
+              <p className="text-xs text-gray-400">
+                {statusFilter !== "all" || priorityFilter !== "all" || searchQuery
+                  ? "Try clearing your filters"
+                  : "Complaints will appear here once customers contact you"}
+              </p>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -207,10 +270,10 @@ export function ComplaintsInbox() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredComplaints.map((complaint) => (
+                {complaints.map((complaint) => (
                   <TableRow key={complaint.id}>
-                    <TableCell className="font-medium">
-                      {complaint.ticket_number}
+                    <TableCell className="font-medium text-xs text-gray-500">
+                      {complaint.ticket_number || complaint.id.slice(0, 8)}
                     </TableCell>
                     <TableCell className="max-w-xs truncate">
                       {complaint.summary}

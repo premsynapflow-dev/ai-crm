@@ -18,6 +18,7 @@ import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, X
 export function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadStats();
@@ -25,18 +26,37 @@ export function Dashboard() {
 
   const loadStats = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.dashboard.stats();
       setStats(data);
-    } catch (error) {
-      console.error("Failed to load stats:", error);
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message || "Failed to load dashboard";
+      setError(msg);
+      console.error("Failed to load stats:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading || !stats) {
-    return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-gray-500 gap-2">
+        <Clock className="size-5 animate-spin" />
+        Loading dashboard…
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
+        <AlertTriangle className="size-8 text-red-500" />
+        <p className="text-red-600 font-medium">Failed to load dashboard</p>
+        <p className="text-sm text-gray-500">{error}</p>
+        <Button variant="outline" size="sm" onClick={loadStats}>Try Again</Button>
+      </div>
+    );
   }
 
   const priorityData = [
