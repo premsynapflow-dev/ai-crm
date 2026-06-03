@@ -236,3 +236,46 @@ class SLAManager:
         if priority == 2:
             return "medium"
         return "low"
+
+    def breach_probability(self, ticket: Complaint) -> float:
+        """
+        Return a 0.0–1.0 score estimating likelihood of SLA breach.
+
+        Factors:
+          - time_remaining_ratio: fraction of SLA window remaining
+          - urgency_weight: higher urgency = faster degradation
+          - unassigned_penalty: +0.30 if no agent assigned
+          - escalation_penalty: +0.20 if already escalated
+        """
+        if not ticket.sla_due_at or ticket.resolved_at:
+            return 0.0
+
+        now = datetime.now(timezone.utc)
+        sla_due = self._as_utc(ticket.sla_due_at)
+        time_remaining = (sla_due - now).total_seconds()
+        if time_remaining <= 0:
+            return 1.0
+
+        # Estimate total SLA window from priority
+        _priority_windows = {1: 72 * 3600, 2: 24 * 3600, 3: 4 * 3600}
+        sla_window = _priority_windows.get(ticket.priority, 24 * 3600)
+        time_remaining_ratio = max(0.0, min(1.0, time_remaining / sla_window))
+        base_risk = 1.0 - time_remaining_ratio
+
+        urgency_weight = 1.0 + (ticket.urgency_score or 0.0) * 0.5
+        unassigned_penalty = 0.30 if not ticket.assigned_user_id else 0.0
+        escalation_penalty = 0.20 if (ticket.escalation_level or 0) > 0 else 0.0
+
+        return round(min(1.0, (base_risk * urgency_weight) + unassigned_penalty + escalation_penalty), 3)
+
+    def update_approaching_status(self, ticket: Complaint, approaching_threshold_seconds: int = 3600) -> str:
+        """Mark ticket sla_status='approaching' if within threshold of breach but not yet breached."""
+        if not ticket.sla_due_at or ticket.resolved_at:
+            return ticket.sla_status or "on_track"
+        now = datetime.now(timezone.utc)
+        time_remaining = (self._as_utc(ticket.sla_due_at) - now).total_seconds()
+        if 0 < time_remaining <= approaching_threshold_seconds and ticket.sla_status not in ("breached",):
+            ticket.sla_status = "approaching"
+            self.db.flush()
+            return "approaching"
+        return ticket.sla_status or "on_track"

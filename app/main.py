@@ -52,6 +52,16 @@ from app.api.v1.workflows import router as workflows_v1_router
 from app.api.v1.channel_connections import router as channel_connections_v1_router
 from app.api.v1.prompts import router as prompts_v1_router
 from app.api.admin_prompts import router as admin_prompts_router
+from app.api.v1.bulk_import import router as bulk_import_v1_router
+from app.api.v1.entities import router as entities_v1_router
+from app.api.v1.widget import router as widget_router
+from app.api.v1.executive_summary import router as executive_summary_router
+from app.api.v1.revenue_risk import router as revenue_risk_router
+from app.api.v1.clusters import router as clusters_router
+from app.api.v1.copilot import router as copilot_router
+from app.api.v1.forecasting import router as forecasting_router
+from app.api.v1.approvals import router as approvals_router
+from app.api.v1.outcomes import router as outcomes_router
 from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
 from app.config import get_settings
@@ -291,6 +301,16 @@ app.include_router(settings_router)
 app.include_router(admin_prompts_router)
 app.include_router(health_router)
 app.include_router(metrics_router)
+app.include_router(bulk_import_v1_router)
+app.include_router(entities_v1_router)
+app.include_router(widget_router)
+app.include_router(executive_summary_router)
+app.include_router(revenue_risk_router)
+app.include_router(clusters_router)
+app.include_router(copilot_router)
+app.include_router(forecasting_router)
+app.include_router(approvals_router)
+app.include_router(outcomes_router)
 
 frontend_dir = Path("frontend/out")
 

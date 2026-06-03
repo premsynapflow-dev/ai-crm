@@ -614,6 +614,13 @@ def process_incoming_message(db: Session, message: IncomingMessage) -> dict[str,
             RBIComplianceService(db).register_rbi_complaint(complaint, commit=False)
         else:
             RBIComplianceService(db).sync_from_complaint(complaint, commit=False)
+    if is_new_complaint and complaint.summary:
+        try:
+            from app.intelligence.entity_extractor import extract_and_store
+            extract_and_store(db, complaint.id, complaint.summary)
+        except Exception:
+            logger.warning("Entity extraction failed for complaint %s", complaint.id, exc_info=True)
+
     queue_entry = HardenedAutoReplyService(db).generate_and_queue_reply(
         complaint,
         custom_config=client_config,

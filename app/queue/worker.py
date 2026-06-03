@@ -7,7 +7,7 @@ from app.db.session import SessionLocal
 from app.analytics.customer_pulse import detect_complaint_spikes
 from app.queue.simple_queue import process_jobs
 from app.replies.send_reply import send_complaint_reply
-from app.services.inbox_poller import poll_all_inboxes
+from app.services.inbox_poller import poll_all_inboxes, poll_connector_connections
 from app.services.retry_service import process_retry_queue
 from app.services.rbi_compliance import RBIComplianceService
 from app.services.sla_manager import SLAManager
@@ -25,6 +25,13 @@ _last_rbi_check_at = None
 _last_rbi_report_check_at = None
 _last_escalation_check_at = None
 _last_inbox_poll_at = None
+_last_connector_poll_at = None
+_last_embedding_run_at = None
+_last_revenue_risk_at = None
+_last_forecast_at = None
+_last_approval_expiry_at = None
+_last_outcome_check_at = None
+_last_feedback_loop_at = None
 FOLLOW_UP_TEXT = "Just checking if your issue has been resolved."
 
 
@@ -249,6 +256,170 @@ def process_inbox_poll():
     return result
 
 
+def process_connector_poll():
+    global _last_connector_poll_at
+    now = datetime.now(timezone.utc)
+    # Poll universal connectors (Google Reviews, Trustpilot, etc.) every 10 minutes.
+    if _last_connector_poll_at and (now - _last_connector_poll_at).total_seconds() < 600:
+        return None
+
+    result = poll_connector_connections(max_results=50)
+    _last_connector_poll_at = now
+    return result
+
+
+def process_embeddings():
+    """Generate complaint embeddings for clustering — runs every 4 hours."""
+    global _last_embedding_run_at
+    now = datetime.now(timezone.utc)
+    if _last_embedding_run_at and (now - _last_embedding_run_at).total_seconds() < 14400:
+        return None
+
+    db = SessionLocal()
+    try:
+        from app.services.complaint_clustering import generate_embeddings_batch
+        clients = db.query(Client).all()
+        total = 0
+        for client in clients:
+            try:
+                n = generate_embeddings_batch(db, str(client.id), batch_size=50)
+                total += n
+            except Exception as exc:
+                if "does not exist" not in str(exc).lower():
+                    logger.warning("Embedding gen failed for client %s: %s", client.id, exc)
+        _last_embedding_run_at = now
+        return total
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def process_forecasts():
+    """Run EWMA surge forecasting for all clients — every hour."""
+    global _last_forecast_at
+    now = datetime.now(timezone.utc)
+    if _last_forecast_at and (now - _last_forecast_at).total_seconds() < 3600:
+        return None
+
+    db = SessionLocal()
+    try:
+        from app.services.forecasting import run_forecast
+        clients = db.query(Client).all()
+        total_alerts = 0
+        for client in clients:
+            try:
+                results = run_forecast(db, str(client.id), horizon_hours=24)
+                total_alerts += sum(1 for r in results if r.get("alert_triggered"))
+            except Exception as exc:
+                if "does not exist" not in str(exc).lower():
+                    logger.warning("Forecast failed for client %s: %s", client.id, exc)
+        _last_forecast_at = now
+        return total_alerts
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def process_outcome_measurements():
+    """Measure deferred workflow outcomes (T+48h) — every 30 minutes."""
+    global _last_outcome_check_at
+    now = datetime.now(timezone.utc)
+    if _last_outcome_check_at and (now - _last_outcome_check_at).total_seconds() < 1800:
+        return None
+
+    db = SessionLocal()
+    try:
+        from app.services.outcome_tracker import process_pending_outcomes
+        count = process_pending_outcomes(db, batch_size=50)
+        _last_outcome_check_at = now
+        return count
+    except Exception as exc:
+        if "does not exist" not in str(exc).lower():
+            logger.warning("Outcome measurement failed: %s", exc)
+        return None
+    finally:
+        db.close()
+
+
+def process_feedback_loop():
+    """Run autonomous weight recalibration — once per week."""
+    global _last_feedback_loop_at
+    now = datetime.now(timezone.utc)
+    if _last_feedback_loop_at and (now - _last_feedback_loop_at).total_seconds() < 604800:
+        return None
+
+    db = SessionLocal()
+    try:
+        from app.services.feedback_loop import run_feedback_loop_for_all
+        result = run_feedback_loop_for_all(db)
+        _last_feedback_loop_at = now
+        logger.info(
+            "Feedback loop complete: calibrated=%s skipped=%s",
+            result.get("calibrated"), result.get("skipped"),
+        )
+        return result
+    except Exception as exc:
+        if "does not exist" not in str(exc).lower():
+            logger.warning("Feedback loop failed: %s", exc)
+        return None
+    finally:
+        db.close()
+
+
+def process_approval_expiry():
+    """Expire timed-out approval requests — every 5 minutes."""
+    global _last_approval_expiry_at
+    now = datetime.now(timezone.utc)
+    if _last_approval_expiry_at and (now - _last_approval_expiry_at).total_seconds() < 300:
+        return None
+
+    db = SessionLocal()
+    try:
+        from app.services.approval_service import expire_timed_out_approvals
+        expired = expire_timed_out_approvals(db)
+        _last_approval_expiry_at = now
+        return expired
+    except Exception as exc:
+        if "does not exist" not in str(exc).lower():
+            logger.warning("Approval expiry failed: %s", exc)
+        return None
+    finally:
+        db.close()
+
+
+def process_revenue_risk_snapshots():
+    """Save daily revenue-at-risk snapshots for all clients — runs once per day."""
+    global _last_revenue_risk_at
+    now = datetime.now(timezone.utc)
+    if _last_revenue_risk_at and (now - _last_revenue_risk_at).total_seconds() < 86400:
+        return None
+
+    db = SessionLocal()
+    try:
+        from app.services.revenue_risk import save_daily_snapshot
+        clients = db.query(Client).all()
+        saved = 0
+        for client in clients:
+            try:
+                save_daily_snapshot(db, str(client.id), commit=False)
+                saved += 1
+            except Exception as exc:
+                if "does not exist" not in str(exc).lower():
+                    logger.warning("Revenue risk snapshot failed for client %s: %s", client.id, exc)
+        db.commit()
+        _last_revenue_risk_at = now
+        return saved
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def _run_step(name: str, fn, *args, **kwargs):
     """Run a single worker step, logging and suppressing any exception so other steps still run."""
     try:
@@ -309,6 +480,29 @@ def worker_loop(interval_seconds=30):
                 inbox_poll["duplicates"],
                 inbox_poll["errors"],
             )
+
+        connector_poll = _run_step("process_connector_poll", process_connector_poll)
+        if connector_poll and connector_poll.get("fetched"):
+            logger.info(
+                "Connector poll: connections=%s fetched=%s processed=%s errors=%s",
+                connector_poll["connections"],
+                connector_poll["fetched"],
+                connector_poll["processed"],
+                connector_poll["errors"],
+            )
+
+        embedded = _run_step("process_embeddings", process_embeddings)
+        if embedded:
+            logger.info("Generated %s new complaint embeddings", embedded)
+
+        risk_snaps = _run_step("process_revenue_risk_snapshots", process_revenue_risk_snapshots)
+        if risk_snaps:
+            logger.info("Saved revenue-at-risk snapshots for %s clients", risk_snaps)
+
+        _run_step("process_forecasts", process_forecasts)
+        _run_step("process_approval_expiry", process_approval_expiry)
+        _run_step("process_outcome_measurements", process_outcome_measurements)
+        _run_step("process_feedback_loop", process_feedback_loop)
 
         _stop_event.wait(interval_seconds)
 

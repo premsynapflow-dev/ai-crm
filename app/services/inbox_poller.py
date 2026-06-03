@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -118,6 +119,112 @@ def poll_inbox(db: Session, inbox: Inbox, *, max_results: int = 20) -> dict[str,
         "duplicates": duplicates,
         "errors": errors,
     }
+
+
+def poll_connector_connections(*, max_results: int = 50) -> dict[str, int]:
+    """Poll all channel_connections that have a registered universal connector."""
+    import importlib
+
+    # Ensure ALL connector modules are imported so @register decorators run.
+    # Each new connector must be added here.
+    for mod in (
+        "app.connectors.google_reviews",
+        "app.connectors.trustpilot",
+        "app.connectors.zendesk",
+        "app.connectors.freshdesk",
+        "app.connectors.intercom",
+        "app.connectors.hubspot",
+        "app.connectors.app_store",
+        "app.connectors.play_store",
+        "app.connectors.instagram",
+        "app.connectors.facebook",
+        "app.connectors.salesforce",
+        "app.connectors.generic_rest",
+        "app.connectors.outlook",
+    ):
+        try:
+            importlib.import_module(mod)
+        except Exception as exc:
+            logger.warning("Could not import connector module %s: %s", mod, exc)
+
+    from app.connectors.registry import get_connector_class
+    from app.db.models import ChannelConnection, PollCursor
+
+    db = SessionLocal()
+    totals: dict[str, int] = {"connections": 0, "fetched": 0, "processed": 0, "errors": 0}
+    try:
+        connections = (
+            db.query(ChannelConnection)
+            .filter(
+                ChannelConnection.status == "active",
+                ChannelConnection.poll_enabled == True,
+            )
+            .all()
+        )
+
+        for conn in connections:
+            connector_cls = get_connector_class(conn.channel_type or "")
+            if connector_cls is None:
+                continue
+
+            totals["connections"] += 1
+            cursor_row = (
+                db.query(PollCursor)
+                .filter(PollCursor.connection_id == conn.id)
+                .first()
+            )
+            since_str = cursor_row.cursor_value if cursor_row else None
+            since: datetime
+            if since_str:
+                try:
+                    since = datetime.fromisoformat(since_str)
+                except ValueError:
+                    since = datetime(2020, 1, 1, tzinfo=timezone.utc)
+            else:
+                since = datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+            connector = connector_cls(conn)
+            try:
+                messages: list[IncomingMessage] = asyncio.get_event_loop().run_until_complete(
+                    connector.poll(since)
+                )
+            except RuntimeError:
+                # No event loop (sync context) — create one
+                messages = asyncio.run(connector.poll(since))
+            except Exception as exc:
+                logger.exception(
+                    "Connector poll failed channel=%s connection=%s: %s",
+                    conn.channel_type, conn.id, exc,
+                )
+                totals["errors"] += 1
+                continue
+
+            totals["fetched"] += len(messages)
+            processed, _, errors = _process_messages(db, messages)
+            totals["processed"] += processed
+            totals["errors"] += errors
+
+            # Advance cursor to latest message timestamp
+            if messages:
+                max_ts = max(m.timestamp for m in messages)
+                if cursor_row is None:
+                    cursor_row = PollCursor(
+                        connection_id=conn.id,
+                        cursor_value=max_ts.isoformat(),
+                    )
+                    db.add(cursor_row)
+                else:
+                    cursor_row.cursor_value = max_ts.isoformat()
+
+            conn.last_poll_at = datetime.now(timezone.utc)
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+
+        return totals
+    finally:
+        db.close()
 
 
 def poll_all_inboxes(*, max_results: int = 20) -> dict[str, int]:

@@ -22,6 +22,7 @@ import { Automations } from "./pages/Automations";
 import { BillingPage } from "./pages/BillingPage";
 import { AdminPanel } from "./pages/AdminPanel";
 import { ComplaintDetail } from "./pages/ComplaintDetail";
+import { Executive } from "./pages/Executive";
 
 export const router = createBrowserRouter([
   {
@@ -75,6 +76,10 @@ export const router = createBrowserRouter([
       {
         path: "analytics",
         Component: Analytics,
+      },
+      {
+        path: "executive",
+        Component: Executive,
       },
       {
         path: "compliance",

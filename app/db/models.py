@@ -46,6 +46,9 @@ class Client(Base):
     custom_prompt_config = Column(JSON, nullable=True)
     custom_prompt_updated_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Skill-based routing config: {category: {intent: [skill, ...]}}
+    skill_map = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+
     complaints = relationship("Complaint", back_populates="client", cascade="all, delete-orphan")
     customers = relationship("Customer", back_populates="client", cascade="all, delete-orphan")
     reply_drafts = relationship("ReplyDraft", back_populates="client", cascade="all, delete-orphan")
@@ -118,6 +121,7 @@ class Complaint(Base):
     ai_reply_status = Column(String(50), nullable=False, default="pending")
     ai_reply_sent_at = Column(DateTime(timezone=True), nullable=True)
     last_replied_at = Column(DateTime(timezone=True), nullable=True)
+    cluster_id = Column(Uuid(as_uuid=True), ForeignKey("complaint_clusters.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), server_default=func.now(), nullable=False)
 
     client = relationship("Client", back_populates="complaints")
@@ -755,6 +759,9 @@ class ClientUser(Base):
     client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False)
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    display_name = Column(String(255), nullable=True)
+    skills = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     team_memberships = relationship("TeamMember", back_populates="user")
@@ -880,6 +887,7 @@ class WorkflowExecution(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     failed_at = Column(DateTime(timezone=True), nullable=True)
+    measure_outcome_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     executed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -901,6 +909,141 @@ class ChurnOutcome(Base):
     metadata_json = Column("metadata", JSON, nullable=False, default=dict)
     recorded_by = Column(String(255), nullable=True)
     recorded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ComplaintCluster(Base):
+    __tablename__ = "complaint_clusters"
+    __table_args__ = (
+        Index("idx_complaint_clusters_client_period", "client_id", "period_start"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    cluster_label = Column(Integer, nullable=False)
+    cluster_size = Column(Integer, nullable=False, default=0)
+    summary = Column(Text, nullable=True)
+    top_category = Column(String(100), nullable=True)
+    top_entities = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ComplaintEmbedding(Base):
+    __tablename__ = "complaint_embeddings"
+
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="CASCADE"), primary_key=True)
+    embedding = Column(Text, nullable=True)
+    model_version = Column(String(50), nullable=True, default="text-embedding-004")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class RevenueRiskSnapshot(Base):
+    __tablename__ = "revenue_risk_snapshots"
+    __table_args__ = (
+        UniqueConstraint("client_id", "snapshot_date", name="uq_revenue_risk_client_date"),
+        Index("idx_revenue_risk_client_date", "client_id", "snapshot_date"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False)
+    revenue_at_risk = Column(Float, nullable=True)
+    high_risk_customer_count = Column(Integer, nullable=True)
+    avg_churn_probability = Column(Float, nullable=True)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CopilotQuery(Base):
+    __tablename__ = "copilot_queries"
+    __table_args__ = (
+        Index("idx_copilot_queries_client_time", "client_id", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Uuid(as_uuid=True), ForeignKey("client_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    query = Column(Text, nullable=False)
+    response = Column(Text, nullable=True)
+    context_used = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ComplaintForecast(Base):
+    __tablename__ = "complaint_forecasts"
+    __table_args__ = (
+        UniqueConstraint("client_id", "forecast_hour", name="uq_complaint_forecasts_client_hour"),
+        Index("idx_complaint_forecasts_client_hour", "client_id", "forecast_hour"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    forecast_hour = Column(DateTime(timezone=True), nullable=False)
+    predicted_count = Column(Float, nullable=False)
+    actual_count = Column(Integer, nullable=True)
+    alert_triggered = Column(Boolean, nullable=False, default=False)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ApprovalRequest(Base):
+    __tablename__ = "approval_requests"
+    __table_args__ = (
+        Index("idx_approval_requests_client_status", "client_id", "status"),
+        Index("idx_approval_requests_complaint", "complaint_id"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="CASCADE"), nullable=False, index=True)
+    workflow_execution_id = Column(Uuid(as_uuid=True), ForeignKey("workflow_executions.id", ondelete="SET NULL"), nullable=True, index=True)
+    approver_user_id = Column(Uuid(as_uuid=True), ForeignKey("client_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    requested_by = Column(String(255), nullable=True)
+    approver_role = Column(String(50), nullable=True)
+    status = Column(String(20), nullable=False, default="pending")
+    notes = Column(Text, nullable=True)
+    on_approve_actions = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+    on_reject_actions = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+    timeout_hours = Column(Integer, nullable=False, default=24)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class WorkflowOutcome(Base):
+    __tablename__ = "workflow_outcomes"
+    __table_args__ = (
+        UniqueConstraint("execution_id", name="uq_workflow_outcomes_execution"),
+        Index("idx_workflow_outcomes_client_time", "client_id", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    execution_id = Column(Uuid(as_uuid=True), ForeignKey("workflow_executions.id", ondelete="CASCADE"), nullable=False, index=True)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="CASCADE"), nullable=True, index=True)
+    customer_id = Column(Uuid(as_uuid=True), nullable=True, index=True)
+    resolved = Column(Boolean, nullable=True)
+    sla_met = Column(Boolean, nullable=True)
+    escalation_prevented = Column(Boolean, nullable=True)
+    customer_churned = Column(Boolean, nullable=True)
+    churn_score_before = Column(Float, nullable=True)
+    churn_score_after = Column(Float, nullable=True)
+    resolution_time_hours = Column(Float, nullable=True)
+    measure_at = Column(DateTime(timezone=True), nullable=True)
+    measured_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OutcomeWeight(Base):
+    __tablename__ = "outcome_weights"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    weights = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
+    calibration_count = Column(Integer, nullable=False, default=0)
+    last_calibrated_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class AgentCorrection(Base):
@@ -1117,6 +1260,9 @@ class ChannelConnection(Base):
     token_expiry = Column(DateTime(timezone=True), nullable=True)
     metadata_json = Column("metadata", JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
     status = Column(String(20), nullable=False, default="active")
+    poll_interval_minutes = Column(Integer, nullable=True, default=60)
+    last_poll_at = Column(DateTime(timezone=True), nullable=True)
+    poll_enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -1211,3 +1357,43 @@ class MessageEvent(Base):
     risk_delta = Column(Float, nullable=True)
     payload = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PollCursor(Base):
+    __tablename__ = "poll_cursors"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    connection_id = Column(Uuid(as_uuid=True), ForeignKey("channel_connections.id", ondelete="CASCADE"),
+                           nullable=False, unique=True, index=True)
+    cursor_value = Column(Text, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class BulkImportJob(Base):
+    __tablename__ = "bulk_import_jobs"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="processing")
+    total_rows = Column(Integer, nullable=True)
+    imported_rows = Column(Integer, nullable=False, default=0)
+    failed_rows = Column(Integer, nullable=False, default=0)
+    error_log = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ComplaintEntity(Base):
+    __tablename__ = "complaint_entities"
+    __table_args__ = (
+        Index("idx_complaint_entities_complaint", "complaint_id"),
+        Index("idx_complaint_entities_type_value", "entity_type", "entity_value"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    complaint_id = Column(Uuid(as_uuid=True), ForeignKey("complaints.id", ondelete="CASCADE"), nullable=False)
+    entity_type = Column(String(30), nullable=False)
+    entity_value = Column(Text, nullable=False)
+    confidence = Column(Float, nullable=False, default=1.0)
+    extracted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

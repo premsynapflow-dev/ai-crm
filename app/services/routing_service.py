@@ -92,14 +92,20 @@ class RoutingService:
                 team.name,
                 team.id,
             )
-            member = self.select_assignee(team.id, priority)
+            required_skills = self.get_required_skills(complaint.client_id, category, intent)
+            member = (
+                self.select_assignee_by_skills(team.id, required_skills, priority)
+                if required_skills
+                else self.select_assignee(team.id, priority)
+            )
             if member is not None:
+                skill_note = f" with skills {required_skills}" if required_skills else ""
                 result = self._apply_member_assignment(
                     complaint,
                     team=team,
                     member=member,
                     routed_by=routed_by,
-                    reason=f"Automatic routing for category '{category}'",
+                    reason=f"Automatic routing for category '{category}'{skill_note}",
                 )
                 if commit:
                     self.db.commit()
@@ -201,6 +207,59 @@ class RoutingService:
             return manager_fallback
 
         return base_query.order_by(TeamMember.active_tasks.asc(), TeamMember.updated_at.asc()).first()
+
+    def select_assignee_by_skills(
+        self,
+        team_id: uuid.UUID,
+        required_skills: list[str],
+        priority: Any,
+    ) -> TeamMember | None:
+        """
+        Select the least-loaded team member who has ALL required skills.
+        Falls back to standard select_assignee() if no skilled member is found.
+        """
+        if not required_skills:
+            return self.select_assignee(team_id, priority)
+
+        members = (
+            self.db.query(TeamMember)
+            .options(joinedload(TeamMember.user))
+            .filter(
+                TeamMember.team_id == team_id,
+                TeamMember.is_active == True,
+                TeamMember.active_tasks < TeamMember.capacity,
+            )
+            .order_by(TeamMember.active_tasks.asc(), TeamMember.updated_at.asc())
+            .all()
+        )
+
+        required_set = set(s.lower() for s in required_skills)
+        for member in members:
+            if member.user is None:
+                continue
+            user_skills = set(s.lower() for s in (getattr(member.user, "skills", None) or []))
+            if required_set.issubset(user_skills):
+                return member
+
+        # Fallback: any least-loaded member
+        return self.select_assignee(team_id, priority)
+
+    def get_required_skills(self, client_id: uuid.UUID, category: str, intent: str) -> list[str]:
+        """
+        Resolve required skills for a complaint from the client's skill_map config.
+        skill_map shape: {category: {intent: [skill, ...]}} or {category: [skill, ...]}
+        """
+        from app.db.models import Client
+        client = self.db.query(Client).filter(Client.id == client_id).first()
+        if not client:
+            return []
+        skill_map: dict = getattr(client, "skill_map", None) or {}
+        cat_entry = skill_map.get(category.lower(), skill_map.get(category, {}))
+        if isinstance(cat_entry, list):
+            return cat_entry
+        if isinstance(cat_entry, dict):
+            return cat_entry.get(intent.lower(), cat_entry.get(intent, []))
+        return []
 
     def sync_workload_for_resolution_change(
         self,
