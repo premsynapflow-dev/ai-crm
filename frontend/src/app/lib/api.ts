@@ -754,6 +754,18 @@ export const api = {
       );
     },
 
+    connect: async (payload: {
+      channel_type: string;
+      account_identifier?: string;
+      credentials?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
+    }) => {
+      return request<{ id: string; channel_type: string; account_identifier: string | null; status: string }>(
+        "/api/v1/channel-connections",
+        { method: "POST", body: JSON.stringify(payload) }
+      );
+    },
+
     disconnect: async (id: string) => {
       const token = localStorage.getItem("synapflow_token");
       const apiKey = localStorage.getItem("synapflow_api_key");
