@@ -285,7 +285,7 @@ export function DashboardLayout() {
               <Button variant="ghost" className="w-full justify-start dark:hover:bg-gray-800">
                 <User className="size-4 mr-2" />
                 <div className="flex-1 text-left">
-                  <div className="text-sm font-medium dark:text-gray-200">{user.name}</div>
+                  <div className="text-sm font-medium dark:text-gray-200">{user.companyName || user.name}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
                 </div>
               </Button>
