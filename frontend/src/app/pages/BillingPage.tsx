@@ -9,7 +9,11 @@ import { api } from "../lib/api";
 
 export function BillingPage() {
   const { user } = useAuth();
-  const [usage, setUsage] = useState<{ tickets_used: number; tickets_quota: number; next_billing_date?: string } | null>(null);
+  const [usage, setUsage] = useState<{
+    current_usage: number;
+    monthly_limit: number;
+    period_end?: string;
+  } | null>(null);
   const [invoices, setInvoices] = useState<Array<{
     id: string;
     invoice_number: string;
@@ -65,23 +69,26 @@ export function BillingPage() {
   const plans = [
     {
       name: "Free",
-      price: "₹0",
+      monthlyPrice: "₹0",
+      annualPrice: null,
       tickets: "50 tickets/month",
       seats: "1 seat",
       features: ["Basic complaint tracking", "Email support", "7-day data retention"]
     },
     {
       name: "Starter",
-      price: "₹2,999",
-      period: "/month",
+      monthlyPrice: "₹2,999",
+      annualPrice: "₹29,990",
+      annualMonthly: "₹2,499",
       tickets: "500 tickets/month",
       seats: "3 seats",
       features: ["AI reply drafts", "Multi-channel support", "30-day data retention", "Basic analytics"]
     },
     {
       name: "Pro",
-      price: "₹4,999",
-      period: "/month",
+      monthlyPrice: "₹4,999",
+      annualPrice: "₹49,990",
+      annualMonthly: "₹4,166",
       tickets: "2,000 tickets/month",
       seats: "10 seats",
       features: ["Everything in Starter", "Advanced analytics", "Team management", "90-day data retention", "Priority support"],
@@ -89,23 +96,26 @@ export function BillingPage() {
     },
     {
       name: "Max",
-      price: "₹9,999",
-      period: "/month",
+      monthlyPrice: "₹9,999",
+      annualPrice: "₹99,990",
+      annualMonthly: "₹8,333",
       tickets: "10,000 tickets/month",
       seats: "25 seats",
       features: ["Everything in Pro", "Churn prediction", "Root cause analysis", "Instagram & Google Reviews", "Custom integrations"]
     },
     {
       name: "Scale",
-      price: "₹99,999",
-      period: "/month",
+      monthlyPrice: "₹99,999",
+      annualPrice: "₹9,99,990",
+      annualMonthly: "₹83,333",
       tickets: "1,00,000 tickets/month",
       seats: "100 seats",
       features: ["Everything in Max", "RBI compliance tracking", "TAT monitoring", "MIS reports", "Dedicated account manager"]
     },
     {
       name: "Enterprise",
-      price: "Custom",
+      monthlyPrice: "Custom",
+      annualPrice: null,
       tickets: "Unlimited tickets",
       seats: "Unlimited seats",
       features: ["Everything in Scale", "Custom AI prompts", "SSO/SAML", "SLA guarantees", "White-label options"]
@@ -243,11 +253,14 @@ export function BillingPage() {
     }
   };
 
+  const ticketsUsed = usage?.current_usage ?? user?.ticketsUsed ?? 0;
+  const ticketsQuota = usage?.monthly_limit ?? user?.ticketsQuota ?? 50;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Billing & Plans</h1>
-        <p className="text-gray-600">Manage your subscription and invoices</p>
+        <p className="text-gray-600 dark:text-gray-400">Manage your subscription and invoices</p>
       </div>
 
       {/* Current Plan */}
@@ -259,22 +272,22 @@ export function BillingPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xl font-bold capitalize">{user?.plan} Plan</div>
-              <div className="text-gray-600 mt-1">
-                {usage?.tickets_used ?? user?.ticketsUsed ?? 0} / {usage?.tickets_quota ?? user?.ticketsQuota ?? 50} tickets used this month
+              <div className="text-gray-600 dark:text-gray-400 mt-1">
+                {ticketsUsed} / {ticketsQuota} tickets used this month
               </div>
-              <div className="w-full max-w-md bg-gray-200 rounded-full h-2 mt-2">
+              <div className="w-full max-w-md bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full"
                   style={{
-                    width: `${Math.min(100, ((usage?.tickets_used ?? user?.ticketsUsed ?? 0) / (usage?.tickets_quota ?? user?.ticketsQuota ?? 50)) * 100)}%`,
+                    width: `${Math.min(100, (ticketsUsed / Math.max(ticketsQuota, 1)) * 100)}%`,
                   }}
                 />
               </div>
             </div>
-            {usage?.next_billing_date && (
+            {usage?.period_end && (
               <div className="text-right">
-                <div className="text-sm text-gray-600">Next billing date</div>
-                <div className="font-medium">{new Date(usage.next_billing_date).toLocaleDateString()}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Period ends</div>
+                <div className="font-medium">{new Date(usage.period_end).toLocaleDateString()}</div>
               </div>
             )}
           </div>
@@ -285,13 +298,13 @@ export function BillingPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold">Available Plans</h2>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
             <button
               onClick={() => setBillingCycle("monthly")}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 billingCycle === "monthly"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               }`}
             >
               Monthly
@@ -300,24 +313,30 @@ export function BillingPage() {
               onClick={() => setBillingCycle("annual")}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 billingCycle === "annual"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               }`}
             >
               Annual
-              <span className="ml-1.5 text-xs text-green-600 font-semibold">2 months free</span>
+              <span className="ml-1.5 text-xs text-green-600 dark:text-green-400 font-semibold">2 months free</span>
             </button>
           </div>
         </div>
         <div className="grid md:grid-cols-3 gap-6">
           {plans.map((plan) => {
             const isCurrentPlan = user?.plan === plan.name.toLowerCase();
+            const displayPrice = billingCycle === "annual" && plan.annualPrice
+              ? plan.annualPrice
+              : plan.monthlyPrice;
+            const displayPeriod = billingCycle === "annual" && plan.annualPrice
+              ? "/year"
+              : plan.monthlyPrice === "Custom" ? undefined : "/month";
 
             return (
               <Card
                 key={plan.name}
                 className={`${plan.popular ? "border-2 border-blue-600 relative" : ""} ${
-                  isCurrentPlan ? "bg-blue-50" : ""
+                  isCurrentPlan ? "bg-blue-50 dark:bg-blue-900/10" : ""
                 }`}
               >
                 {plan.popular && (
@@ -333,10 +352,17 @@ export function BillingPage() {
                     )}
                   </CardTitle>
                   <div className="mt-4">
-                    <span className="text-3xl font-bold">{plan.price}</span>
-                    {plan.period && <span className="text-gray-600">{plan.period}</span>}
+                    <span className="text-3xl font-bold">{displayPrice}</span>
+                    {displayPeriod && (
+                      <span className="text-gray-600 dark:text-gray-400">{displayPeriod}</span>
+                    )}
                   </div>
-                  <div className="text-sm text-gray-600 mt-2">
+                  {billingCycle === "annual" && plan.annualMonthly && (
+                    <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+                      {plan.annualMonthly}/mo effective
+                    </div>
+                  )}
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                     <div>{plan.tickets}</div>
                     <div>{plan.seats}</div>
                   </div>
@@ -390,7 +416,7 @@ export function BillingPage() {
                 const date = inv.invoice_date ? new Date(inv.invoice_date) : null;
                 const isPaid = inv.status === "paid";
                 return (
-                  <div key={inv.id} className="flex items-center justify-between p-3 border rounded hover:bg-gray-50 transition-colors">
+                  <div key={inv.id} className="flex items-center justify-between p-3 border dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                     <div>
                       <div className="font-medium">
                         {date
@@ -398,11 +424,11 @@ export function BillingPage() {
                           : inv.invoice_number}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-sm text-gray-600">{inv.plan} Plan</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">{inv.plan} Plan</span>
                         <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                           isPaid
-                            ? "bg-green-100 text-green-700"
-                            : "bg-yellow-100 text-yellow-700"
+                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                            : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400"
                         }`}>
                           {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                         </span>

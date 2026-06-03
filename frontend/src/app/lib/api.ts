@@ -855,9 +855,14 @@ export const api = {
 
   billing: {
     getUsage: async () => {
-      return request<{ plan: string; tickets_used: number; tickets_quota: number; next_billing_date?: string }>(
-        "/api/usage"
-      );
+      return request<{
+        plan_id: string;
+        current_usage: number;
+        monthly_limit: number;
+        tickets_processed: number;
+        period_end?: string;
+        next_billing_date?: string;
+      }>("/api/usage");
     },
 
     getInvoices: async () => {

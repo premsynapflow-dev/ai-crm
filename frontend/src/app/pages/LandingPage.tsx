@@ -1,10 +1,12 @@
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { Check, Zap, Shield, BarChart3, Bot, MessageSquare, TrendingUp } from "lucide-react";
+import { Check, Zap, Shield, BarChart3, Bot, MessageSquare, TrendingUp, Moon, Sun } from "lucide-react";
 import { Link } from "react-router";
+import { useTheme } from "../lib/theme-context";
 
 export function LandingPage() {
+  const { theme, toggleTheme } = useTheme();
   const plans = [
     {
       name: "Free",
@@ -56,15 +58,18 @@ export function LandingPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white dark:bg-gray-950">
       {/* Header */}
-      <header className="border-b">
+      <header className="border-b dark:border-gray-800">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src="/logo.png" alt="SynapFlow" className="size-8 object-contain" />
             <span className="text-2xl font-semibold">SynapFlow</span>
           </div>
           <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={toggleTheme} title={theme === "dark" ? "Light mode" : "Dark mode"}>
+              {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
+            </Button>
             <Link to="/login">
               <Button variant="ghost">Log in</Button>
             </Link>
@@ -105,7 +110,7 @@ export function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-16 px-4 bg-gray-50">
+      <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">Everything you need to manage complaints</h2>
           <div className="grid md:grid-cols-3 gap-8">
@@ -214,7 +219,7 @@ export function LandingPage() {
       </section>
 
       {/* Pricing Section */}
-      <section className="py-16 px-4 bg-gray-50" id="pricing">
+      <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900" id="pricing">
         <div className="container mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">Simple, transparent pricing</h2>
           <p className="text-center text-gray-600 mb-12">
@@ -277,7 +282,7 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-8 px-4 bg-gray-50">
+      <footer className="border-t dark:border-gray-800 py-8 px-4 bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto text-center text-sm text-gray-600">
           <p>© 2026 SynapFlow. Built for Indian businesses.</p>
           <p className="mt-2">Not meant for collecting PII or securing sensitive personal data.</p>

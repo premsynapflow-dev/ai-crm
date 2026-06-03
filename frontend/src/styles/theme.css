@@ -61,6 +61,8 @@
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
+  --input-background: oklch(0.20 0 0);
+  --switch-background: oklch(0.35 0 0);
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: oklch(0.488 0.243 264.376);

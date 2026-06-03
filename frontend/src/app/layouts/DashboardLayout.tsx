@@ -1,5 +1,6 @@
 import { Outlet, Link, useNavigate, useLocation } from "react-router";
 import { useAuth } from "../lib/auth-context";
+import { useTheme } from "../lib/theme-context";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { ScrollArea } from "../components/ui/scroll-area";
@@ -33,6 +34,8 @@ import {
   Mail,
   Globe,
   Phone,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, Complaint } from "../lib/api";
@@ -56,6 +59,7 @@ function sourceIcon(source: string) {
 
 export function DashboardLayout() {
   const { user, logout, isAuthenticated } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(
@@ -65,6 +69,7 @@ export function DashboardLayout() {
   const [notifications, setNotifications] = useState<Complaint[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+  const [ticketsUsedLive, setTicketsUsedLive] = useState<number | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -77,6 +82,9 @@ export function DashboardLayout() {
     if (!isAuthenticated) return;
     api.replyQueue.list("pending")
       .then((data) => setReplyQueueCount(Array.isArray(data) ? data.length : 0))
+      .catch(() => null);
+    api.billing.getUsage()
+      .then((data) => setTicketsUsedLive(data.current_usage ?? null))
       .catch(() => null);
   }, [isAuthenticated]);
 
@@ -155,16 +163,19 @@ export function DashboardLayout() {
     return location.pathname === href || location.pathname.startsWith(href + "/");
   };
 
+  const ticketsUsed = ticketsUsedLive ?? user.ticketsUsed ?? 0;
+  const ticketsQuota = user.ticketsQuota ?? 50;
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r flex flex-col">
-        <div className="p-4 border-b">
+      <aside className="w-64 bg-white dark:bg-gray-900 border-r dark:border-gray-800 flex flex-col">
+        <div className="p-4 border-b dark:border-gray-800">
           <Link to="/app/dashboard" className="flex items-center gap-2">
             <img src="/logo.png" alt="SynapFlow" className="size-8 object-contain" />
             <div>
-              <div className="font-semibold">SynapFlow</div>
-              <div className="text-xs text-gray-500">{user.companyName || "Demo Company"}</div>
+              <div className="font-semibold dark:text-white">SynapFlow</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{user.companyName || "Demo Company"}</div>
             </div>
           </Link>
         </div>
@@ -181,8 +192,8 @@ export function DashboardLayout() {
                   to={item.href}
                   className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                     active
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-gray-700 hover:bg-gray-100"
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                   } ${item.locked ? "opacity-50" : ""}`}
                 >
                   <Icon className="size-5 shrink-0" />
@@ -202,10 +213,10 @@ export function DashboardLayout() {
             })}
           </nav>
 
-          <div className="mt-6 pt-6 border-t">
+          <div className="mt-6 pt-6 border-t dark:border-gray-800">
             <button
               onClick={() => setSettingsOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Settings className="size-4" />
@@ -228,8 +239,8 @@ export function DashboardLayout() {
                       to={item.href}
                       className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                         active
-                          ? "bg-blue-50 text-blue-600"
-                          : "text-gray-700 hover:bg-gray-100"
+                          ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}
                     >
                       <Icon className="size-4 shrink-0" />
@@ -243,24 +254,24 @@ export function DashboardLayout() {
         </ScrollArea>
 
         {/* Usage & Upgrade */}
-        <div className="p-4 border-t space-y-3">
-          <div className="text-xs text-gray-600">
+        <div className="p-4 border-t dark:border-gray-800 space-y-3">
+          <div className="text-xs text-gray-600 dark:text-gray-400">
             <div className="flex items-center justify-between mb-1">
               <span>Tickets this month</span>
               <span className="font-semibold">
-                {user.ticketsUsed} / {user.ticketsQuota}
+                {ticketsUsed} / {ticketsQuota}
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-1.5">
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
               <div
                 className="bg-blue-600 h-1.5 rounded-full"
-                style={{ width: `${(user.ticketsUsed / user.ticketsQuota) * 100}%` }}
+                style={{ width: `${Math.min(100, (ticketsUsed / Math.max(ticketsQuota, 1)) * 100)}%` }}
               />
             </div>
           </div>
 
           <Link to="/app/billing">
-            <Button variant="outline" size="sm" className="w-full">
+            <Button variant="outline" size="sm" className="w-full dark:border-gray-700 dark:text-gray-300">
               <CreditCard className="size-4 mr-2" />
               Upgrade Plan
             </Button>
@@ -268,14 +279,14 @@ export function DashboardLayout() {
         </div>
 
         {/* User Menu */}
-        <div className="p-4 border-t">
+        <div className="p-4 border-t dark:border-gray-800">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="w-full justify-start">
+              <Button variant="ghost" className="w-full justify-start dark:hover:bg-gray-800">
                 <User className="size-4 mr-2" />
                 <div className="flex-1 text-left">
-                  <div className="text-sm font-medium">{user.name}</div>
-                  <div className="text-xs text-gray-500">{user.email}</div>
+                  <div className="text-sm font-medium dark:text-gray-200">{user.name}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
                 </div>
               </Button>
             </DropdownMenuTrigger>
@@ -306,13 +317,22 @@ export function DashboardLayout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
+        <header className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Badge variant="secondary" className="capitalize">
               {user.plan} Plan
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
+            </Button>
+
             <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
               <DropdownMenuTrigger asChild>
                 <Button

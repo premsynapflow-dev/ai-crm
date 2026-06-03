@@ -226,7 +226,7 @@ export function SettingsConnections() {
   const InboxRow = ({
     id, label, sublabel, onDisconnect, onSync,
   }: { id: string; label: string; sublabel?: string; onDisconnect: () => void; onSync?: () => void }) => (
-    <div className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+    <div className="flex items-center justify-between p-3 border dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
       <div className="flex items-center gap-3">
         <div className="size-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
           <Mail className="size-4 text-blue-600" />
@@ -295,18 +295,18 @@ export function SettingsConnections() {
       </div>
 
       <Tabs defaultValue="gmail" className="w-full">
-        {/* Horizontal tab bar */}
-        <TabsList className="h-auto bg-transparent p-0 w-full flex flex-wrap gap-1 border-b pb-0 mb-0 rounded-none justify-start">
+        {/* Horizontal pill tab bar */}
+        <TabsList className="h-auto bg-gray-100 dark:bg-gray-800 p-1 rounded-lg w-full flex flex-wrap gap-1 justify-start">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-none border-b-2 border-transparent bg-transparent text-gray-600 data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:text-gray-900 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-500 dark:text-gray-400 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-gray-700 dark:hover:text-gray-200"
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="text-sm font-medium">{tab.label}</span>
+                <span>{tab.label}</span>
                 {"count" in tab && tab.count != null && tab.count > 0 && (
                   <Badge className="size-5 p-0 text-xs justify-center rounded-full bg-blue-100 text-blue-700 border-0">
                     {tab.count}
@@ -447,7 +447,7 @@ export function SettingsConnections() {
               ) : (
                 <div className="space-y-2">
                   {waConns.map((conn) => (
-                    <div key={conn.id} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+                    <div key={conn.id} className="flex items-center justify-between p-3 border dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
                       <div className="flex items-center gap-3">
                         <div className="size-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
                           <MessageSquare className="size-4 text-green-600" />
