@@ -7,22 +7,52 @@ import { useAuth } from "../lib/auth-context";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
+interface WhatBroke {
+  issue: string;
+  count: number;
+  change_pct: number;
+}
+
+interface WhyData {
+  root_cause_insights: string[];
+  trending_categories: { category: string; change_percentage: number }[];
+}
+
+interface CostData {
+  revenue_at_risk: number;
+  high_risk_customers: number;
+  currency: string;
+}
+
+interface ActionData {
+  narrative: string;
+  top_recommendations: string[];
+}
+
+interface TopIssue {
+  category: string;
+  current_count: number;
+  change_percentage: number;
+  percentage_of_total: number;
+}
+
+interface FullAnalytics {
+  total_complaints: number;
+  previous_period_total: number;
+  overall_change_pct: number;
+  top_issues: TopIssue[];
+  resolution_rates: Record<string, number>;
+}
+
 interface ExecutiveSummary {
-  what_broke: string;
-  why: string;
-  cost: {
-    revenue_at_risk: number;
-    high_risk_customers: number;
-  };
-  action: string;
-  full_analytics: {
-    total_complaints: number;
-    overall_change_percentage: number;
-    trending_up: { category: string; change_percentage: number }[];
-    top_issues: { category: string; current_count: number; change_percentage: number }[];
-    resolution_rates: Record<string, number>;
-  };
+  period_days: number;
+  what_broke: WhatBroke;
+  why: WhyData;
+  cost: CostData;
+  action: ActionData;
+  full_analytics: FullAnalytics;
   generated_at: string;
+  cached?: boolean;
 }
 
 export function Executive() {
@@ -65,8 +95,15 @@ export function Executive() {
     fetchSummary(true);
   };
 
-  const changeColor = (pct: number) =>
-    pct > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400";
+  const fmtPct = (n: number | undefined | null) => {
+    const v = n ?? 0;
+    return `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+  };
+
+  const changeColor = (pct: number | undefined | null) =>
+    (pct ?? 0) > 0
+      ? "text-red-600 dark:text-red-400"
+      : "text-green-600 dark:text-green-400";
 
   if (loading) {
     return (
@@ -94,6 +131,9 @@ export function Executive() {
           <h1 className="text-3xl font-bold dark:text-white">Executive Intelligence</h1>
           <p className="text-gray-500 dark:text-gray-400">
             AI-generated operational summary · Last {days} days
+            {summary?.cached && (
+              <span className="ml-2 text-xs text-gray-400">(cached)</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -135,14 +175,20 @@ export function Executive() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
-                  {summary.what_broke}
+                <p className="text-xl font-semibold dark:text-white capitalize">
+                  {summary.what_broke?.issue || "No significant issues detected"}
                 </p>
-                {summary.full_analytics?.trending_up?.length > 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {summary.what_broke?.count ?? 0} complaints ·{" "}
+                  <span className={changeColor(summary.what_broke?.change_pct)}>
+                    {fmtPct(summary.what_broke?.change_pct)} vs prior period
+                  </span>
+                </p>
+                {(summary.why?.trending_categories?.length ?? 0) > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {summary.full_analytics.trending_up.map((t) => (
+                    {summary.why.trending_categories.map((t) => (
                       <Badge key={t.category} variant="outline" className="text-orange-600 border-orange-300">
-                        {t.category} +{t.change_percentage.toFixed(0)}%
+                        {t.category} {fmtPct(t.change_percentage)}
                       </Badge>
                     ))}
                   </div>
@@ -159,9 +205,20 @@ export function Executive() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
-                  {summary.why}
-                </p>
+                {(summary.why?.root_cause_insights?.length ?? 0) > 0 ? (
+                  <ul className="space-y-1">
+                    {summary.why.root_cause_insights.map((insight, i) => (
+                      <li key={i} className="text-sm text-gray-800 dark:text-gray-200 flex gap-2">
+                        <span className="text-blue-400 shrink-0">•</span>
+                        {insight}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">
+                    No significant trends detected in this period.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -170,31 +227,32 @@ export function Executive() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
                   <DollarSign className="size-5" />
-                  Cost / Revenue at Risk
+                  Revenue at Risk
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                  ₹{(summary.cost?.revenue_at_risk ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                  ₹{(summary.cost?.revenue_at_risk ?? 0).toLocaleString("en-IN", {
+                    maximumFractionDigits: 0,
+                  })}
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {summary.cost?.high_risk_customers ?? 0} high-risk customers (churn score ≥ 70)
                 </p>
-                {summary.full_analytics && (
-                  <div className="mt-3 space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">Total complaints</span>
-                      <span className="font-medium dark:text-white">{summary.full_analytics.total_complaints}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">vs prior period</span>
-                      <span className={`font-medium ${changeColor(summary.full_analytics.overall_change_percentage)}`}>
-                        {summary.full_analytics.overall_change_percentage > 0 ? "+" : ""}
-                        {summary.full_analytics.overall_change_percentage.toFixed(1)}%
-                      </span>
-                    </div>
+                <div className="mt-3 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Total complaints</span>
+                    <span className="font-medium dark:text-white">
+                      {summary.full_analytics?.total_complaints ?? 0}
+                    </span>
                   </div>
-                )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">vs prior period</span>
+                    <span className={`font-medium ${changeColor(summary.full_analytics?.overall_change_pct)}`}>
+                      {fmtPct(summary.full_analytics?.overall_change_pct)}
+                    </span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -206,16 +264,26 @@ export function Executive() {
                   Recommended Action
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
-                  {summary.action}
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
+                  {summary.action?.narrative || "No specific action recommended at this time."}
                 </p>
+                {(summary.action?.top_recommendations?.length ?? 0) > 0 && (
+                  <ul className="space-y-1">
+                    {summary.action.top_recommendations.map((rec, i) => (
+                      <li key={i} className="text-xs text-gray-600 dark:text-gray-400 flex gap-2">
+                        <span className="text-green-400 shrink-0">→</span>
+                        {rec}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardContent>
             </Card>
           </div>
 
           {/* Top Issues table */}
-          {summary.full_analytics?.top_issues?.length > 0 && (
+          {(summary.full_analytics?.top_issues?.length ?? 0) > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="dark:text-white">Top Complaint Categories</CardTitle>
@@ -228,16 +296,24 @@ export function Executive() {
                         <th className="pb-2">Category</th>
                         <th className="pb-2 text-right">Count</th>
                         <th className="pb-2 text-right">Change</th>
+                        <th className="pb-2 text-right">% of Total</th>
                         <th className="pb-2 text-right">Resolution</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y dark:divide-gray-800">
                       {summary.full_analytics.top_issues.map((issue) => (
                         <tr key={issue.category} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                          <td className="py-2 font-medium dark:text-white capitalize">{issue.category}</td>
-                          <td className="py-2 text-right dark:text-gray-300">{issue.current_count}</td>
+                          <td className="py-2 font-medium dark:text-white capitalize">
+                            {issue.category}
+                          </td>
+                          <td className="py-2 text-right dark:text-gray-300">
+                            {issue.current_count ?? 0}
+                          </td>
                           <td className={`py-2 text-right font-medium ${changeColor(issue.change_percentage)}`}>
-                            {issue.change_percentage > 0 ? "+" : ""}{issue.change_percentage.toFixed(1)}%
+                            {fmtPct(issue.change_percentage)}
+                          </td>
+                          <td className="py-2 text-right text-gray-500 dark:text-gray-400">
+                            {(issue.percentage_of_total ?? 0).toFixed(1)}%
                           </td>
                           <td className="py-2 text-right dark:text-gray-300">
                             {summary.full_analytics.resolution_rates?.[issue.category] != null
@@ -254,7 +330,7 @@ export function Executive() {
           )}
 
           <p className="text-xs text-gray-400 text-right">
-            Generated {new Date(summary.generated_at).toLocaleString()}
+            Generated {summary.generated_at ? new Date(summary.generated_at).toLocaleString() : "—"}
           </p>
         </>
       )}
