@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { AlertTriangle, TrendingUp, DollarSign, Zap, RefreshCw } from "lucide-react";
+import { AlertTriangle, HelpCircle, DollarSign, Zap, RefreshCw } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -200,7 +200,7 @@ export function Executive() {
             <Card className="border-blue-200 dark:border-blue-800">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
-                  <TrendingUp className="size-5" />
+                  <HelpCircle className="size-5" />
                   Why
                 </CardTitle>
               </CardHeader>

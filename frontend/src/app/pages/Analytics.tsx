@@ -6,7 +6,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Lock, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+} from "../components/ui/dialog";
+import { Lock, RefreshCw, TrendingUp, TrendingDown, Minus, BrainCircuit, ChevronRight } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { api, Complaint, Customer } from "../lib/api";
 import { Link } from "react-router";
@@ -100,6 +103,261 @@ function PieLabel({ cx, cy, midAngle, outerRadius, percent, name }: any) {
       className="fill-gray-600 dark:fill-gray-400">
       {name} ({(percent * 100).toFixed(0)}%)
     </text>
+  );
+}
+
+// ── Root Cause Analysis card ──────────────────────────────────────────────────
+function EntityPill({ label, value, freq }: { label: string; value: string; freq: number }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs border border-blue-200 dark:border-blue-700">
+      <span className="font-medium capitalize">{label}:</span> {value}
+      <span className="text-blue-400">({Math.round(freq * 100)}%)</span>
+    </span>
+  );
+}
+
+function CausalDetailModal({ item }: { item: any }) {
+  const category = (item.category || "unknown").replace(/_/g, " ");
+  const hypotheses: string[] = item.hypotheses || [];
+  const entities: Record<string, Array<{ value: string; frequency: number; count: number }>> = item.common_entities || {};
+  const change = item.change_percentage ?? 0;
+
+  return (
+    <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 capitalize">
+          <BrainCircuit className="size-5 text-blue-500" />
+          Root Cause: {category}
+          <Badge variant={change > 20 ? "destructive" : change > 0 ? "outline" : "secondary"} className="ml-2">
+            {change > 0 ? "+" : ""}{change.toFixed(1)}% vs prior period
+          </Badge>
+        </DialogTitle>
+      </DialogHeader>
+
+      <div className="space-y-5 mt-2">
+        {/* How AI reached this conclusion */}
+        <section>
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+            AI Reasoning Chain
+          </h3>
+          <div className="space-y-2">
+            <div className="flex gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm">
+              <span className="shrink-0 size-6 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 flex items-center justify-center font-bold text-xs">1</span>
+              <div>
+                <p className="font-medium text-gray-700 dark:text-gray-300">Detected category spike</p>
+                <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                  <span className="capitalize">{category}</span> complaints rose {change > 0 ? "+" : ""}{change.toFixed(1)}% compared to the prior period. This triggered root cause analysis.
+                </p>
+              </div>
+            </div>
+
+            {Object.keys(entities).length > 0 && (
+              <div className="flex gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm">
+                <span className="shrink-0 size-6 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold text-xs">2</span>
+                <div>
+                  <p className="font-medium text-gray-700 dark:text-gray-300">Named entity extraction across all {category} complaints</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                    AI extracted products, locations, employee names, order IDs, and dates mentioned across all tickets in this category to identify common patterns.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {hypotheses.length > 0 && (
+              <div className="flex gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm">
+                <span className="shrink-0 size-6 rounded-full bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300 flex items-center justify-center font-bold text-xs">3</span>
+                <div>
+                  <p className="font-medium text-gray-700 dark:text-gray-300">Causal hypothesis generation</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                    Based on entity frequency patterns, Gemini generated {hypotheses.length} probable root cause{hypotheses.length !== 1 ? "s" : ""} explaining the spike.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Common entities found */}
+        {Object.keys(entities).length > 0 && (
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+              Common Signals Detected (appearing in ≥ 30% of tickets)
+            </h3>
+            <div className="space-y-3">
+              {Object.entries(entities).map(([etype, entries]) => (
+                <div key={etype}>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 capitalize mb-1.5">
+                    {etype.replace(/_/g, " ")}s
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {entries.map((e, i) => (
+                      <EntityPill key={i} label={etype.replace(/_/g, " ")} value={e.value} freq={e.frequency} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* AI hypotheses */}
+        {hypotheses.length > 0 && (
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+              AI-Generated Root Cause Hypotheses
+            </h3>
+            <div className="space-y-2">
+              {hypotheses.map((h, i) => (
+                <div key={i} className="flex gap-3 p-3 border dark:border-gray-700 rounded-lg">
+                  <span className="shrink-0 size-5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold text-xs">
+                    {i + 1}
+                  </span>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">{h}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* What to do next */}
+        <section className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">Suggested Next Step</p>
+          <p className="text-xs text-blue-600 dark:text-blue-400">
+            Investigate the highest-frequency signals above with your team. If entities include specific products or
+            locations, cross-reference with engineering or operations logs from the same timeframe.
+          </p>
+        </section>
+      </div>
+    </DialogContent>
+  );
+}
+
+function RootCauseCard({ rootCause }: { rootCause: any }) {
+  const causal: any[] = rootCause?.causal_analysis || [];
+  const insights: string[] = rootCause?.why?.root_cause_insights || [];
+
+  if (!rootCause) {
+    return (
+      <Card>
+        <CardHeader><CardTitle className="dark:text-white">Root Cause Analysis</CardTitle></CardHeader>
+        <CardContent>
+          <div className="h-48 flex items-center justify-center text-gray-400">Loading AI analysis…</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // If no trending categories triggered causal analysis, fall back to insights list
+  if (causal.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 dark:text-white">
+            <BrainCircuit className="size-5 text-blue-500" />
+            Root Cause Analysis
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {insights.length === 0 ? (
+            <p className="text-gray-400 text-sm">No significant category spikes detected in this period.</p>
+          ) : (
+            <ul className="space-y-2">
+              {insights.map((ins, i) => (
+                <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <span className="text-blue-400 shrink-0 mt-0.5">•</span>
+                  {ins}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 dark:text-white">
+            <BrainCircuit className="size-5 text-blue-500" />
+            Root Cause Analysis
+          </CardTitle>
+          <Badge variant="outline" className="text-xs">
+            {causal.length} categor{causal.length === 1 ? "y" : "ies"} analysed
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {causal.map((item: any, idx: number) => {
+          const category = (item.category || "unknown").replace(/_/g, " ");
+          const change = item.change_percentage ?? 0;
+          const hypotheses: string[] = item.hypotheses || [];
+          const entities: Record<string, any[]> = item.common_entities || {};
+          const topEntities = Object.values(entities).flat().slice(0, 3);
+
+          return (
+            <div key={idx}
+              className="border dark:border-gray-700 rounded-lg p-4 space-y-3 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+              {/* Category header */}
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800 dark:text-white capitalize text-sm">{category}</h3>
+                <Badge variant={change > 20 ? "destructive" : change > 0 ? "outline" : "secondary"}>
+                  {change > 0 ? "+" : ""}{change.toFixed(1)}% complaints
+                </Badge>
+              </div>
+
+              {/* Top hypothesis — the "why" */}
+              {hypotheses.length > 0 ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    Most likely cause
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {hypotheses[0]}
+                  </p>
+                  {hypotheses.length > 1 && (
+                    <p className="text-xs text-gray-400">
+                      +{hypotheses.length - 1} more hypothesis{hypotheses.length > 2 ? "es" : ""} in details
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">
+                  No causal hypotheses generated yet — more data needed.
+                </p>
+              )}
+
+              {/* Common signals */}
+              {topEntities.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Common signals</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {topEntities.map((e: any, i: number) => (
+                      <span key={i}
+                        className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full">
+                        {e.value} ({Math.round(e.frequency * 100)}%)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* View Details button */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full mt-1">
+                    <ChevronRight className="size-4 mr-1" />
+                    View Full AI Reasoning
+                  </Button>
+                </DialogTrigger>
+                <CausalDetailModal item={item} />
+              </Dialog>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -525,48 +783,7 @@ export function Analytics() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="dark:text-white">Root Cause Analysis</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!rootCause?.full_analytics?.top_issues?.length ? (
-                  <div className="h-48 flex items-center justify-center text-gray-400">
-                    Loading root cause data…
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {rootCause.full_analytics.top_issues.slice(0, 5).map((issue: any, i: number) => {
-                      const pct = issue.percentage_of_total ?? 0;
-                      const change = issue.change_percentage ?? 0;
-                      return (
-                        <div key={issue.category || i}>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="capitalize text-gray-700 dark:text-gray-300">
-                              {(issue.category || "unknown").replace(/_/g, " ")}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-500 dark:text-gray-400">{issue.current_count ?? 0} tickets</span>
-                              <Badge variant={change > 15 ? "destructive" : change > 0 ? "outline" : "secondary"}
-                                className="text-xs">
-                                {change > 0 ? "+" : ""}{(change).toFixed(0)}%
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full"
-                              style={{
-                                width: `${Math.min(100, pct)}%`,
-                                background: change > 20 ? RED : change > 5 ? AMBER : BLUE,
-                              }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <RootCauseCard rootCause={rootCause} />
           </div>
 
           {/* Revenue at risk */}

@@ -173,6 +173,7 @@ async def executive_summary(
             "top_issues": root_cause.get("top_issues", [])[:5],
             "resolution_rates": root_cause.get("resolution_rates", {}),
         },
+        "causal_analysis": root_cause.get("causal_analysis", []),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "cached": False,
     }
