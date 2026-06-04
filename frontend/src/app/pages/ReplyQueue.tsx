@@ -182,11 +182,11 @@ export function ReplyQueue() {
                         value={editedText}
                         onChange={(e) => setEditedText(e.target.value)}
                         rows={6}
-                        className="font-sans"
+                        className="font-sans dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
                       />
                     ) : (
-                      <div className="p-4 bg-gray-50 rounded-lg">
-                        <p className="text-sm whitespace-pre-wrap">{draft.reply_text}</p>
+                      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <p className="text-sm whitespace-pre-wrap text-gray-900 dark:text-gray-100">{draft.reply_text}</p>
                       </div>
                     )}
 

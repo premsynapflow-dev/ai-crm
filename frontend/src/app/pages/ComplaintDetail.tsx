@@ -293,7 +293,7 @@ export function ComplaintDetail() {
             <CardContent className="space-y-4">
               {isSent ? (
                 /* Sent — read-only */
-                <div className="rounded-lg bg-gray-50 border px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
                   {complaint.ai_reply}
                 </div>
               ) : (
@@ -323,7 +323,7 @@ export function ComplaintDetail() {
                     }
                     rows={7}
                     readOnly={!editing && aiDraftExists}
-                    className={!editing && aiDraftExists ? "bg-blue-50 border-blue-200 text-gray-800" : ""}
+                    className={!editing && aiDraftExists ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-gray-800 dark:text-gray-100" : "dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"}
                   />
                   <div className="flex gap-2">
                     <Button

@@ -197,6 +197,7 @@ export function Intelligence() {
   const [risk, setRisk] = useState<RiskData | null>(null);
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clusteringRunning, setClusteringRunning] = useState(false);
   const [acknowledgeTarget, setAcknowledgeTarget] = useState<Cluster | null>(null);
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
 
@@ -366,9 +367,37 @@ export function Intelligence() {
           </CardHeader>
           <CardContent className="space-y-3">
             {clusters.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
-                No clusters computed yet. Run clustering from the admin panel.
-              </p>
+              <div className="py-6 text-center space-y-3">
+                <p className="text-sm text-gray-400 dark:text-gray-500">
+                  No clusters computed yet. Group complaints into themes automatically.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={clusteringRunning}
+                  className="dark:border-gray-700"
+                  onClick={async () => {
+                    setClusteringRunning(true);
+                    try {
+                      await api.intelligence.runClustering(30);
+                      toast.success("Clustering started — results will appear in ~30 seconds");
+                      setTimeout(() => {
+                        api.intelligence.clusters(30).catch(() => []).then(setClusters);
+                        setClusteringRunning(false);
+                      }, 30000);
+                    } catch {
+                      toast.error("Failed to start clustering");
+                      setClusteringRunning(false);
+                    }
+                  }}
+                >
+                  {clusteringRunning ? (
+                    <><RefreshCw className="size-3.5 mr-1.5 animate-spin" />Running…</>
+                  ) : (
+                    <><Layers className="size-3.5 mr-1.5" />Run Clustering</>
+                  )}
+                </Button>
+              </div>
             ) : (
               clusters.slice(0, 5).map((cluster) => (
                 <div

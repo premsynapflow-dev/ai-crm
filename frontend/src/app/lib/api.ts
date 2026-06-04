@@ -1042,7 +1042,28 @@ export const api = {
       total_revenue_at_risk: number;
       high_risk_customers: Array<{ customer_email: string; revenue_at_risk: number; churn_probability: number }>;
     }> => {
-      return request("/api/v1/revenue-risk");
+      const data = await request<{
+        current: {
+          revenue_at_risk: number;
+          high_risk_customers: number;
+          breakdown: Array<{ email: string; revenue_at_risk: number; churn_probability: number }>;
+        };
+      }>("/api/v1/analytics/revenue-risk");
+      return {
+        total_revenue_at_risk: data.current?.revenue_at_risk ?? 0,
+        high_risk_customers: (data.current?.breakdown ?? []).map((c) => ({
+          customer_email: c.email,
+          revenue_at_risk: c.revenue_at_risk,
+          churn_probability: c.churn_probability,
+        })),
+      };
+    },
+
+    runClustering: async (days = 30): Promise<{ status: string; message: string }> => {
+      return request("/api/v1/clusters/run", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
     },
   },
 
