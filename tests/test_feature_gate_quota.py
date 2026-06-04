@@ -20,7 +20,7 @@ def test_customer_360_feature_gate_blocks_starter_plan(test_db, client, test_cli
     body = response.json()
     assert body["detail"]["feature_flag"] == "customer_360"
     assert body["detail"]["current_plan"] == "Starter"
-    assert body["detail"]["required_plan"] == "Pro"
+    assert body["detail"]["required_plan"] == "Growth"
 
 
 def test_quota_enforcer_uses_plan_overrides_and_unlimited_enterprise(test_db):

@@ -5,8 +5,17 @@ from typing import Any, Optional
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.db.models import Complaint, Customer, CustomerEvent, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
+from app.db.models import Client, Complaint, Customer, CustomerEvent, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
 from app.services.customer_deduplication import CustomerDeduplicator
+
+_CLV_PER_TICKET: dict[str, int] = {
+    "free": 500,
+    "starter": 2000,
+    "pro": 8000,
+    "max": 20000,
+    "scale": 50000,
+    "enterprise": 100000,
+}
 
 
 def _utcnow() -> datetime:
@@ -303,6 +312,9 @@ class CustomerProfileService:
         churn = self.compute_churn_risk(customer)
         customer.churn_risk = churn["level"]
         customer.churn_risk_score = churn["score"]
+
+        resolved_count = sum(1 for row in complaint_rows if row.resolution_status == "resolved")
+        customer.lifetime_value = self._compute_lifetime_value(customer, resolved_count)
 
         if commit:
             self.db.commit()
@@ -969,6 +981,33 @@ class CustomerProfileService:
             .scalar()
             or 0
         )
+
+    def _compute_lifetime_value(self, customer: Customer, resolved_count: int) -> float:
+        try:
+            client = self.db.query(Client).filter(Client.id == customer.client_id).first()
+            plan = (client.plan or "free") if client else "free"
+        except Exception:
+            plan = "free"
+        per_ticket = _CLV_PER_TICKET.get(plan, 2000)
+        return float(max(resolved_count, 1) * per_ticket)
+
+    def get_save_recommendations(self, customer: Customer) -> list[str]:
+        churn = self.compute_churn_risk(customer)
+        score = churn["score"]
+        indicators = churn["signals"]
+        recommendations: list[str] = []
+        if score >= 75:
+            recommendations.append("Offer a proactive discount or service credit to rebuild trust")
+            recommendations.append("Schedule an executive callback within 48 hours")
+        if indicators.get("unresolved_tickets", 0) > 0:
+            recommendations.append(f"Resolve {indicators['unresolved_tickets']} open ticket(s) as top priority")
+        if indicators.get("recent_negative_tickets", 0) >= 2:
+            recommendations.append("Upgrade customer to priority support queue")
+        if indicators.get("refund_or_payment_events", 0) > 0:
+            recommendations.append("Review refund/billing history and offer goodwill credit")
+        if not recommendations:
+            recommendations.append("Send a proactive check-in message from a senior agent")
+        return recommendations[:4]
 
     def _calculate_churn_risk_score(self, customer: Customer) -> float:
         return round(float(self.compute_churn_risk(customer)["score"]), 2)

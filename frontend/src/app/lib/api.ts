@@ -531,6 +531,19 @@ export const api = {
         return null;
       }
     },
+
+    getSaveRecommendations: async (id: string): Promise<{
+      customer_id: string;
+      churn_risk: string;
+      churn_risk_score: number;
+      recommendations: string[];
+    } | null> => {
+      try {
+        return await request(`/api/v1/customers/${id}/save-recommendations`);
+      } catch {
+        return null;
+      }
+    },
   },
 
   agents: {
@@ -951,6 +964,78 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       });
+    },
+  },
+
+  copilot: {
+    query: async (question: string, days = 30): Promise<{
+      id: string;
+      answer: string;
+      sources: Record<string, unknown>;
+      latency_ms: number;
+    }> => {
+      return request("/api/v1/copilot/query", {
+        method: "POST",
+        body: JSON.stringify({ question, days }),
+      });
+    },
+
+    history: async (): Promise<Array<{ id: string; question: string; answer: string; latency_ms: number; created_at: string }>> => {
+      const data = await request<{ queries: Array<{ id: string; question: string; answer: string; latency_ms: number; created_at: string }> }>("/api/v1/copilot/history");
+      return data.queries || [];
+    },
+  },
+
+  intelligence: {
+    pulse: async (): Promise<{
+      top_issues: Array<{ category: string; count: number }>;
+      sentiment_trend: { current_avg: number; previous_avg: number; direction: string };
+      churn_risk_customers: Array<{ customer_email: string; complaint_count: number; avg_sentiment: number }>;
+      new_complaint_spikes: Array<{ type: string; severity: string; hour_count?: number; avg_sentiment?: number }>;
+      suggested_actions: string[];
+    }> => {
+      return request("/api/v1/intelligence/pulse");
+    },
+
+    operations: async (): Promise<{
+      spikes: Array<{ type: string; severity: string }>;
+      defect_signals: Array<{ category: string; complaint_count: number; sample_messages: string[] }>;
+      top_themes: Array<{ theme: string; count: number; pct: number }>;
+      period_days: number;
+      total_complaints: number;
+    }> => {
+      return request("/api/v1/intelligence/operations");
+    },
+
+    clusters: async (days = 30): Promise<Array<{
+      id: string;
+      cluster_label: string;
+      size: number;
+      summary: string;
+      top_category: string;
+      period_start: string;
+      period_end: string;
+    }>> => {
+      const data = await request<{ clusters: unknown[] }>(`/api/v1/clusters?days=${days}`);
+      return (data.clusters || []) as Array<{ id: string; cluster_label: string; size: number; summary: string; top_category: string; period_start: string; period_end: string }>;
+    },
+
+    acknowledgeCluster: async (clusterId: string, action: string, note: string): Promise<void> => {
+      await request(`/api/v1/intelligence/clusters/${clusterId}/acknowledge`, {
+        method: "POST",
+        body: JSON.stringify({ action, note }),
+      });
+    },
+
+    forecast: async (): Promise<Record<string, unknown>> => {
+      return request("/api/v1/forecasting/forecast");
+    },
+
+    revenueRisk: async (): Promise<{
+      total_revenue_at_risk: number;
+      high_risk_customers: Array<{ customer_email: string; revenue_at_risk: number; churn_probability: number }>;
+    }> => {
+      return request("/api/v1/revenue-risk");
     },
   },
 

@@ -312,6 +312,10 @@ class AutoReplyDraftService:
         if not allow_disabled and not self._is_auto_reply_enabled(ticket):
             return False, "auto_reply_disabled"
 
+        # High-priority tickets (priority >= 5) always route to HITL; never auto-drafted.
+        if not allow_disabled and ticket.priority is not None and int(ticket.priority) >= 5:
+            return False, "high_priority"
+
         # Escalation/legal check only blocks automatic generation; manual requests
         # (allow_disabled=True from the "Generate AI Reply" button) always proceed.
         if not allow_disabled and self._has_legal_or_escalation_flag(ticket, recent_messages):

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -11,17 +11,36 @@ import {
   AlertTriangle,
   Bot,
   ArrowRight,
+  Brain,
+  IndianRupee,
+  Layers,
+  Users,
+  Sparkles,
+  Send,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+
+function formatINR(val: number) {
+  if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`;
+  if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
+  if (val >= 1000) return `₹${(val / 1000).toFixed(0)}K`;
+  return `₹${val}`;
+}
 
 export function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pulse, setPulse] = useState<any>(null);
+  const [risk, setRisk] = useState<any>(null);
+  const [copilotInput, setCopilotInput] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadStats();
+    api.intelligence.pulse().then(setPulse).catch(() => null);
+    api.intelligence.revenueRisk().then(setRisk).catch(() => null);
   }, []);
 
   const loadStats = async () => {
@@ -37,6 +56,11 @@ export function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopilotAsk = () => {
+    if (!copilotInput.trim()) return;
+    navigate(`/app/copilot?q=${encodeURIComponent(copilotInput.trim())}`);
   };
 
   if (loading) {
@@ -81,11 +105,89 @@ export function Dashboard() {
     csat: value,
   }));
 
+  // Spike detection from pulse
+  const topSpike = pulse?.new_complaint_spikes?.[0] ?? null;
+  const topIssue = pulse?.top_issues?.[0] ?? null;
+  const churnCount = pulse?.churn_risk_customers?.length ?? 0;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-gray-600">Overview of your complaint operations</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold dark:text-white">Dashboard</h1>
+          <p className="text-gray-600 dark:text-gray-400">Overview of your complaint operations</p>
+        </div>
+        <Link to="/app/intelligence">
+          <Button variant="outline" size="sm" className="gap-2 dark:border-gray-700">
+            <Brain className="size-4 text-blue-600" />
+            Intelligence Hub
+          </Button>
+        </Link>
+      </div>
+
+      {/* Spike alert */}
+      {topSpike && (
+        <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-4 py-3">
+          <AlertTriangle className="size-5 text-amber-600 shrink-0" />
+          <p className="text-sm text-amber-800 dark:text-amber-200 flex-1">
+            {topSpike.type === "volume_spike"
+              ? `Complaint spike detected — ${topSpike.hour_count ?? "?"} complaints in the last hour`
+              : `Sentiment drop detected — avg ${topSpike.avg_sentiment?.toFixed(2) ?? "?"}`}
+            {" "}(severity: <span className="font-medium">{topSpike.severity}</span>)
+          </p>
+          <Link to="/app/intelligence" className="text-xs font-medium text-amber-700 dark:text-amber-300 hover:underline shrink-0">
+            View in Intelligence Hub →
+          </Link>
+        </div>
+      )}
+
+      {/* Intelligence summary row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="dark:bg-gray-900 dark:border-gray-800">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-9 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+              <IndianRupee className="size-4 text-red-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Revenue at Risk</p>
+              <p className="text-lg font-bold dark:text-white">
+                {risk ? formatINR(risk.total_revenue_at_risk) : "—"}
+              </p>
+            </div>
+            <Link to="/app/intelligence" className="ml-auto text-xs text-blue-600 hover:underline shrink-0">
+              View →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="dark:bg-gray-900 dark:border-gray-800">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+              <Layers className="size-4 text-blue-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Top Issue Theme</p>
+              <p className="text-sm font-semibold dark:text-white capitalize truncate">
+                {topIssue ? `${topIssue.category} (${topIssue.count})` : "No data yet"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="dark:bg-gray-900 dark:border-gray-800">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-9 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+              <Users className="size-4 text-orange-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Churn Risk Customers</p>
+              <p className="text-lg font-bold dark:text-white">{churnCount}</p>
+            </div>
+            <Link to="/app/customers" className="ml-auto text-xs text-blue-600 hover:underline shrink-0">
+              View →
+            </Link>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Key Metrics */}
@@ -293,28 +395,61 @@ export function Dashboard() {
       </div>
 
       {/* Quick Links */}
-      <Card>
+      <Card className="dark:bg-gray-900 dark:border-gray-800">
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
+          <CardTitle className="dark:text-white">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link to="/app/complaints">
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full dark:border-gray-700">
                 <MessageSquare className="size-4 mr-2" />
                 View All Complaints
               </Button>
             </Link>
             <Link to="/app/reply-queue">
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full dark:border-gray-700">
                 <Bot className="size-4 mr-2" />
                 Review AI Replies
               </Button>
             </Link>
             <Link to="/app/assignments">
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full dark:border-gray-700">
                 <Clock className="size-4 mr-2" />
                 Manage Assignments
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick Copilot */}
+      <Card className="dark:bg-gray-900 dark:border-gray-800">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <Sparkles className="size-5 text-blue-600 shrink-0" />
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={copilotInput}
+                onChange={(e) => setCopilotInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCopilotAsk()}
+                placeholder="Ask the AI — Why are complaints spiking? Which product has issues?"
+                className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={handleCopilotAsk}
+              disabled={!copilotInput.trim()}
+              className="shrink-0"
+            >
+              <Send className="size-3.5 mr-1.5" />
+              Ask
+            </Button>
+            <Link to="/app/copilot">
+              <Button variant="outline" size="sm" className="shrink-0 dark:border-gray-700">
+                Open Copilot
               </Button>
             </Link>
           </div>

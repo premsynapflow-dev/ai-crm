@@ -91,6 +91,7 @@ def test_delete_complaint_removes_dependent_rows(test_db, client, test_client_re
             queue_item,
             ReplyFeedback(
                 id=uuid.uuid4(),
+                client_id=test_client_record.id,
                 complaint_id=complaint_id,
                 reply_queue_id=queue_item.id,
             ),

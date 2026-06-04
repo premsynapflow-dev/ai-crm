@@ -37,6 +37,8 @@ import {
   Moon,
   Sun,
   BrainCircuit,
+  Sparkles,
+  Brain,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, Complaint } from "../lib/api";
@@ -135,6 +137,8 @@ export function DashboardLayout() {
     { name: "Assignments", href: "/app/assignments", icon: UserCog },
     { name: "Analytics", href: "/app/analytics", icon: BarChart3 },
     { name: "Executive", href: "/app/executive", icon: BrainCircuit },
+    { name: "Copilot", href: "/app/copilot", icon: Sparkles },
+    { name: "Intelligence", href: "/app/intelligence", icon: Brain },
     {
       name: "Compliance",
       href: "/app/compliance",

@@ -48,7 +48,7 @@ class BillingUsageTests(unittest.TestCase):
         record = SimpleNamespace(tickets_processed=1100)
 
         with patch("app.billing.usage._get_or_create_usage", return_value=(record, client)):
-            self.assertEqual(usage.calculate_overage("client-1", db=object()), 300)
+            self.assertEqual(usage.calculate_overage("client-1", db=object()), 600)
 
     def test_apply_signup_plan_sets_free_plan(self):
         client = SimpleNamespace(plan_id="", plan="", monthly_ticket_limit=0, trial_ends_at=None)

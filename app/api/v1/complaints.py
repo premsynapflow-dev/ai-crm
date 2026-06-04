@@ -398,13 +398,6 @@ def _delete_complaint_graph(db: Session, complaint: Complaint) -> None:
         db.query(model).filter(model.complaint_id == complaint_id).update(
             {model.complaint_id: None}, synchronize_session=False
         )
-    # Nullable FKs that exist in the DB but are not reflected in the ORM models —
-    # must be NULLed explicitly to avoid NO ACTION FK violations on deletion.
-    for table in ("conversations", "rbi_escalation_log", "reply_quality_metrics", "churn_outcomes"):
-        db.execute(
-            text(f"UPDATE {table} SET complaint_id = NULL WHERE complaint_id = :cid"),  # noqa: S608
-            {"cid": str(complaint_id)},
-        )
     db.delete(complaint)
 
 

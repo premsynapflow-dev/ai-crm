@@ -6,19 +6,25 @@ import { Button } from "../components/ui/button";
 import { Separator } from "../components/ui/separator";
 import { Progress } from "../components/ui/progress";
 import { api, Customer } from "../lib/api";
-import { ArrowLeft, Mail, Phone, Building, Tag } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Building, Lightbulb, CheckCircle2 } from "lucide-react";
 
 export function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recommendations, setRecommendations] = useState<string[]>([]);
 
   useEffect(() => {
     if (id) {
       api.customers.get(id).then((c) => {
         setCustomer(c);
         setLoading(false);
+        if (c && (c.churn_risk === "high" || c.churn_risk === "medium")) {
+          api.customers.getSaveRecommendations(id).then((r) => {
+            if (r) setRecommendations(r.recommendations);
+          }).catch(() => null);
+        }
       }).catch(() => setLoading(false));
     }
   }, [id]);
@@ -116,6 +122,27 @@ export function CustomerProfile() {
               )}
             </CardContent>
           </Card>
+
+          {recommendations.length > 0 && (
+            <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                  <Lightbulb className="size-4" />
+                  Save Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {recommendations.map((rec, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-amber-900 dark:text-amber-100">
+                      <CheckCircle2 className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      {rec}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right: Stats */}

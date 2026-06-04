@@ -155,13 +155,13 @@ PLANS = {
     "pro": _with_compat_aliases(
         "pro",
         {
-            "name": "Pro",
-            "monthly_price": 4999,
-            "annual_price": 49990,
-            "annual_savings": 9998,
+            "name": "Growth",
+            "monthly_price": 19999,
+            "annual_price": 199990,
+            "annual_savings": 39998,
             "tickets_per_month": 2000,
             "team_seats": 10,
-            "overage_rate": 3,
+            "overage_rate": 6,
             "trial_days": 14,
             "trial_requires_card": True,
             "features": [
@@ -206,13 +206,13 @@ PLANS = {
     "max": _with_compat_aliases(
         "max",
         {
-            "name": "Max",
-            "monthly_price": 9999,
-            "annual_price": 99990,
-            "annual_savings": 19998,
+            "name": "Business",
+            "monthly_price": 59999,
+            "annual_price": 599990,
+            "annual_savings": 119998,
             "tickets_per_month": 10000,
             "team_seats": 25,
-            "overage_rate": 2,
+            "overage_rate": 4,
             "trial_days": 14,
             "trial_requires_card": True,
             "features": [
@@ -258,9 +258,9 @@ PLANS = {
         "scale",
         {
             "name": "Scale",
-            "monthly_price": 99999,
-            "annual_price": 999990,
-            "annual_savings": 199998,
+            "monthly_price": 149999,
+            "annual_price": 1499990,
+            "annual_savings": 299998,
             "tickets_per_month": 100000,
             "team_seats": 100,
             "overage_rate": 1,

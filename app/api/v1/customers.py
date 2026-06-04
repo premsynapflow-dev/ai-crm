@@ -370,3 +370,21 @@ def create_customer_relationship(
     db.commit()
     db.refresh(relationship)
     return {"success": True, "relationship": serialize_customer_relationship(relationship)}
+
+
+@router.get("/{customer_id}/save-recommendations")
+def get_save_recommendations(
+    customer_id: str,
+    db: Session = Depends(get_db),
+    current_client=Depends(require_api_key),
+):
+    """Return actionable retention recommendations for a high-churn-risk customer."""
+    _ensure_customer_360_access(current_client, db)
+    customer = _get_customer_or_404(db, _parse_customer_id(customer_id), current_client.id)
+    recommendations = CustomerProfileService(db).get_save_recommendations(customer)
+    return {
+        "customer_id": str(customer.id),
+        "churn_risk": customer.churn_risk,
+        "churn_risk_score": float(customer.churn_risk_score or 0),
+        "recommendations": recommendations,
+    }

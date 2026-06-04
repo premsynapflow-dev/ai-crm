@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import Client, Complaint, UnifiedMessage
+from app.db.models import Client, Complaint, Customer, UnifiedMessage
 from app.intelligence.prompt_builder import DEFAULT_CONFIG, build_thread_reply_prompt, get_prompt_config_for_client
 from app.services.ai import get_gemini_client
 from app.services.knowledge import retrieve_snippets
@@ -217,6 +217,35 @@ def _fallback_reply() -> dict[str, Any]:
     }
 
 
+def _customer_history_lines(db: Session, complaint: Complaint) -> list[str]:
+    if not complaint.customer_email:
+        return []
+    try:
+        customer = (
+            db.query(Customer)
+            .filter(
+                Customer.client_id == complaint.client_id,
+                Customer.primary_email == complaint.customer_email.lower().strip(),
+                Customer.is_master == True,
+            )
+            .first()
+        )
+        if customer is None or (customer.total_tickets or 0) <= 1:
+            return []
+        churn_label = customer.churn_risk or "low"
+        sentiment = customer.sentiment_label or "neutral"
+        clv = int(customer.lifetime_value or 0)
+        lines = [
+            f"- CUSTOMER HISTORY: This customer has filed {customer.total_tickets} complaint(s) in total.",
+            f"  Sentiment trend: {sentiment}. Churn risk: {churn_label}. Estimated CLV: ₹{clv:,}.",
+        ]
+        if customer.open_tickets and customer.open_tickets > 1:
+            lines.append(f"  They currently have {customer.open_tickets} open ticket(s) — treat them as a priority customer.")
+        return lines
+    except Exception:
+        return []
+
+
 def _kb_lines(db: Session, complaint: Complaint) -> list[str]:
     snippets = retrieve_snippets(
         db,
@@ -244,7 +273,7 @@ def generate_thread_reply(
         category=complaint.category or "",
         intent=getattr(complaint, "intent", "") or "",
         customer_name=complaint.customer_email or "",
-        knowledge_lines=_kb_lines(db, complaint),
+        knowledge_lines=_kb_lines(db, complaint) + _customer_history_lines(db, complaint),
     )
 
     if not api_key:
@@ -289,7 +318,7 @@ async def generate_thread_reply_async(
         category=complaint.category or "",
         intent=getattr(complaint, "intent", "") or "",
         customer_name=complaint.customer_email or "",
-        knowledge_lines=_kb_lines(db, complaint),
+        knowledge_lines=_kb_lines(db, complaint) + _customer_history_lines(db, complaint),
     )
 
     if not api_key:

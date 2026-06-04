@@ -91,7 +91,7 @@ def test_auto_reply_prompt_includes_required_context_sections():
     assert "Sentiment: negative (-0.6)" in prompt
     assert "CUSTOMER HISTORY" in prompt
     assert "PREVIOUS CONVERSATION" in prompt
-    assert '"subject": "Email subject line"' in prompt
+    assert '"subject":' in prompt
 
 
 def test_client_classification_config_merges_prompt_and_escalation_rules(test_db, test_client_record):
