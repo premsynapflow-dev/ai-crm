@@ -707,6 +707,34 @@ def reply_to_complaint(
     return {"complaint": _serialize_complaint_detail(db, complaint), **result}
 
 
+@router.post("/{complaint_id}/reject-reply")
+def reject_ai_reply_for_complaint(
+    complaint_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    user = _get_authenticated_user(request, db, authorization)
+    complaint = _get_scoped_complaint(db, user, complaint_id)
+    if not complaint:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    queue_entry = complaint.reply_queue
+    if not queue_entry or queue_entry.status != "pending":
+        raise HTTPException(status_code=400, detail="No pending AI reply draft to reject")
+
+    success = HardenedAutoReplyService(db).reject_reply(
+        str(queue_entry.id),
+        reviewer_email=user.email,
+        reason="Rejected by agent",
+        commit=True,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Could not reject reply")
+    db.refresh(complaint)
+    return {"success": True, "complaint": _serialize_complaint_detail(db, complaint)}
+
+
 @router.post("/{complaint_id}/suggest-reply")
 def suggest_reply_for_complaint(
     complaint_id: str,

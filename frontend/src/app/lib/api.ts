@@ -474,6 +474,10 @@ export const api = {
       });
       return normalizeComplaint(raw);
     },
+
+    rejectReply: async (id: string): Promise<void> => {
+      await request(`/api/v1/complaints/${id}/reject-reply`, { method: "POST" });
+    },
   },
 
   replyQueue: {

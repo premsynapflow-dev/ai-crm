@@ -124,13 +124,8 @@ export function ComplaintDetail() {
     if (!complaint) return;
     setSending(true);
     try {
-      if (complaint.ai_reply_status === "pending") {
-        await api.replyQueue.approve(complaint.id, replyText || complaint.ai_reply);
-        toast.success("Reply approved and sent!");
-      } else {
-        await api.complaints.sendReply(complaint.id, replyText);
-        toast.success("Reply sent!");
-      }
+      await api.complaints.sendReply(complaint.id, replyText || complaint.ai_reply || "");
+      toast.success(isPending ? "Reply approved and sent!" : "Reply sent!");
       await loadComplaint(complaint.id);
       setEditing(false);
     } catch (err: unknown) {
@@ -144,7 +139,7 @@ export function ComplaintDetail() {
     if (!complaint) return;
     setSending(true);
     try {
-      await api.replyQueue.reject(complaint.id);
+      await api.complaints.rejectReply(complaint.id);
       toast.success("Draft rejected");
       await loadComplaint(complaint.id);
     } catch {
