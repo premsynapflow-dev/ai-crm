@@ -104,7 +104,12 @@ export function ComplaintDetail() {
   const [generatingAI, setGeneratingAI] = useState(false);
 
   useEffect(() => {
-    if (id) loadComplaint(id);
+    if (id) {
+      setComplaint(null);
+      setReplyText("");
+      setEditing(false);
+      loadComplaint(id);
+    }
   }, [id]);
 
   const loadComplaint = async (complaintId: string) => {
