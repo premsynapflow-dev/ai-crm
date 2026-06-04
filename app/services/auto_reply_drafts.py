@@ -197,13 +197,15 @@ class AutoReplyDraftService:
         if not api_key:
             return self._fallback_generation(ticket, customer, recent_messages)
 
+        # Use higher temperature when regenerating so the new draft differs from the previous one.
+        temperature = 0.7 if ticket.ai_reply else 0.4
         try:
             started = time.perf_counter()
             response = get_model_orchestrator().generate_reply(
                 prompt,
                 model="gemini-2.5-flash-lite",
                 max_output_tokens=700,
-                temperature=0.25,
+                temperature=temperature,
             )
             audit_model_call(
                 self.db,
@@ -265,13 +267,14 @@ class AutoReplyDraftService:
         if not api_key:
             return self._fallback_generation(ticket, customer, recent_messages)
 
+        temperature = 0.7 if ticket.ai_reply else 0.4
         try:
             started = time.perf_counter()
             response = await get_model_orchestrator().generate_reply_async(
                 prompt,
                 model="gemini-2.5-flash-lite",
                 max_output_tokens=700,
-                temperature=0.25,
+                temperature=temperature,
             )
             raw_text = response.text
             audit_model_call(
@@ -561,38 +564,44 @@ class AutoReplyDraftService:
         recent_messages: Sequence[UnifiedMessage | dict[str, Any]],
     ) -> AutoReplyDraftResult:
         customer_name = _normalize_text(customer.full_name if customer is not None else None) or "there"
-        summary = _normalize_text(ticket.summary) or "your request"
-        latest_customer_message = ""
-        for message in reversed(list(recent_messages)):
-            direction = message.direction if isinstance(message, UnifiedMessage) else message.get("direction")
-            if str(direction or "").strip().lower() != "outbound":
-                latest_customer_message = _normalize_text(
-                    message.message_text if isinstance(message, UnifiedMessage) else message.get("message_text")
-                )
-                if latest_customer_message:
-                    break
+        category = _normalize_text(ticket.category or "").lower()
+        ticket_ref = ticket.ticket_number or ticket.ticket_id
 
         subject = self._default_subject(ticket, recent_messages)
-        category_label = _normalize_text(ticket.category).replace("_", " ") or "support"
-        body_lines = [
-            f"Hi {customer_name},",
-            (
-                f"Thank you for reaching out about {summary.lower()}. "
-                f"I understand how frustrating this {category_label.lower()} issue can be."
-            ),
-            (
-                f"Our team is reviewing the details from ticket {ticket.ticket_number or ticket.ticket_id} "
-                "and will follow up with the next steps shortly."
-            ),
-        ]
-        if latest_customer_message:
-            body_lines.append(
-                f"For reference, we have noted your latest update: \"{latest_customer_message[:220]}\"."
+
+        # Build a specific, actionable body based on complaint category.
+        if category == "refund":
+            action_line = (
+                f"I've flagged your refund request on ticket {ticket_ref} for immediate review by our payments team. "
+                "You'll receive a decision with next steps within 1–2 business days."
             )
-        body_lines.append("Best regards,\nSupport Team")
+        elif category == "billing":
+            action_line = (
+                f"I've escalated the billing discrepancy on ticket {ticket_ref} to our accounts team. "
+                "They'll review your account and respond within 1 business day."
+            )
+        elif category == "technical":
+            action_line = (
+                f"Our technical team has picked up ticket {ticket_ref} and is investigating the issue. "
+                "We'll share an update — and a resolution timeline — within 4 hours."
+            )
+        else:
+            action_line = (
+                f"I've logged this under ticket {ticket_ref} and our team is reviewing it now. "
+                "We'll respond with a clear next step within 1 business day."
+            )
+
+        body = (
+            f"Hi {customer_name},\n\n"
+            f"{action_line}\n\n"
+            "If you have any photos, receipts, or additional details that would help us resolve this faster, "
+            "please reply to this email.\n\n"
+            "Best regards,\nSupport Team"
+        )
+
         return AutoReplyDraftResult(
             subject=subject,
-            body="\n\n".join(body_lines).strip(),
+            body=body,
             confidence_score=0.52 if recent_messages else 0.45,
             generation_metadata={
                 "strategy": "contextual_fallback",
