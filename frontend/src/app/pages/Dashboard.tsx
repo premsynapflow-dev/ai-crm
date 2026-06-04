@@ -114,16 +114,52 @@ export function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold dark:text-white">Dashboard</h1>
-          <p className="text-gray-600 dark:text-gray-400">Overview of your complaint operations</p>
+          <h1 className="text-3xl font-bold dark:text-white">Operations Center</h1>
+          <p className="text-gray-600 dark:text-gray-400">AI-powered intelligence across your customer operations</p>
         </div>
-        <Link to="/app/intelligence">
-          <Button variant="outline" size="sm" className="gap-2 dark:border-gray-700">
-            <Brain className="size-4 text-blue-600" />
-            Intelligence Hub
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link to="/app/copilot">
+            <Button size="sm" className="gap-2">
+              <Sparkles className="size-4" />
+              Ask Copilot
+            </Button>
+          </Link>
+          <Link to="/app/intelligence">
+            <Button variant="outline" size="sm" className="gap-2 dark:border-gray-700">
+              <Brain className="size-4 text-blue-600" />
+              Intelligence Hub
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {/* Quick Copilot — primary CTA */}
+      <Card className="dark:bg-gray-900 dark:border-gray-800 border-blue-100 dark:border-blue-900/40 bg-gradient-to-r from-blue-50/60 to-white dark:from-blue-950/20 dark:to-gray-900">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <Sparkles className="size-5 text-blue-600 shrink-0" />
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={copilotInput}
+                onChange={(e) => setCopilotInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCopilotAsk()}
+                placeholder="Ask the AI — What is broken? What does it cost? What should we fix first?"
+                className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={handleCopilotAsk}
+              disabled={!copilotInput.trim()}
+              className="shrink-0"
+            >
+              <Send className="size-3.5 mr-1.5" />
+              Ask
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Spike alert */}
       {topSpike && (
@@ -394,10 +430,10 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Quick Links */}
+      {/* Quick Actions */}
       <Card className="dark:bg-gray-900 dark:border-gray-800">
         <CardHeader>
-          <CardTitle className="dark:text-white">Quick Actions</CardTitle>
+          <CardTitle className="dark:text-white text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -417,39 +453,6 @@ export function Dashboard() {
               <Button variant="outline" className="w-full dark:border-gray-700">
                 <Clock className="size-4 mr-2" />
                 Manage Assignments
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Copilot */}
-      <Card className="dark:bg-gray-900 dark:border-gray-800">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <Sparkles className="size-5 text-blue-600 shrink-0" />
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                value={copilotInput}
-                onChange={(e) => setCopilotInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleCopilotAsk()}
-                placeholder="Ask the AI — Why are complaints spiking? Which product has issues?"
-                className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <Button
-              size="sm"
-              onClick={handleCopilotAsk}
-              disabled={!copilotInput.trim()}
-              className="shrink-0"
-            >
-              <Send className="size-3.5 mr-1.5" />
-              Ask
-            </Button>
-            <Link to="/app/copilot">
-              <Button variant="outline" size="sm" className="shrink-0 dark:border-gray-700">
-                Open Copilot
               </Button>
             </Link>
           </div>

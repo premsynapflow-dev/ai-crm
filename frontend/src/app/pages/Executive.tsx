@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { AlertTriangle, HelpCircle, DollarSign, Zap, RefreshCw } from "lucide-react";
+import { AlertTriangle, HelpCircle, DollarSign, Zap, RefreshCw, GitBranch } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -44,6 +44,13 @@ interface FullAnalytics {
   resolution_rates: Record<string, number>;
 }
 
+interface CausalChain {
+  category: string;
+  change_percentage: number;
+  hypotheses: string[];
+  common_entities: Record<string, Array<{ value: string; count: number; frequency: number }>>;
+}
+
 interface ExecutiveSummary {
   period_days: number;
   what_broke: WhatBroke;
@@ -51,6 +58,7 @@ interface ExecutiveSummary {
   cost: CostData;
   action: ActionData;
   full_analytics: FullAnalytics;
+  causal_analysis?: CausalChain[];
   generated_at: string;
   cached?: boolean;
 }
@@ -281,6 +289,60 @@ export function Executive() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Causal Chain Analysis */}
+          {(summary.causal_analysis?.length ?? 0) > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 dark:text-white">
+                  <GitBranch className="size-5 text-purple-600" />
+                  Root Cause Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {summary.causal_analysis!.map((chain) => (
+                  <div key={chain.category} className="border dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-semibold capitalize dark:text-white">{chain.category}</span>
+                      <Badge
+                        variant="outline"
+                        className={chain.change_percentage > 0 ? "border-red-300 text-red-600" : "border-green-300 text-green-600"}
+                      >
+                        {chain.change_percentage > 0 ? "+" : ""}{chain.change_percentage.toFixed(1)}% vs prior period
+                      </Badge>
+                    </div>
+                    {chain.hypotheses.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">AI Root Cause Hypotheses</p>
+                        {chain.hypotheses.map((h, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm text-gray-800 dark:text-gray-200">
+                            <span className="mt-0.5 shrink-0 text-purple-500 font-mono text-xs">
+                              {String.fromCharCode(65 + i)}.
+                            </span>
+                            {h}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {Object.keys(chain.common_entities).length > 0 && (
+                      <div className="mt-3 pt-3 border-t dark:border-gray-700">
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Common Signals</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(chain.common_entities).flatMap(([_type, items]) =>
+                            items.slice(0, 3).map((item) => (
+                              <Badge key={item.value} variant="secondary" className="text-xs">
+                                {item.value} <span className="ml-1 text-gray-400">×{item.count}</span>
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Top Issues table */}
           {(summary.full_analytics?.top_issues?.length ?? 0) > 0 && (

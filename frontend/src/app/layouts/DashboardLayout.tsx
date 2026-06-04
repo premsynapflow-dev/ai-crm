@@ -40,7 +40,7 @@ import {
   Sparkles,
   Brain,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api, Complaint } from "../lib/api";
 
 const NOTIF_POLL_MS = 30_000;
@@ -129,23 +129,57 @@ export function DashboardLayout() {
     return null;
   }
 
-  const navigation = [
-    { name: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
-    { name: "Complaints", href: "/app/complaints", icon: MessageSquare },
-    { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: replyQueueCount || undefined },
-    { name: "Customers", href: "/app/customers", icon: Users },
-    { name: "Assignments", href: "/app/assignments", icon: UserCog },
-    { name: "Analytics", href: "/app/analytics", icon: BarChart3 },
-    { name: "Executive", href: "/app/executive", icon: BrainCircuit },
-    { name: "Copilot", href: "/app/copilot", icon: Sparkles },
-    { name: "Intelligence", href: "/app/intelligence", icon: Brain },
+  type NavItem = {
+    name: string;
+    href: string;
+    icon: React.ElementType;
+    badge?: number;
+    locked?: boolean;
+  };
+  type NavSection = { label: string; items: NavItem[] };
+
+  const navSections: NavSection[] = [
     {
-      name: "Compliance",
-      href: "/app/compliance",
-      icon: Shield,
-      locked: !["scale", "enterprise"].includes(user.plan),
+      label: "",
+      items: [
+        { name: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
+      ],
     },
-    { name: "Knowledge Base", href: "/app/knowledge", icon: BookOpen },
+    {
+      label: "Intelligence",
+      items: [
+        { name: "Copilot", href: "/app/copilot", icon: Sparkles },
+        { name: "Intelligence Hub", href: "/app/intelligence", icon: Brain },
+        { name: "Executive", href: "/app/executive", icon: BrainCircuit },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { name: "Complaints", href: "/app/complaints", icon: MessageSquare },
+        { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: replyQueueCount || undefined },
+        { name: "Assignments", href: "/app/assignments", icon: UserCog },
+      ],
+    },
+    {
+      label: "Customers",
+      items: [
+        { name: "Customers", href: "/app/customers", icon: Users },
+        { name: "Analytics", href: "/app/analytics", icon: BarChart3 },
+      ],
+    },
+    {
+      label: "More",
+      items: [
+        {
+          name: "Compliance",
+          href: "/app/compliance",
+          icon: Shield,
+          locked: !["scale", "enterprise"].includes(user.plan),
+        },
+        { name: "Knowledge Base", href: "/app/knowledge", icon: BookOpen },
+      ],
+    },
   ];
 
   const settingsNav = [
@@ -187,36 +221,46 @@ export function DashboardLayout() {
         </div>
 
         <ScrollArea className="flex-1 px-3 py-4">
-          <nav className="space-y-1">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-                    active
-                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  } ${item.locked ? "opacity-50" : ""}`}
-                >
-                  <Icon className="size-5 shrink-0" />
-                  <span className="flex-1">{item.name}</span>
-                  {item.badge && (
-                    <Badge variant="secondary" className="ml-auto">
-                      {item.badge}
-                    </Badge>
-                  )}
-                  {item.locked && (
-                    <Badge variant="outline" className="ml-auto text-xs">
-                      Locked
-                    </Badge>
-                  )}
-                </Link>
-              );
-            })}
+          <nav className="space-y-4">
+            {navSections.map((section) => (
+              <div key={section.label || "main"}>
+                {section.label && (
+                  <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                    {section.label}
+                  </p>
+                )}
+                <div className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = isActive(item.href);
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                          active
+                            ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        } ${item.locked ? "opacity-50" : ""}`}
+                      >
+                        <Icon className="size-5 shrink-0" />
+                        <span className="flex-1">{item.name}</span>
+                        {item.badge != null && (
+                          <Badge variant="secondary" className="ml-auto">
+                            {item.badge}
+                          </Badge>
+                        )}
+                        {item.locked && (
+                          <Badge variant="outline" className="ml-auto text-xs">
+                            Locked
+                          </Badge>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           <div className="mt-6 pt-6 border-t dark:border-gray-800">

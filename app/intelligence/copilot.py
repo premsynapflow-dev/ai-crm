@@ -18,6 +18,7 @@ import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.analytics.customer_pulse import detect_complaint_spikes, generate_customer_pulse
 from app.db.models import Complaint, ComplaintCluster, CopilotQuery
 from app.utils.logging import get_logger
 
@@ -29,9 +30,12 @@ _GEMINI_URL = (
 )
 
 _SYSTEM_PROMPT = (
-    "You are an executive intelligence assistant for a customer support platform. "
+    "You are an executive intelligence assistant for a customer operations platform. "
+    "Your job is to help executives understand: what is broken, why it is broken, "
+    "how much it costs, and what to do about it. "
     "Answer the question factually using ONLY the analytics data provided below. "
-    "Be concise (max 4 sentences). Cite specific numbers when available. "
+    "Be concise (max 5 sentences). Cite specific numbers when available. "
+    "When recommending actions, be specific about teams, priorities, and timelines. "
     "If the data is insufficient to answer, say so explicitly."
 )
 
@@ -112,6 +116,25 @@ def _get_cluster_context(db: Session, client_id: str, days: int = 30) -> list[di
     ]
 
 
+def _get_pulse_context(db: Session, client_id: str) -> dict[str, Any]:
+    """Get live pulse snapshot: sentiment trend, top issues, churn risk, spikes."""
+    try:
+        pulse = generate_customer_pulse(db, client_id)
+        spikes = detect_complaint_spikes(db, client_id, send_alert=False)
+        return {
+            "sentiment_trend": pulse.get("sentiment_trend", {}),
+            "top_issues": pulse.get("top_issues", [])[:5],
+            "churn_risk_customer_count": len(pulse.get("churn_risk_customers", [])),
+            "suggested_actions": pulse.get("suggested_actions", []),
+            "active_spikes": [
+                {"type": s.get("type"), "severity": s.get("severity")}
+                for s in spikes[:3]
+            ],
+        }
+    except Exception:
+        return {}
+
+
 def _get_recent_complaints(db: Session, client_id: str, limit: int = 8) -> list[str]:
     """Fetch recent complaint summaries for direct grounding."""
     complaints = (
@@ -160,11 +183,13 @@ def answer_query(
     structured = _get_structured_context(db, client_id, days)
     clusters = _get_cluster_context(db, client_id, days)
     recent = _get_recent_complaints(db, client_id)
+    pulse = _get_pulse_context(db, client_id)
 
     context_used = {
         "structured_analytics": structured,
         "cluster_summaries": clusters,
         "recent_complaints_sample": recent[:3],
+        "live_pulse": pulse,
     }
 
     if not api_key:
@@ -176,15 +201,35 @@ def answer_query(
         latency_ms = int((time.perf_counter() - t0) * 1000)
     else:
         cluster_lines = "\n".join(
-            f"  - Cluster {c['cluster_label']} ({c['size']} complaints, top: {c['top_category']}): {c['summary']}"
+            f"  - Cluster '{c['cluster_label']}' ({c['size']} complaints, top: {c['top_category']}): {c['summary']}"
             for c in clusters
         ) or "  No clusters computed yet."
 
         complaint_lines = "\n".join(f"  - {s}" for s in recent) or "  No recent complaints."
 
+        # Pulse context block
+        pulse_lines = ""
+        if pulse:
+            trend = pulse.get("sentiment_trend", {})
+            pulse_lines = (
+                f"\nLive pulse (last 7 days):\n"
+                f"  - Sentiment: {trend.get('direction', 'unknown')} "
+                f"({trend.get('previous_avg', 0):.2f} → {trend.get('current_avg', 0):.2f})\n"
+                f"  - Customers at churn risk: {pulse.get('churn_risk_customer_count', 0)}\n"
+            )
+            if pulse.get("active_spikes"):
+                pulse_lines += f"  - Active spikes: {json.dumps(pulse['active_spikes'])}\n"
+            if pulse.get("top_issues"):
+                top = pulse["top_issues"][:3]
+                issue_summary = ", ".join(
+                    "{} ({}x)".format(i["category"], i["count"]) for i in top
+                )
+                pulse_lines += f"  - Top issues: {issue_summary}\n"
+
         prompt = (
             f"Analytics (last {days} days):\n"
-            f"{json.dumps(structured, indent=2)}\n\n"
+            f"{json.dumps(structured, indent=2)}\n"
+            f"{pulse_lines}\n"
             f"Complaint cluster summaries:\n{cluster_lines}\n\n"
             f"Recent complaint samples:\n{complaint_lines}\n\n"
             f"Question: {question}"

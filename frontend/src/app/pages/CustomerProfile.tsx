@@ -7,6 +7,7 @@ import { Separator } from "../components/ui/separator";
 import { Progress } from "../components/ui/progress";
 import { api, Customer } from "../lib/api";
 import { ArrowLeft, Mail, Phone, Building, Lightbulb, CheckCircle2 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +15,7 @@ export function CustomerProfile() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [weeklyData, setWeeklyData] = useState<Array<{ week: string; complaints: number }>>([]);
 
   useEffect(() => {
     if (id) {
@@ -23,6 +25,28 @@ export function CustomerProfile() {
         if (c && (c.churn_risk === "high" || c.churn_risk === "medium")) {
           api.customers.getSaveRecommendations(id).then((r) => {
             if (r) setRecommendations(r.recommendations);
+          }).catch(() => null);
+        }
+        // Load complaint history for timeline chart
+        if (c?.email) {
+          api.complaints.list({ search: c.email }).then((complaints) => {
+            const counts: Record<string, number> = {};
+            const now = Date.now();
+            for (let i = 7; i >= 0; i--) {
+              const d = new Date(now - i * 7 * 86400000);
+              const key = `W${8 - i} ${d.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}`;
+              counts[key] = 0;
+            }
+            for (const c of complaints) {
+              const ts = new Date(c.created_at).getTime();
+              const weeksAgo = Math.floor((now - ts) / (7 * 86400000));
+              if (weeksAgo >= 0 && weeksAgo < 8) {
+                const d = new Date(now - weeksAgo * 7 * 86400000);
+                const key = `W${8 - weeksAgo} ${d.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}`;
+                counts[key] = (counts[key] || 0) + 1;
+              }
+            }
+            setWeeklyData(Object.entries(counts).map(([week, complaints]) => ({ week, complaints })));
           }).catch(() => null);
         }
       }).catch(() => setLoading(false));
@@ -176,16 +200,26 @@ export function CustomerProfile() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Ticket History</CardTitle>
+                <CardTitle>Complaint Frequency (Last 8 Weeks)</CardTitle>
                 <Link to={`/app/complaints?search=${encodeURIComponent(customer.email)}`}>
                   <Button variant="outline" size="sm">View All</Button>
                 </Link>
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-500 text-center py-4">
-                View tickets for this customer in the Complaints Inbox
-              </p>
+              {weeklyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={weeklyData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="week" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip formatter={(v) => [v, "Complaints"]} />
+                    <Bar dataKey="complaints" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-gray-500 text-center py-8">Loading complaint history…</p>
+              )}
             </CardContent>
           </Card>
         </div>

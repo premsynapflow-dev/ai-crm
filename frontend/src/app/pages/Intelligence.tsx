@@ -14,6 +14,8 @@ import {
   IndianRupee,
   RefreshCw,
   CheckCircle2,
+  Zap,
+  ArrowRight,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Link } from "react-router";
@@ -30,6 +32,82 @@ function formatINR(val: number) {
   if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
   if (val >= 1000) return `₹${(val / 1000).toFixed(0)}K`;
   return `₹${val}`;
+}
+
+interface ActionItem {
+  priority: "urgent" | "high" | "medium";
+  title: string;
+  description: string;
+  href: string;
+  linkLabel: string;
+}
+
+function deriveActions(
+  ops: OpsData | null,
+  clusters: Cluster[],
+  risk: RiskData | null,
+  pulse: PulseData | null,
+): ActionItem[] {
+  const actions: ActionItem[] = [];
+
+  // Spike → urgent investigation
+  const topSpike = ops?.spikes?.[0] ?? pulse?.new_complaint_spikes?.[0] ?? null;
+  if (topSpike && topSpike.severity === "high") {
+    actions.push({
+      priority: "urgent",
+      title: "Investigate complaint surge immediately",
+      description: "A high-severity spike was detected. Assign your senior support lead to diagnose the root cause before volume compounds.",
+      href: "/app/executive",
+      linkLabel: "Executive summary →",
+    });
+  }
+
+  // Revenue risk → customer outreach
+  if (risk && risk.total_revenue_at_risk > 50000) {
+    actions.push({
+      priority: "urgent",
+      title: `Protect ${formatINR(risk.total_revenue_at_risk)} at-risk revenue`,
+      description: `${risk.high_risk_customers.length} high-churn customers represent ${formatINR(risk.total_revenue_at_risk)} in revenue. Proactive outreach now prevents churn that can't be reversed.`,
+      href: "/app/customers",
+      linkLabel: "View at-risk customers →",
+    });
+  }
+
+  // Top cluster → bulk action
+  if (clusters[0]) {
+    actions.push({
+      priority: "high",
+      title: `Address cluster: "${clusters[0].cluster_label}"`,
+      description: `${clusters[0].size} complaints share this pattern. A single bulk reply + product fix here closes more tickets than handling them individually.`,
+      href: `/app/complaints?category=${clusters[0].top_category}`,
+      linkLabel: "View affected complaints →",
+    });
+  }
+
+  // Sentiment worsening → escalation
+  if (pulse?.sentiment_trend.direction === "worsening") {
+    actions.push({
+      priority: "high",
+      title: "Halt sentiment decline before it reaches social media",
+      description: `Sentiment dropped from ${pulse.sentiment_trend.previous_avg.toFixed(2)} to ${pulse.sentiment_trend.current_avg.toFixed(2)}. Assign a senior resolver to the worst-rated open tickets today.`,
+      href: "/app/complaints?priority=critical",
+      linkLabel: "View critical tickets →",
+    });
+  }
+
+  // Top theme from ops
+  const topTheme = ops?.top_themes?.[0];
+  if (topTheme && topTheme.pct > 30) {
+    actions.push({
+      priority: "medium",
+      title: `Fix root cause of "${topTheme.theme}" complaints`,
+      description: `${topTheme.pct}% of complaints this week are in one category — a product or process fix here has outsized leverage on complaint volume.`,
+      href: "/app/copilot",
+      linkLabel: "Ask Copilot for root cause →",
+    });
+  }
+
+  return actions.slice(0, 4);
 }
 
 function SentimentArrow({ direction }: { direction: string }) {
@@ -144,6 +222,7 @@ export function Intelligence() {
 
   const topSpike = pulse?.new_complaint_spikes?.[0] ?? ops?.spikes?.[0] ?? null;
   const topCluster = clusters[0] ?? null;
+  const recommendedActions = deriveActions(ops, clusters, risk, pulse);
 
   const forecastChartData = Array.from({ length: 7 }, (_, i) => ({
     day: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i],
@@ -180,6 +259,55 @@ export function Intelligence() {
             {topSpike.severity}
           </Badge>
         </div>
+      )}
+
+      {/* Action Engine */}
+      {recommendedActions.length > 0 && (
+        <Card className="dark:bg-gray-900 dark:border-gray-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold dark:text-white flex items-center gap-2">
+              <Zap className="size-4 text-yellow-500" />
+              Recommended Actions
+              <Badge variant="secondary" className="text-[10px] ml-1">{recommendedActions.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recommendedActions.map((action, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start gap-3 p-3 rounded-lg border ${
+                    action.priority === "urgent"
+                      ? "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10"
+                      : action.priority === "high"
+                      ? "border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/10"
+                      : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40"
+                  }`}
+                >
+                  <div className="shrink-0 mt-0.5">
+                    <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                      action.priority === "urgent"
+                        ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
+                        : action.priority === "high"
+                        ? "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                    }`}>
+                      {action.priority}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold dark:text-white">{action.title}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-relaxed">{action.description}</p>
+                    <Link to={action.href} className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1.5">
+                      {action.linkLabel}
+                      <ArrowRight className="size-3" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Summary cards */}

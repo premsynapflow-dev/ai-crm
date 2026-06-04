@@ -83,13 +83,17 @@ export function LandingPage() {
       {/* Hero Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto text-center max-w-4xl">
-          <Badge className="mb-4">AI-Powered Complaint Intelligence</Badge>
+          <Badge className="mb-4">Customer Operations Intelligence</Badge>
           <h1 className="text-5xl font-bold mb-6">
-            Handle Customer Complaints at Scale with AI
+            Turn Customer Complaints into Business Intelligence
           </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            SynapFlow helps Indian fintechs, NBFCs, and D2C brands manage complaints across channels,
-            generate AI-powered replies, and maintain RBI compliance—all from one platform.
+          <p className="text-xl text-gray-600 dark:text-gray-400 mb-4">
+            SynapFlow answers the questions your helpdesk can't: <strong>What is broken?</strong>{" "}
+            <strong>What does it cost?</strong> <strong>What should you fix first?</strong>
+          </p>
+          <p className="text-lg text-gray-500 dark:text-gray-400 mb-8">
+            AI-powered intelligence over every customer complaint, conversation, and feedback signal —
+            built for Indian fintechs, NBFCs, and D2C brands.
           </p>
           <div className="flex gap-4 justify-center">
             <Link to="/signup">
@@ -99,12 +103,12 @@ export function LandingPage() {
             </Link>
             <Link to="/login">
               <Button size="lg" variant="outline" className="text-lg px-8">
-                View Demo
+                See a Demo
               </Button>
             </Link>
           </div>
           <p className="text-sm text-gray-500 mt-4">
-            No credit card required • 50 free tickets/month • Setup in 5 minutes
+            No credit card required • 50 free tickets/month • 5-minute setup
           </p>
         </div>
       </section>
@@ -112,7 +116,7 @@ export function LandingPage() {
       {/* Features Section */}
       <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12">Everything you need to manage complaints</h2>
+          <h2 className="text-3xl font-bold text-center mb-12">Intelligence, not just ticket management</h2>
           <div className="grid md:grid-cols-3 gap-8">
             <Card>
               <CardHeader>
@@ -268,10 +272,10 @@ export function LandingPage() {
       <section className="py-20 px-4">
         <div className="container mx-auto text-center max-w-3xl">
           <h2 className="text-4xl font-bold mb-6">
-            Ready to transform your complaint management?
+            Your helpdesk tracks tickets. SynapFlow explains what's breaking your business.
           </h2>
-          <p className="text-xl text-gray-600 mb-8">
-            Join hundreds of Indian businesses using SynapFlow to handle complaints faster and smarter.
+          <p className="text-xl text-gray-600 dark:text-gray-400 mb-8">
+            Join Indian businesses using SynapFlow as the intelligence layer above their support stack.
           </p>
           <Link to="/signup">
             <Button size="lg" className="text-lg px-8">

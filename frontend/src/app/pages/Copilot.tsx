@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { api } from "../lib/api";
@@ -18,13 +19,16 @@ interface HistoryItem {
 }
 
 const STARTER_PROMPTS = [
+  "What is our largest source of customer dissatisfaction?",
+  "Which operational issue is creating the most churn risk?",
+  "What should we fix first to protect revenue?",
   "Why are complaints increasing this week?",
-  "Which product has the most defects?",
-  "Show me customers at risk of churning",
-  "What is our resolution rate this month?",
+  "Which teams are causing the most escalations?",
+  "What product or feature has the most defects?",
 ];
 
 export function Copilot() {
+  const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,6 +36,7 @@ export function Copilot() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     api.copilot.history()
@@ -43,6 +48,16 @@ export function Copilot() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-send ?q= param from dashboard quick-ask widget
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q && !autoSentRef.current && !loading) {
+      autoSentRef.current = true;
+      send(q);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const send = async (question: string) => {
     if (!question.trim() || loading) return;
