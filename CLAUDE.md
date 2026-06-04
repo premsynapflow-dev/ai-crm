@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Stack:**
 - Backend: FastAPI + SQLAlchemy ORM + PostgreSQL (Supabase)
-- Frontend: Next.js 16 with Tailwind CSS, static export
+- Frontend: **Vite 6 + React 18** with Tailwind CSS v4, static export served by FastAPI. Router: react-router v7. Component library: Radix UI + shadcn/ui. Charts: Recharts. Toasts: Sonner. Icons: lucide-react. HTTP: native `fetch` via custom `request()` wrapper in `frontend/src/app/lib/api.ts` (NOT Axios, NOT Next.js).
 - AI: Google Gemini API for classification and reply generation — called via direct **httpx** HTTP (NOT the `google-generativeai` SDK, which is intentionally absent from requirements.txt)
 - Voice: Deepgram (transcription) + ElevenLabs (synthesis) — lazy-imported only when `DEEPGRAM_API_KEY` / `ELEVENLABS_API_KEY` are set
 - Billing: Razorpay for payments; Resend for transactional email (fallback: SMTP)
@@ -72,10 +72,11 @@ pre-commit run --all-files
 ## Frontend Development
 
 ```bash
-cd frontend && npm install && npm run build   # Build static export
-cd frontend && npm run dev                   # Dev server at http://localhost:3000
-cd frontend && npm run lint
+cd frontend && npm install && npm run build   # Build static export (Vite → frontend/out/)
+cd frontend && npm run dev                   # Dev server at http://localhost:5173
 ```
+
+**Important:** The frontend uses **Vite 6**, **React 18**, and **react-router v7**. There is no Next.js, no `pages/` directory, and no `next export`. The build output is `frontend/out/` (static HTML/JS/CSS), served by FastAPI's catch-all route.
 
 ## High-Level Architecture
 
@@ -145,6 +146,8 @@ Customer Response
 - `ReplyConfidenceScorer` (`app/services/reply_confidence_scorer.py`) — multi-factor scoring: semantic similarity, sentiment alignment, length
 - `reply_ab_tests` table supports A/B testing AI replies against templates
 - Agent feedback stored in `reply_feedback` table for future fine-tuning
+- **Auto AI Reply toggle** — per-client setting in `client.custom_prompt_config["notification_preferences"]["auto_ai_reply"]` (default: `true`). When `true`, reply is generated automatically on complaint arrival; if confidence ≥ 0.90 the reply is auto-sent without human review. When `false`, AI reply is not generated until an agent manually clicks "Generate AI Reply".
+- **Manual Generate AI Reply** — `POST /api/v1/complaints/{id}/generate-reply` bypasses all eligibility checks (including legal/escalation blocks) and always queues the reply for human review (`force_human_review=True`). Implemented in `app/api/v1/complaints.py`.
 
 **Job Queue (`app/queue/worker.py`)**
 - Backend auto-selected by QUEUE_BACKEND: `auto` (postgres), `postgres`, or `redis`
@@ -255,8 +258,19 @@ Customer Response
 
 **Auth: Three Parallel Systems**
 - API key (`x-api-key` header): `require_api_key()` / `get_client_from_api_key()` in `app/dependencies/auth.py` — used for webhooks and integrations
-- JWT tokens (`app/api/v1/auth.py`): `JWT_SECRET_KEY` (defaults to SECRET_KEY), `ACCESS_TOKEN_EXPIRE_MINUTES` (60), `REFRESH_TOKEN_EXPIRE_DAYS` (30)
+- JWT tokens (`app/api/v1/auth.py`): `JWT_SECRET_KEY` (defaults to SECRET_KEY), `ACCESS_TOKEN_EXPIRE_MINUTES` (60), `REFRESH_TOKEN_EXPIRE_DAYS` (30). The React SPA stores these in **localStorage** (`synapflow_token`, `synapflow_user`) — not in memory.
 - Session cookies (`app/api/session_auth.py`): `itsdangerous`-signed session for Portal UI; `create_session()` / `decode_session()`
+
+**Frontend Auth (React SPA)**
+- `frontend/src/app/lib/auth-context.tsx` — `AuthProvider` reads token + user from `localStorage` on mount; `login()` calls `/api/v1/auth/login` then `/api/settings` to build the `User` object; `logout()` clears localStorage.
+- User display name: `ClientUser` has **no `name` column** — the backend derives it from the email local part via `_display_name_from_email()` in `app/auth.py`. The sidebar shows `user.companyName` (the `Client.name` field set at signup) as the primary identifier.
+- `/api/usage` returns `current_usage` and `monthly_limit` (not `tickets_used`/`tickets_quota` — those field names are wrong and must not be used).
+
+**Dark Mode**
+- Implemented via `frontend/src/app/lib/theme-context.tsx` (`ThemeProvider` + `useTheme` hook). Persists to `localStorage("theme")`. Applies/removes `.dark` class on `<html>`.
+- CSS variables for dark mode defined in `frontend/src/styles/theme.css` under `.dark {}`.
+- Tailwind uses `@custom-variant dark (&:is(.dark *))` — so `dark:*` utility classes respond to the `.dark` ancestor class.
+- Toggle button rendered in `DashboardLayout` header (Moon/Sun icon) and `LandingPage` header.
 
 **Testing Setup (`tests/conftest.py`)**
 - `conftest.py` automatically sets `DISABLE_BACKGROUND_WORKERS=1` and `DISABLE_SCHEMA_GUARD=1`
