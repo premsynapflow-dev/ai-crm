@@ -298,21 +298,21 @@ export function ComplaintDetail() {
                 </div>
               ) : (
                 <>
-                  {!aiDraftExists && (
-                    <Button
-                      variant="outline"
-                      className="w-full gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
-                      onClick={handleGenerateAIReply}
-                      disabled={generatingAI || sending}
-                    >
-                      {generatingAI ? (
-                        <RefreshCw className="size-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="size-4" />
-                      )}
-                      {generatingAI ? "Generating…" : "Generate AI Reply"}
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                    onClick={handleGenerateAIReply}
+                    disabled={generatingAI || sending}
+                  >
+                    {generatingAI ? (
+                      <RefreshCw className="size-4 animate-spin" />
+                    ) : aiDraftExists ? (
+                      <RefreshCw className="size-4" />
+                    ) : (
+                      <Sparkles className="size-4" />
+                    )}
+                    {generatingAI ? "Generating…" : aiDraftExists ? "Regenerate AI Reply" : "Generate AI Reply"}
+                  </Button>
                   <Textarea
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}

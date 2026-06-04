@@ -487,8 +487,24 @@ class AutoReplyDraftService:
         return lines
 
     def _recent_message_lines(self, recent_messages: Sequence[UnifiedMessage | dict[str, Any]]) -> list[str]:
+        # The triggering inbound message is already captured in `summary` — including it
+        # here too causes the model to echo it back verbatim.  Only include it if there
+        # are prior outbound messages in the thread (i.e. this is a follow-up, not
+        # first contact), so agents have real back-and-forth context.
+        window = list(recent_messages[-MAX_RECENT_MESSAGES:])
+        has_outbound = any(
+            (
+                (msg.direction or "").strip().lower() == "outbound"
+                if isinstance(msg, UnifiedMessage)
+                else (msg.get("direction") or "").strip().lower() == "outbound"
+            )
+            for msg in window
+        )
+        if not has_outbound:
+            return ["- No prior conversation (first contact — full message already captured in Summary above)."]
+
         lines: list[str] = []
-        for message in recent_messages[-MAX_RECENT_MESSAGES:]:
+        for message in window:
             if isinstance(message, UnifiedMessage):
                 direction = (message.direction or "unknown").strip().lower()
                 sender_name = _normalize_text(message.sender_name or message.sender_id) or ("Support" if direction == "outbound" else "Customer")

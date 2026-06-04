@@ -411,7 +411,7 @@ STRICT WRITING RULES:
 3. Address every distinct issue mentioned in the complaint separately and by name (e.g. "your item arrived damaged" and "your delivery was delayed" — not "your complaint" or "your refund issue").
 4. {evidence_note}
 5. Lead with one sentence of genuine acknowledgement, then immediately move to concrete next steps.
-6. BANNED phrases — do not use any of these: "Thank you for reaching out", "We apologize for any inconvenience", "We value your business", "We understand your frustration", "We are sorry to hear".
+6. BANNED phrases — do not use any of these: "Thank you for reaching out", "We apologize for any inconvenience", "We value your business", "We understand your frustration", "We are sorry to hear", "For reference", "as you mentioned", "as you stated", "as per your message", "as per your complaint", "you mentioned that", "you stated that", "we have noted your", "we received your message", "we have received your", "regarding your message", "in reference to your".
 7. Do NOT promise outcomes (refund approved, replacement dispatched) unless the APPROVED KNOWLEDGE BASE or PREVIOUS CONVERSATION explicitly confirms eligibility.
 8. If context is incomplete, describe what the team will investigate and give a specific timeframe.
 9. Keep the body to 2–3 short paragraphs. No bullet points in the email body.
