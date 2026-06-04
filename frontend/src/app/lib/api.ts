@@ -458,9 +458,12 @@ export const api = {
     },
 
     assign: async (id: string, teamId: string | null, agentId: string | null): Promise<void> => {
+      const body: Record<string, string | null> = {};
+      if (teamId) body.team_id = teamId;
+      if (agentId) body.assigned_to = agentId;
       await request(`/api/v1/tickets/${id}/assign`, {
         method: "POST",
-        body: JSON.stringify({ team_id: teamId, assigned_to: agentId }),
+        body: JSON.stringify(body),
       });
     },
 

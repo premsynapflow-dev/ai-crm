@@ -116,7 +116,7 @@ class CommentCreateRequest(BaseModel):
 
 
 class AssignmentRequest(BaseModel):
-    assigned_to: str = Field(..., min_length=1)
+    assigned_to: Optional[str] = None
     team_id: Optional[str] = None
     assigned_by: Optional[str] = None
     assignment_reason: Optional[str] = None
@@ -255,14 +255,25 @@ def assign_ticket(
     ensure_feature_access(current_client, "ticketing_state_machine")
     ticket = _get_ticket_or_404(db, _parse_ticket_id(ticket_id), current_client.id)
     actor = request.assigned_by or _default_actor(current_client)
-    routing_result = RoutingService(db).assign_ticket_to_user(
-        ticket,
-        assigned_to=request.assigned_to.strip(),
-        assigned_by=actor,
-        assignment_reason=request.assignment_reason,
-        team_id=_parse_uuid_value(request.team_id, detail="Invalid team id") if request.team_id else None,
-        commit=False,
-    )
+
+    assigned_to_value = (request.assigned_to or "").strip()
+    if assigned_to_value:
+        # Full assignment: agent (and optionally team)
+        RoutingService(db).assign_ticket_to_user(
+            ticket,
+            assigned_to=assigned_to_value,
+            assigned_by=actor,
+            assignment_reason=request.assignment_reason,
+            team_id=_parse_uuid_value(request.team_id, detail="Invalid team id") if request.team_id else None,
+            commit=False,
+        )
+    elif request.team_id:
+        # Team-only assignment: update team_id directly, leave agent unchanged
+        parsed_team_id = _parse_uuid_value(request.team_id, detail="Invalid team id")
+        ticket.team_id = parsed_team_id
+        db.flush()
+    else:
+        raise HTTPException(status_code=400, detail="Either assigned_to or team_id is required")
 
     state_machine = TicketStateMachine(db)
     current_state = (ticket.state or "new").strip().lower()

@@ -303,7 +303,7 @@ def list_users(
                 "id": str(u.id),
                 "email": u.email,
                 "name": _display_name_from_email(u.email),
-                "role": u.role,
+                "role": "agent",
             }
             for u in users
         ]

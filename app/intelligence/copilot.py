@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent"
+    "gemini-2.5-flash-lite:generateContent"
 )
 
 _SYSTEM_PROMPT = (
@@ -145,7 +145,7 @@ def _get_recent_complaints(db: Session, client_id: str, limit: int = 8) -> list[
         .all()
     )
     return [
-        f"[{c.category or 'unknown'}] {c.summary} (urgency={c.urgency_score:.1f})"
+        f"[{c.category or 'unknown'}] {c.summary} (urgency={(c.urgency_score or 0):.1f})"
         for c in complaints
     ]
 
@@ -159,10 +159,19 @@ def _call_gemini(prompt: str, api_key: str) -> str:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 400},
         },
-        timeout=15.0,
+        timeout=20.0,
     )
     resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    data = resp.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise ValueError(f"Gemini returned no candidates (promptFeedback={data.get('promptFeedback')})")
+    candidate = candidates[0]
+    content = candidate.get("content")
+    if not content:
+        finish = candidate.get("finishReason", "UNKNOWN")
+        raise ValueError(f"Gemini candidate has no content (finishReason={finish})")
+    return content["parts"][0]["text"].strip()
 
 
 def answer_query(
@@ -238,8 +247,13 @@ def answer_query(
         try:
             answer = _call_gemini(prompt, api_key)
         except Exception as exc:
-            logger.exception("Copilot Gemini call failed: %s", exc)
-            answer = "Unable to generate answer due to an AI service error."
+            logger.warning("Copilot Gemini call failed: %s", exc)
+            answer = (
+                f"I couldn't generate an AI answer right now ({type(exc).__name__}). "
+                f"Based on available data: {structured['total_complaints']} complaints in the last {days} days, "
+                f"resolution rate {structured['resolution_rate']}%, "
+                f"top category: {structured['top_categories'][0]['category'] if structured['top_categories'] else 'none'}."
+            )
 
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
