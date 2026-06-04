@@ -85,32 +85,32 @@ export function BillingPage() {
       features: ["AI reply drafts", "Multi-channel support", "30-day data retention", "Basic analytics"]
     },
     {
-      name: "Pro",
-      monthlyPrice: "₹4,999",
-      annualPrice: "₹49,990",
-      annualMonthly: "₹4,166",
+      name: "Growth",
+      monthlyPrice: "₹19,999",
+      annualPrice: "₹1,99,990",
+      annualMonthly: "₹16,666",
       tickets: "2,000 tickets/month",
       seats: "10 seats",
       features: ["Everything in Starter", "Advanced analytics", "Team management", "90-day data retention", "Priority support"],
       popular: true
     },
     {
-      name: "Max",
-      monthlyPrice: "₹9,999",
-      annualPrice: "₹99,990",
-      annualMonthly: "₹8,333",
+      name: "Business",
+      monthlyPrice: "₹59,999",
+      annualPrice: "₹5,99,990",
+      annualMonthly: "₹49,999",
       tickets: "10,000 tickets/month",
       seats: "25 seats",
-      features: ["Everything in Pro", "Churn prediction", "Root cause analysis", "Instagram & Google Reviews", "Custom integrations"]
+      features: ["Everything in Growth", "Churn prediction", "Root cause analysis", "Instagram & Google Reviews", "Custom integrations"]
     },
     {
       name: "Scale",
-      monthlyPrice: "₹99,999",
-      annualPrice: "₹9,99,990",
-      annualMonthly: "₹83,333",
-      tickets: "1,00,000 tickets/month",
+      monthlyPrice: "₹1,49,999",
+      annualPrice: "₹14,99,990",
+      annualMonthly: "₹1,24,999",
+      tickets: "50,000 tickets/month",
       seats: "100 seats",
-      features: ["Everything in Max", "RBI compliance tracking", "TAT monitoring", "MIS reports", "Dedicated account manager"]
+      features: ["Everything in Business", "RBI compliance tracking", "TAT monitoring", "MIS reports", "Dedicated account manager"]
     },
     {
       name: "Enterprise",

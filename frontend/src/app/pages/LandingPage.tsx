@@ -24,8 +24,8 @@ export function LandingPage() {
       features: ["AI reply drafts", "Multi-channel support", "30-day data retention", "Basic analytics"]
     },
     {
-      name: "Pro",
-      price: "₹4,999",
+      name: "Growth",
+      price: "₹19,999",
       period: "/month",
       tickets: "2,000 tickets/month",
       seats: "10 seats",
@@ -33,20 +33,20 @@ export function LandingPage() {
       popular: true
     },
     {
-      name: "Max",
-      price: "₹9,999",
+      name: "Business",
+      price: "₹59,999",
       period: "/month",
       tickets: "10,000 tickets/month",
       seats: "25 seats",
-      features: ["Everything in Pro", "Churn prediction", "Root cause analysis", "Instagram & Google Reviews", "Custom integrations"]
+      features: ["Everything in Growth", "Churn prediction", "Root cause analysis", "Instagram & Google Reviews", "Custom integrations"]
     },
     {
       name: "Scale",
-      price: "₹99,999",
+      price: "₹1,49,999",
       period: "/month",
-      tickets: "1,00,000 tickets/month",
+      tickets: "50,000 tickets/month",
       seats: "100 seats",
-      features: ["Everything in Max", "RBI compliance tracking", "TAT monitoring", "MIS reports", "Dedicated account manager"]
+      features: ["Everything in Business", "RBI compliance tracking", "TAT monitoring", "MIS reports", "Dedicated account manager"]
     },
     {
       name: "Enterprise",
