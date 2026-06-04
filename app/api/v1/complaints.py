@@ -242,6 +242,37 @@ def _original_subject_for_complaint(db: Session, complaint: Complaint) -> str:
     return _display_subject_for_messages(get_thread_messages(db, complaint), complaint.summary)
 
 
+_EMOTION_KEYS = ("frustration", "urgency", "confusion", "satisfaction", "aggression", "loyalty")
+
+
+def _normalize_sentiment_indicators(complaint: Complaint) -> dict[str, float]:
+    """Return a flat {emotion: float 0-1} dict from whatever shape is stored in the DB."""
+    raw = complaint.sentiment_indicators
+    dims: dict = {}
+    if isinstance(raw, dict):
+        # unified_ingestion stores: {"emotion_dimensions": {...}, "urgency_score": ..., ...}
+        nested = raw.get("emotion_dimensions")
+        dims = nested if isinstance(nested, dict) else raw
+    # raw is a list (old-style text phrases) or None → dims stays {}
+
+    if any(k in dims for k in _EMOTION_KEYS):
+        return {k: round(float(dims.get(k, 0.0)), 3) for k in _EMOTION_KEYS}
+
+    # Derive approximate values from the numeric sentiment + urgency fields
+    sentiment = float(complaint.sentiment or 0.0)   # -1.0 to 1.0
+    urgency = float(complaint.urgency_score or 0.0)  # 0.0 to 1.0
+    neg = max(0.0, -sentiment)
+    pos = max(0.0, sentiment)
+    return {
+        "frustration": round(min(1.0, neg * 0.8 + urgency * 0.2), 3),
+        "urgency": round(urgency, 3),
+        "confusion": round(min(1.0, neg * 0.3), 3),
+        "satisfaction": round(pos, 3),
+        "aggression": round(min(1.0, max(0.0, neg - 0.4) * 1.5), 3),
+        "loyalty": round(max(0.0, 0.5 - neg * 0.3), 3),
+    }
+
+
 def _serialize_complaint(complaint: Complaint, *, subject_override: str | None = None) -> dict[str, object]:
     created_at = complaint.created_at.isoformat() if complaint.created_at else None
     updated_at = complaint.resolved_at.isoformat() if complaint.resolved_at else created_at
@@ -282,7 +313,7 @@ def _serialize_complaint(complaint: Complaint, *, subject_override: str | None =
         "resolution_status": complaint.resolution_status,
         "sentiment_score": complaint.sentiment_score,
         "sentiment_label": complaint.sentiment_label,
-        "sentiment_indicators": complaint.sentiment_indicators or [],
+        "sentiment_indicators": _normalize_sentiment_indicators(complaint),
         "assigned_to": complaint.assigned_to or complaint.assigned_team,
         "assigned_user_id": str(complaint.assigned_user_id) if complaint.assigned_user_id else None,
         "assigned_team": complaint.assigned_team,

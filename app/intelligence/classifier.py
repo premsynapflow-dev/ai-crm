@@ -39,6 +39,75 @@ _ALLOWED_INTENTS = {
     "feature_request",
 }
 _ALLOWED_CATEGORIES = {"refund", "billing", "technical", "abuse", "general", "sales", "spam"}
+
+# Keyword sets per category — checked in priority order when Gemini returns 'general'
+# Keys must match _ALLOWED_CATEGORIES exactly.
+_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "refund": (
+        "refund", "money back", "reimburse", "reimbursement",
+        "chargeback", "return my money", "give me my money", "want my money",
+        "get my money", "i want a refund", "need a refund", "get a refund",
+        "request a refund", "please refund", "full refund", "partial refund",
+        "cash back", "credit back", "reversal",
+    ),
+    "billing": (
+        "charged", "overcharged", "double charged", "wrong charge", "extra charge",
+        "incorrect charge", "unauthorized charge", "unexpected charge",
+        "invoice", "billing error", "billing issue", "payment failed",
+        "payment issue", "payment declined", "subscription", "subscription fee",
+        "auto-renew", "auto renew", "direct debit", "emi", "installment",
+        "credit card charge", "transaction", "receipt", "statement",
+        "charged twice", "charged wrong", "billed", "bill",
+    ),
+    "technical": (
+        "not working", "doesn't work", "broken", "bug", "error", "crash",
+        "glitch", "issue with", "problem with", "login issue", "can't login",
+        "cannot login", "won't log in", "password", "forgot password",
+        "app not loading", "page not loading", "404", "500", "server error",
+        "slow", "lagging", "freezing", "not responding", "keeps crashing",
+        "offline", "down", "outage", "service down", "api error",
+        "sync issue", "data missing", "integration", "not syncing",
+        "feature not working", "button not working", "link not working",
+    ),
+    "sales": (
+        "pricing", "price list", "how much does", "what does it cost",
+        "cost of", "quote", "quotation", "get a quote", "demo",
+        "free trial", "trial", "upgrade", "downgrade", "switch plan",
+        "enterprise plan", "bulk", "wholesale", "volume discount",
+        "discount", "offer", "promotion", "looking to buy", "interested in buying",
+        "want to purchase", "want to buy", "can i buy", "purchase",
+        "what plans", "which plan", "compare plans",
+    ),
+    "abuse": (
+        "threaten", "threatening", "threat", "sue you", "take you to court",
+        "lawyer", "legal action", "lawsuit", "going to court", "harassment",
+        "harassing", "abusive", "offensive language", "racist", "sexist",
+        "discriminat", "hate", "inappropriate", "vulgar",
+    ),
+    "spam": (
+        "unsubscribe", "opt out", "stop emailing", "stop contacting",
+        "remove me from", "remove from list", "do not contact",
+        "unsolicited", "i never signed up", "i did not sign up",
+        "spam", "junk mail", "phishing",
+    ),
+}
+
+# When intent is X and Gemini returned 'general', override category to Y
+_INTENT_TO_CATEGORY: dict[str, str] = {
+    "refund_request": "refund",
+    "sales_lead": "sales",
+}
+
+# When category is X, the most natural intent if Gemini left it as 'complaint'
+_CATEGORY_TO_INTENT: dict[str, str] = {
+    "refund": "refund_request",
+    "sales": "sales_lead",
+    "technical": "support",
+    "billing": "complaint",
+    "abuse": "complaint",
+    "spam": "complaint",
+}
+
 _ALLOWED_ACTIONS = {
     "escalate",
     "notify_sales",
@@ -74,6 +143,36 @@ def _build_classification_prompt(message: str, client_config: Optional[dict] = N
     return build_classification_prompt(message, client_config)
 
 
+def _correct_classification(category: str, intent: str, message: str) -> tuple[str, str]:
+    """
+    Post-process Gemini's category/intent to fix systematic under-classification.
+
+    Strategy:
+      1. Intent → category: if intent strongly implies a category but Gemini left category='general'
+      2. Keyword scan: only applied when category='general' to avoid overriding a valid Gemini pick;
+         checked in priority order so the most specific match wins.
+      3. Category → intent: if we corrected the category and intent is still 'complaint', nudge to
+         the natural intent for that category.
+    """
+    # Step 1: intent-driven category correction (only when category is ambiguous)
+    if category == "general" and intent in _INTENT_TO_CATEGORY:
+        category = _INTENT_TO_CATEGORY[intent]
+
+    # Step 2: keyword scan — only override 'general'; trust any specific Gemini pick
+    if category == "general":
+        msg = message.lower()
+        for cat, keywords in _CATEGORY_KEYWORDS.items():
+            if any(kw in msg for kw in keywords):
+                category = cat
+                break  # priority order: refund > billing > technical > sales > abuse > spam
+
+    # Step 3: nudge intent to match the category when intent was left as plain 'complaint'
+    if intent == "complaint" and category in _CATEGORY_TO_INTENT:
+        intent = _CATEGORY_TO_INTENT[category]
+
+    return category, intent
+
+
 def normalize_classification_output(result: Optional[dict[str, Any]], message: str) -> dict[str, Any]:
     result = result or {}
 
@@ -84,6 +183,8 @@ def normalize_classification_output(result: Optional[dict[str, Any]], message: s
     category = result.get("category", "general")
     if category not in _ALLOWED_CATEGORIES:
         category = "general"
+
+    category, intent = _correct_classification(category, intent, message)
 
     recommended_action = result.get("recommended_action", "support_ticket")
     if recommended_action not in _ALLOWED_ACTIONS:

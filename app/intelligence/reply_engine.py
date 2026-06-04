@@ -48,11 +48,15 @@ async def generate_ai_reply_async(
             "confidence_score": 0.3
         }
 
-    # Build custom prompt using template
     prompt = build_reply_prompt(
         complaint.summary,
         customer_history,
-        custom_config  # Pass custom config
+        custom_config,
+        category=getattr(complaint, "category", "") or "",
+        intent=getattr(complaint, "intent", "") or "",
+        customer_name=getattr(complaint, "customer_email", "") or "",
+        urgency_score=float(getattr(complaint, "urgency_score", 0.0) or 0.0),
+        sentiment_label=getattr(complaint, "sentiment_label", "neutral") or "neutral",
     )
 
     try:

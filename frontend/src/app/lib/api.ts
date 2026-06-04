@@ -209,7 +209,8 @@ function normalizePriority(p: string | number | null | undefined): 1 | 2 | 3 | 4
 }
 
 function normalizeComplaint(raw: Record<string, unknown>): Complaint {
-  const indicators = (raw.sentiment_indicators || {}) as Record<string, number>;
+  const rawInd = raw.sentiment_indicators;
+  const indicators = (rawInd && !Array.isArray(rawInd) && typeof rawInd === "object" ? rawInd : {}) as Record<string, number>;
   return {
     id: String(raw.id),
     ticket_number: String(raw.ticket_number || raw.ticket_id || raw.id || ""),

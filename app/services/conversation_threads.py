@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.db.models import Client, Complaint, UnifiedMessage
 from app.intelligence.prompt_builder import DEFAULT_CONFIG, build_thread_reply_prompt, get_prompt_config_for_client
 from app.services.ai import get_gemini_client
+from app.services.knowledge import retrieve_snippets
 
 settings = get_settings()
 
@@ -216,6 +217,16 @@ def _fallback_reply() -> dict[str, Any]:
     }
 
 
+def _kb_lines(db: Session, complaint: Complaint) -> list[str]:
+    snippets = retrieve_snippets(
+        db,
+        client_id=complaint.client_id,
+        query=complaint.summary or complaint.category or "",
+        limit=3,
+    )
+    return [f"- {s.title}: {s.content[:400]}" for s in snippets]
+
+
 def generate_thread_reply(
     db: Session,
     complaint: Complaint,
@@ -226,7 +237,15 @@ def generate_thread_reply(
     api_key = (settings.gemini_api_key or "").strip()
     messages = get_thread_messages(db, complaint)
     transcript = build_conversation_transcript(messages, include_timestamps=True)
-    prompt = build_thread_reply_prompt(complaint.summary or complaint.category or "Customer complaint", transcript, _reply_config(client, custom_config))
+    prompt = build_thread_reply_prompt(
+        complaint.summary or complaint.category or "Customer complaint",
+        transcript,
+        _reply_config(client, custom_config),
+        category=complaint.category or "",
+        intent=getattr(complaint, "intent", "") or "",
+        customer_name=complaint.customer_email or "",
+        knowledge_lines=_kb_lines(db, complaint),
+    )
 
     if not api_key:
         return {
@@ -263,7 +282,15 @@ async def generate_thread_reply_async(
     api_key = (settings.gemini_api_key or "").strip()
     messages = get_thread_messages(db, complaint)
     transcript = build_conversation_transcript(messages, include_timestamps=True)
-    prompt = build_thread_reply_prompt(complaint.summary or complaint.category or "Customer complaint", transcript, _reply_config(client, custom_config))
+    prompt = build_thread_reply_prompt(
+        complaint.summary or complaint.category or "Customer complaint",
+        transcript,
+        _reply_config(client, custom_config),
+        category=complaint.category or "",
+        intent=getattr(complaint, "intent", "") or "",
+        customer_name=complaint.customer_email or "",
+        knowledge_lines=_kb_lines(db, complaint),
+    )
 
     if not api_key:
         return {
