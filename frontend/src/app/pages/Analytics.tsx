@@ -169,7 +169,7 @@ function CausalDetailModal({ item }: { item: any }) {
                 <div>
                   <p className="font-medium text-gray-700 dark:text-gray-300">Causal hypothesis generation</p>
                   <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
-                    Based on entity frequency patterns, Gemini generated {hypotheses.length} probable root cause{hypotheses.length !== 1 ? "s" : ""} explaining the spike.
+                    {hypotheses.length} root cause hypothesis{hypotheses.length !== 1 ? "es" : ""} generated from complaint patterns and entity signals.
                   </p>
                 </div>
               </div>

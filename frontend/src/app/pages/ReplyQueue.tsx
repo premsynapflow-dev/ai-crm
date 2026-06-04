@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { api, AIReplyDraft } from "../lib/api";
-import { Clock, CheckCircle, XCircle, Edit2 } from "lucide-react";
+import { Clock, CheckCircle, XCircle, Edit2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 export function ReplyQueue() {
@@ -14,6 +14,7 @@ export function ReplyQueue() {
   const [activeTab, setActiveTab] = useState("pending");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editedText, setEditedText] = useState("");
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadDrafts();
@@ -33,22 +34,29 @@ export function ReplyQueue() {
   };
 
   const handleApprove = async (id: string, text?: string) => {
+    setProcessingId(id);
     try {
       await api.replyQueue.approve(id, text);
       toast.success("Reply approved and sent!");
-      loadDrafts();
+      setDrafts(prev => prev.filter(d => d.id !== id));
+      setEditingId(null);
     } catch (error) {
       toast.error("Failed to approve reply");
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleReject = async (id: string) => {
+    setProcessingId(id);
     try {
       await api.replyQueue.reject(id);
       toast.success("Reply rejected");
-      loadDrafts();
+      setDrafts(prev => prev.filter(d => d.id !== id));
     } catch (error) {
       toast.error("Failed to reject reply");
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -202,11 +210,15 @@ export function ReplyQueue() {
                         <div className="flex gap-2">
                           {editingId === draft.id ? (
                             <>
-                              <Button onClick={() => saveEdit(draft.id)}>
-                                <CheckCircle className="size-4 mr-2" />
+                              <Button onClick={() => saveEdit(draft.id)} disabled={processingId === draft.id}>
+                                {processingId === draft.id ? (
+                                  <RefreshCw className="size-4 mr-2 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="size-4 mr-2" />
+                                )}
                                 Save & Send
                               </Button>
-                              <Button variant="ghost" onClick={() => setEditingId(null)}>
+                              <Button variant="ghost" onClick={() => setEditingId(null)} disabled={processingId === draft.id}>
                                 Cancel
                               </Button>
                             </>
@@ -216,20 +228,34 @@ export function ReplyQueue() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => startEditing(draft)}
+                                disabled={processingId === draft.id}
                               >
                                 <Edit2 className="size-4 mr-2" />
                                 Edit
                               </Button>
-                              <Button size="sm" onClick={() => handleApprove(draft.id)}>
-                                <CheckCircle className="size-4 mr-2" />
+                              <Button
+                                size="sm"
+                                onClick={() => handleApprove(draft.id)}
+                                disabled={processingId === draft.id}
+                              >
+                                {processingId === draft.id ? (
+                                  <RefreshCw className="size-4 mr-2 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="size-4 mr-2" />
+                                )}
                                 Approve
                               </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
                                 onClick={() => handleReject(draft.id)}
+                                disabled={processingId === draft.id}
                               >
-                                <XCircle className="size-4 mr-2" />
+                                {processingId === draft.id ? (
+                                  <RefreshCw className="size-4 mr-2 animate-spin" />
+                                ) : (
+                                  <XCircle className="size-4 mr-2" />
+                                )}
                                 Reject
                               </Button>
                             </>

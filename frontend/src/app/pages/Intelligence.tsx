@@ -487,6 +487,9 @@ export function Intelligence() {
                   {formatINR(risk.total_revenue_at_risk)}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Across {risk.high_risk_customers.length} high-risk accounts</p>
+                <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
+                  Estimated as: customer LTV × churn probability. LTV uses resolved ticket count × per-plan value, or interaction history if no tickets resolved.
+                </p>
                 <div className="space-y-2 mt-3">
                   {risk.high_risk_customers.slice(0, 5).map((c, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm">

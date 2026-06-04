@@ -53,6 +53,28 @@ def _entity_frequency_for_complaints(
     return result
 
 
+def _entity_based_fallback(category: str, change_pct: float, common_entities: dict) -> list[str]:
+    """Generate useful hypotheses from entity signals alone when Gemini is unavailable."""
+    hints = []
+    for etype, entries in common_entities.items():
+        if entries:
+            top = entries[0]
+            pct = round(top["frequency"] * 100)
+            hints.append(
+                f"{top['value']} appears in {pct}% of {category} tickets — "
+                f"check if a recent change to this {etype.lower()} triggered the spike"
+            )
+    if not hints:
+        hints.append(
+            f"{category.capitalize()} complaints rose {change_pct:+.0f}% — "
+            "review tickets from this period for common keywords or customer segments"
+        )
+        hints.append(
+            f"Check if a release, process change, or external event coincides with the {category} spike"
+        )
+    return hints[:3]
+
+
 def _gemini_causal_hypothesis(
     category: str,
     change_pct: float,
@@ -80,15 +102,20 @@ def _gemini_causal_hypothesis(
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": 200},
             },
-            timeout=8.0,
+            timeout=12.0,
         )
         resp.raise_for_status()
-        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        lines = [l.lstrip("•-* ").strip() for l in raw.splitlines() if l.strip()]
-        return [l for l in lines if l][:3]
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise ValueError(f"Gemini returned no candidates. finishReason may be SAFETY. Full response: {data}")
+        raw = candidates[0]["content"]["parts"][0]["text"].strip()
+        lines = [l.lstrip("•-* 0123456789.).").strip() for l in raw.splitlines() if l.strip()]
+        results = [l for l in lines if len(l) > 10][:3]
+        return results if results else _entity_based_fallback(category, change_pct, common_entities)
     except Exception as exc:
-        logger.warning("Causal hypothesis generation failed: %s", exc)
-        return [f"Investigate spike in {category} complaints"]
+        logger.warning("Causal hypothesis generation failed for category=%s: %s", category, exc)
+        return _entity_based_fallback(category, change_pct, common_entities)
 
 
 def generate_root_cause_report(db: Session, client_id: str, period_days: int = 30) -> dict:

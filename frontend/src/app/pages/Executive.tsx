@@ -247,6 +247,9 @@ export function Executive() {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {summary.cost?.high_risk_customers ?? 0} high-risk customers (churn score ≥ 70)
                 </p>
+                <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
+                  Calculated as customer LTV × churn probability. LTV estimated from resolved tickets × per-plan rate.
+                </p>
                 <div className="mt-3 space-y-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500 dark:text-gray-400">Total complaints</span>
