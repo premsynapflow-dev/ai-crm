@@ -1060,30 +1060,15 @@ export const api = {
   teams: {
     list: async (): Promise<Team[]> => {
       try {
-        const data = await request<{ teams: Array<{ id: string; name: string; member_count: number }> }>(
+        const data = await request<{ items: Array<{ id: string; name: string; member_count: number }> }>(
           "/api/v1/teams"
         );
-        const result: Team[] = [];
-        for (const t of data.teams || []) {
-          let members: Agent[] = [];
-          try {
-            const md = await request<{ members: Array<Record<string, unknown>> }>(
-              `/api/v1/teams/${t.id}/members`
-            );
-            members = (md.members || []).map((m) => ({
-              id: String(m.id || m.user_id || ""),
-              name: String(m.name || m.email || ""),
-              email: String(m.email || ""),
-              role: (m.role as Agent["role"]) || "agent",
-              active_tasks: Number(m.active_tasks || 0),
-              capacity: Number(m.capacity || 10),
-              is_active: m.is_active !== false,
-              team_id: t.id,
-            }));
-          } catch { /* members unavailable */ }
-          result.push({ id: t.id, name: t.name, member_count: t.member_count || members.length, members });
-        }
-        return result;
+        return (data.items || []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          member_count: t.member_count || 0,
+          members: [],
+        }));
       } catch {
         return [];
       }

@@ -132,15 +132,24 @@ export function Teams() {
     setMembersLoading(true);
     setSelectedUserId("");
     setSelectedRole("agent");
+    setMembers([]);
+    setAllUsers([]);
     try {
-      const [membersData, usersData] = await Promise.all([
+      const [membersResult, usersResult] = await Promise.allSettled([
         api.teams.getMembers(team.id),
         api.users.list(),
       ]);
-      setMembers(membersData.items);
-      setAllUsers(usersData.items);
-    } catch {
-      toast.error("Failed to load members");
+      if (membersResult.status === "fulfilled") {
+        setMembers(membersResult.value.items);
+      } else {
+        toast.error("Failed to load team members");
+      }
+      if (usersResult.status === "fulfilled") {
+        setAllUsers(usersResult.value.items);
+      } else {
+        toast.error("Failed to load users list — check server logs");
+        console.error("api.users.list() failed:", usersResult.reason);
+      }
     } finally {
       setMembersLoading(false);
     }
