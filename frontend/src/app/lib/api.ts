@@ -992,6 +992,10 @@ export const api = {
       const data = await request<{ queries: Array<{ id: string; question: string; answer: string; latency_ms: number; created_at: string }> }>("/api/v1/copilot/history");
       return data.queries || [];
     },
+
+    deleteHistory: async (queryId: string): Promise<void> => {
+      await request(`/api/v1/copilot/history/${queryId}`, { method: "DELETE" });
+    },
   },
 
   intelligence: {

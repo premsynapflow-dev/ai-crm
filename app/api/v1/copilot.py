@@ -1,7 +1,9 @@
 """AI Executive Copilot API — natural language Q&A over complaint data (Layer 7)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -72,3 +74,28 @@ def copilot_history(
         ],
         "total": len(queries),
     }
+
+
+@router.delete("/history/{query_id}")
+def delete_copilot_query(
+    query_id: str,
+    db: Session = Depends(get_db),
+    current_client: Client = Depends(require_api_key),
+):
+    """Permanently delete a copilot query from history."""
+    try:
+        qid = uuid.UUID(query_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid query id")
+
+    row = (
+        db.query(CopilotQuery)
+        .filter(CopilotQuery.id == qid, CopilotQuery.client_id == current_client.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Query not found")
+
+    db.delete(row)
+    db.commit()
+    return {"success": True}
