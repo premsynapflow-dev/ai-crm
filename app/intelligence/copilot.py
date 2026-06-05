@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.analytics.customer_pulse import detect_complaint_spikes, generate_customer_pulse
 from app.db.models import Complaint, ComplaintCluster, CopilotQuery
 from app.utils.logging import get_logger
+from app.utils.prompt_safety import UNTRUSTED_CONTENT_NOTE, sanitize_copilot_query
 
 logger = get_logger(__name__)
 
@@ -235,13 +236,16 @@ def answer_query(
                 )
                 pulse_lines += f"  - Top issues: {issue_summary}\n"
 
+        safe_question = sanitize_copilot_query(question)
+
         prompt = (
+            f"{UNTRUSTED_CONTENT_NOTE}"
             f"Analytics (last {days} days):\n"
             f"{json.dumps(structured, indent=2)}\n"
             f"{pulse_lines}\n"
             f"Complaint cluster summaries:\n{cluster_lines}\n\n"
             f"Recent complaint samples:\n{complaint_lines}\n\n"
-            f"Question: {question}"
+            f"Question:\n{safe_question}"
         )
 
         try:

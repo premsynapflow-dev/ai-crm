@@ -4,6 +4,15 @@ Build custom AI prompts from client templates
 
 from typing import Any, Dict, Optional
 
+from app.utils.prompt_safety import (
+    UNTRUSTED_CONTENT_NOTE,
+    sanitize_customer_name,
+    sanitize_kb_content,
+    sanitize_transcript_line,
+    sanitize_user_content,
+    wrap_user_content,
+)
+
 
 # Default prompt configuration
 DEFAULT_CONFIG = {
@@ -102,7 +111,9 @@ def build_classification_prompt(message: str, config: Optional[Dict] = None) -> 
         else "- No client-specific escalation rules configured."
     )
 
-    prompt = f"""Classify this customer message and return ONLY valid JSON, no markdown.
+    safe_message = sanitize_user_content(message, tag="user_content")
+
+    prompt = f"""{UNTRUSTED_CONTENT_NOTE}Classify this customer message and return ONLY valid JSON, no markdown.
 
 BUSINESS CONTEXT:
 {industry_context}
@@ -119,7 +130,8 @@ CLASSIFICATION RULES:
 CLIENT ESCALATION RULES:
 {escalation_section}
 
-Message: \"{message}\"
+Message:
+{safe_message}
 
 CATEGORY DEFINITIONS — always pick the most specific match; fall back to 'general' only when none apply:
 - refund: Customer wants money back, reimbursement, chargeback, or return of payment — applies regardless of tone ("Refund now", "Please refund me", "I'd like to request a refund" are all refund)
@@ -251,11 +263,13 @@ def build_reply_prompt(
         if lines:
             history_text = "CUSTOMER HISTORY:\n" + "\n".join(f"- {s}" for s in lines) + "\n"
 
-    greeting = f"Hi {customer_name.strip()}," if customer_name and customer_name.strip() else "Hi,"
+    safe_name = sanitize_customer_name(customer_name)
+    greeting = f"Hi {safe_name}," if safe_name else "Hi,"
     evidence_note = _evidence_instruction(complaint_summary, category)
+    safe_summary = sanitize_user_content(complaint_summary, tag="customer_message")
     brand_section = f"\nBRAND VOICE & CUSTOM INSTRUCTIONS (highest priority — follow these above all else):\n{custom_instructions}\n" if custom_instructions else ""
 
-    prompt = f"""You are a senior customer support agent at a professional brand. Write a concise, helpful reply to this customer complaint.
+    prompt = f"""{UNTRUSTED_CONTENT_NOTE}You are a senior customer support agent at a professional brand. Write a concise, helpful reply to this customer complaint.
 
 BUSINESS CONTEXT:
 {industry_context}
@@ -267,7 +281,7 @@ TICKET CONTEXT:
 - Urgency: {urgency_score:.2f}
 
 CUSTOMER MESSAGE:
-{complaint_summary}
+{safe_summary}
 
 {history_text}{brand_section}
 STRICT RULES:
@@ -305,16 +319,24 @@ def build_thread_reply_prompt(
     custom_instructions, signature, include_links = _parse_reply_guidelines(config)
     link_instruction = "\n- Include relevant policy or help center links where appropriate" if include_links else ""
 
-    greeting = f"Hi {customer_name.strip()}," if customer_name and customer_name.strip() else "Hi,"
+    safe_name = sanitize_customer_name(customer_name)
+    greeting = f"Hi {safe_name}," if safe_name else "Hi,"
     evidence_note = _evidence_instruction(complaint_summary, category)
     brand_section = f"\nBRAND VOICE & CUSTOM INSTRUCTIONS (highest priority — follow these above all else):\n{custom_instructions}\n" if custom_instructions else ""
+
+    safe_summary = sanitize_user_content(complaint_summary, tag="complaint_summary")
+    raw_transcript = conversation_transcript or complaint_summary
+    safe_transcript = sanitize_user_content(raw_transcript, max_length=20_000, tag="conversation_transcript")
 
     kb_lines = knowledge_lines or []
     kb_section = ""
     if kb_lines:
-        kb_section = "\nAPPROVED KNOWLEDGE BASE (use these facts when directly relevant — do not contradict them):\n" + "\n".join(kb_lines) + "\n"
+        safe_kb = "\n".join(
+            sanitize_kb_content(line, tag="kb_entry") for line in kb_lines
+        )
+        kb_section = "\nAPPROVED KNOWLEDGE BASE (use these facts when directly relevant — do not contradict them):\n" + safe_kb + "\n"
 
-    prompt = f"""You are a senior customer support agent. Write a reply to the latest customer message in this thread.
+    prompt = f"""{UNTRUSTED_CONTENT_NOTE}You are a senior customer support agent. Write a reply to the latest customer message in this thread.
 
 BUSINESS CONTEXT:
 {industry_context}
@@ -327,10 +349,11 @@ SOURCE OF TRUTH:
 Use ONLY the conversation thread below. Do NOT invent facts not present in the thread.
 If the thread lacks enough information to resolve the issue, ask a focused follow-up question.
 
-Complaint summary: {complaint_summary}
+Complaint summary:
+{safe_summary}
 
 Conversation transcript:
-{conversation_transcript or complaint_summary}
+{safe_transcript}
 {kb_section}{brand_section}
 STRICT RULES:
 1. Start the email body with: {greeting}
@@ -358,22 +381,33 @@ def build_auto_reply_generation_prompt(context: Dict[str, Any], config: Optional
     industry_context = INDUSTRY_CONTEXTS.get(industry, INDUSTRY_CONTEXTS["general"])
     custom_instructions, signature, _ = _parse_reply_guidelines(config)
 
-    history_lines = context.get("customer_history") or ["- No prior customer history available."]
-    message_lines = context.get("recent_messages") or ["- No previous conversation available."]
+    raw_history = context.get("customer_history") or ["- No prior customer history available."]
+    raw_messages = context.get("recent_messages") or ["- No previous conversation available."]
     raw_knowledge = context.get("relevant_knowledge") or []
-    knowledge_lines = raw_knowledge if raw_knowledge else ["- No approved knowledge base entries matched this ticket."]
 
     category = context.get("category") or "general"
     summary = context.get("summary") or "No complaint summary provided"
     customer_name = context.get("customer_name") or ""
-    greeting = f"Hi {customer_name.strip()}," if customer_name and customer_name.strip() else "Hi,"
+
+    safe_name = sanitize_customer_name(customer_name)
+    greeting = f"Hi {safe_name}," if safe_name else "Hi,"
     evidence_note = _evidence_instruction(summary, category)
+    safe_summary = sanitize_user_content(summary, tag="complaint_summary")
+
+    history_lines = [sanitize_transcript_line(str(h)) for h in raw_history]
+    message_lines = [sanitize_transcript_line(str(m)) for m in raw_messages]
+    knowledge_lines = (
+        [sanitize_kb_content(str(k), tag="kb_entry") for k in raw_knowledge]
+        if raw_knowledge
+        else ["- No approved knowledge base entries matched this ticket."]
+    )
+
     brand_section = (
         f"\nBRAND VOICE & CUSTOM INSTRUCTIONS (highest priority — follow these above all else):\n{custom_instructions}\n"
         if custom_instructions else ""
     )
 
-    prompt = f"""You are a senior customer support agent at a professional brand drafting a reply that will be reviewed by a human before sending.
+    prompt = f"""{UNTRUSTED_CONTENT_NOTE}You are a senior customer support agent at a professional brand drafting a reply that will be reviewed by a human before sending.
 
 BUSINESS CONTEXT:
 {industry_context}
@@ -387,10 +421,10 @@ TICKET CONTEXT:
 - Sentiment: {context.get("sentiment_label") or "neutral"} ({context.get("sentiment_score")})
 - Priority: {context.get("priority") or "unknown"}
 - Channel: {context.get("source") or "unknown"}
-- Summary: {summary}
+- Summary: {safe_summary}
 
 CUSTOMER CONTEXT:
-- Name: {customer_name or "Customer"}
+- Name: {safe_name or "Customer"}
 - Company: {context.get("company_name") or "Unknown"}
 - Total tickets: {context.get("total_tickets") if context.get("total_tickets") is not None else "Unknown"}
 - Avg satisfaction: {context.get("avg_satisfaction_score") if context.get("avg_satisfaction_score") is not None else "Unknown"}

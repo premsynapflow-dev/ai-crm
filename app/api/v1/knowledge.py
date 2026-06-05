@@ -11,6 +11,7 @@ from app.db.models import KnowledgeSnippet
 from app.db.session import get_db
 from app.dependencies.auth import require_api_key
 from app.services.knowledge import create_snippet, retrieve_snippets, serialize_snippet
+from app.utils.prompt_safety import sanitize_kb_content, sanitize_kb_title
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge-v1"])
 
@@ -46,8 +47,8 @@ def create_knowledge_snippet(payload: KnowledgeSnippetRequest, db: Session = Dep
     snippet = create_snippet(
         db,
         client_id=current_client.id,
-        title=payload.title,
-        content=payload.content,
+        title=sanitize_kb_title(payload.title),
+        content=payload.content,  # raw content stored; sanitized at prompt-build time
         category=payload.category,
         keywords=payload.keywords,
         created_by=payload.created_by,
@@ -77,9 +78,9 @@ def update_snippet(
     if snippet is None:
         raise HTTPException(status_code=404, detail="Snippet not found")
     if payload.title is not None:
-        snippet.title = payload.title.strip()
+        snippet.title = sanitize_kb_title(payload.title)
     if payload.content is not None:
-        snippet.content = payload.content.strip()
+        snippet.content = payload.content.strip()  # raw stored; sanitized at prompt-build time
     if payload.category is not None:
         snippet.category = payload.category.strip() or None
     if payload.keywords is not None:
