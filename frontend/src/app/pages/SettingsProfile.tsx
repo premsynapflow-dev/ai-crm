@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { PasswordInput } from "../components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { useAuth } from "../lib/auth-context";
 import { toast } from "sonner";
@@ -86,17 +87,17 @@ export function SettingsProfile() {
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="currentPassword">Current Password</Label>
-            <Input id="currentPassword" type="password" />
+            <PasswordInput id="currentPassword" />
           </div>
 
           <div>
             <Label htmlFor="newPassword">New Password</Label>
-            <Input id="newPassword" type="password" />
+            <PasswordInput id="newPassword" />
           </div>
 
           <div>
             <Label htmlFor="confirmPassword">Confirm New Password</Label>
-            <Input id="confirmPassword" type="password" />
+            <PasswordInput id="confirmPassword" />
           </div>
 
           <Button>Update Password</Button>

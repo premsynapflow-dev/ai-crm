@@ -3,6 +3,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { PasswordInput } from "../components/ui/password-input";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../components/ui/input-otp";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -148,9 +149,8 @@ export function ForgotPasswordPage() {
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div>
                 <Label htmlFor="password">New Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   placeholder="Enter new password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -161,9 +161,8 @@ export function ForgotPasswordPage() {
 
               <div>
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
+                <PasswordInput
                   id="confirmPassword"
-                  type="password"
                   placeholder="Re-enter new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

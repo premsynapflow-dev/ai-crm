@@ -138,11 +138,11 @@ export interface AutomationRule {
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
 function getToken(): string | null {
-  return localStorage.getItem("synapflow_token");
+  return localStorage.getItem("synapflow_token") || sessionStorage.getItem("synapflow_token");
 }
 
 function getApiKey(): string | null {
-  return localStorage.getItem("synapflow_api_key");
+  return localStorage.getItem("synapflow_api_key") || sessionStorage.getItem("synapflow_api_key");
 }
 
 function authHeaders(overrides?: Record<string, string>): Record<string, string> {
@@ -169,9 +169,10 @@ async function request<T>(
 
   if (res.status === 401) {
     // Session expired or invalid — clear stored credentials and redirect to login
-    localStorage.removeItem("synapflow_token");
-    localStorage.removeItem("synapflow_user");
-    localStorage.removeItem("synapflow_api_key");
+    ["synapflow_token", "synapflow_user", "synapflow_api_key"].forEach((k) => {
+      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
+    });
     if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/signup")) {
       window.location.href = "/login";
     }
