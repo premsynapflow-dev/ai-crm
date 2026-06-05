@@ -13,6 +13,7 @@ from app.analytics.customer_pulse import detect_complaint_spikes, generate_custo
 from app.db.models import Client, Complaint, ComplaintCluster
 from app.db.session import get_db
 from app.dependencies.auth import require_api_key
+from app.services.revenue_risk import compute_data_coverage
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -80,10 +81,13 @@ def get_operations_intelligence(
         Complaint.created_at >= seven_days_ago,
     ).scalar() or 1
 
+    # total_7d is the correct denominator for pct calculation;
+    # percentages may not sum to 100% because categories with 0 complaints are excluded
     top_themes = [
         {
             "theme": row["category"],
             "count": row["complaint_count"],
+            "denominator": total_7d,
             "pct": round(row["complaint_count"] / total_7d * 100, 1),
         }
         for row in defect_signals
@@ -95,7 +99,22 @@ def get_operations_intelligence(
         "top_themes": top_themes,
         "period_days": 7,
         "total_complaints": total_7d,
+        "note": "Percentages show each category's share of total_complaints. They may not sum to 100% as only top 5 categories are shown.",
     }
+
+
+@router.get("/data-coverage")
+def get_data_coverage(
+    db: Session = Depends(get_db),
+    current_client: Client = Depends(require_api_key),
+):
+    """Return revenue data coverage and risk score freshness across all customers.
+
+    Helps executives understand how much of their customer base has revenue data
+    connected and how fresh the risk scores are.
+    """
+    coverage = compute_data_coverage(db, str(current_client.id))
+    return coverage
 
 
 class AcknowledgeClusterRequest(BaseModel):

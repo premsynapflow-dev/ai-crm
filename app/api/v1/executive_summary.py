@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.db.models import Client, Complaint, Customer
 from app.db.session import get_db
 from app.dependencies.auth import require_api_key
+from app.intelligence.calibration import calibrate_churn_probability
+from app.intelligence.constants import RISK_HIGH_THRESHOLD
 from app.services.root_cause import generate_root_cause_report
 from app.utils.logging import get_logger
 
@@ -41,24 +43,27 @@ def _set_cache(client_id: str, payload: dict) -> None:
 
 
 def _compute_revenue_at_risk(db: Session, client_id: Any, days: int) -> dict:
-    since = datetime.now(timezone.utc) - timedelta(days=days)
     high_risk = (
         db.query(Customer)
         .filter(
             Customer.client_id == client_id,
-            Customer.churn_risk_score >= 70,
+            Customer.churn_risk_score >= RISK_HIGH_THRESHOLD,
         )
         .all()
     )
     total_risk = 0.0
+    has_revenue_data = False
     for c in high_risk:
-        ltv = float(c.lifetime_value or 10000.0)
-        prob = float(c.churn_risk_score or 70) / 100.0
-        total_risk += ltv * prob
+        ltv = float(c.lifetime_value) if c.lifetime_value else 0.0
+        if ltv > 0:
+            has_revenue_data = True
+            prob = calibrate_churn_probability(c.churn_risk_score or 0)
+            total_risk += ltv * prob
 
     return {
         "revenue_at_risk": round(total_risk, 2),
         "high_risk_customers": len(high_risk),
+        "has_revenue_data": has_revenue_data,
     }
 
 
@@ -135,10 +140,12 @@ async def executive_summary(
         if cached:
             return {**cached, "cached": True}
 
+    from app.services.revenue_risk import compute_data_coverage
     root_cause = generate_root_cause_report(db, str(client.id), period_days=days)
     revenue = _compute_revenue_at_risk(db, client.id, days)
+    coverage = compute_data_coverage(db, str(client.id))
 
-    metrics = {**root_cause, **revenue}
+    metrics = {**root_cause, **revenue, "revenue_coverage_pct": coverage["coverage_pct"]}
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
     narrative = _generate_narrative(metrics, client.name or "your company", api_key)
@@ -160,6 +167,8 @@ async def executive_summary(
         "cost": {
             "revenue_at_risk": revenue["revenue_at_risk"],
             "high_risk_customers": revenue["high_risk_customers"],
+            "has_revenue_data": revenue.get("has_revenue_data", False),
+            "revenue_coverage_pct": coverage["coverage_pct"],
             "currency": "INR",
         },
         "action": {
@@ -173,7 +182,7 @@ async def executive_summary(
             "top_issues": root_cause.get("top_issues", [])[:5],
             "resolution_rates": root_cause.get("resolution_rates", {}),
         },
-        "causal_analysis": root_cause.get("causal_analysis", []),
+        "correlational_signals": root_cause.get("correlational_signals", root_cause.get("causal_analysis", [])),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "cached": False,
     }

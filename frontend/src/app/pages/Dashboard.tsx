@@ -184,11 +184,40 @@ export function Dashboard() {
             <div className="size-9 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
               <IndianRupee className="size-4 text-red-600" />
             </div>
-            <div className="min-w-0">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Revenue at Risk</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {risk && !risk.has_revenue_data ? "Customer Risk" : "Revenue at Risk"}
+                </p>
+                {risk && (
+                  <span className={`text-[9px] font-semibold uppercase px-1 py-0.5 rounded ${
+                    risk.confidence === "high"
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                      : risk.confidence === "medium"
+                      ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+                      : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                  }`}>
+                    {risk.confidence}
+                  </span>
+                )}
+              </div>
               <p className="text-lg font-bold dark:text-white">
-                {risk ? formatINR(risk.total_revenue_at_risk) : "—"}
+                {risk
+                  ? risk.has_revenue_data
+                    ? <>
+                        {risk.confidence === "medium" && <span className="text-sm font-normal text-gray-400 mr-0.5">Est.</span>}
+                        {formatINR(risk.total_revenue_at_risk)}
+                      </>
+                    : `${risk.high_risk_count} accounts`
+                  : "—"}
               </p>
+              {risk && (
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                  {risk.has_revenue_data
+                    ? `Avg risk ${risk.avg_risk_score?.toFixed(0) ?? "—"}/100`
+                    : "No revenue data · connect Stripe or Razorpay"}
+                </p>
+              )}
             </div>
             <Link to="/app/intelligence" className="ml-auto text-xs text-blue-600 hover:underline shrink-0">
               View →

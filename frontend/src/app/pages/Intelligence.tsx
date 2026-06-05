@@ -62,12 +62,20 @@ function deriveActions(
     });
   }
 
-  // Revenue risk → customer outreach
-  if (risk && risk.total_revenue_at_risk > 50000) {
+  // Revenue risk → customer outreach (only trigger when we have real revenue data)
+  if (risk && risk.has_revenue_data && risk.total_revenue_at_risk > 50000) {
     actions.push({
       priority: "urgent",
       title: `Protect ${formatINR(risk.total_revenue_at_risk)} at-risk revenue`,
-      description: `${risk.high_risk_customers.length} high-churn customers represent ${formatINR(risk.total_revenue_at_risk)} in revenue. Proactive outreach now prevents churn that can't be reversed.`,
+      description: `${risk.high_risk_count} high-churn customers represent ${formatINR(risk.total_revenue_at_risk)} in revenue. Proactive outreach now prevents churn that can't be reversed.`,
+      href: "/app/customers",
+      linkLabel: "View at-risk customers →",
+    });
+  } else if (risk && !risk.has_revenue_data && risk.high_risk_count > 0) {
+    actions.push({
+      priority: "high",
+      title: `${risk.high_risk_count} customers at high churn risk`,
+      description: `Avg risk score: ${risk.avg_risk_score.toFixed(0)}/100. No revenue data connected — financial impact unknown. Prioritise outreach to these accounts.`,
       href: "/app/customers",
       linkLabel: "View at-risk customers →",
     });
@@ -196,6 +204,7 @@ export function Intelligence() {
   const [ops, setOps] = useState<OpsData | null>(null);
   const [risk, setRisk] = useState<RiskData | null>(null);
   const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [coverage, setCoverage] = useState<{ actual: number; estimated: number; unknown: number; total: number; coverage_pct: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [clusteringRunning, setClusteringRunning] = useState(false);
   const [acknowledgeTarget, setAcknowledgeTarget] = useState<Cluster | null>(null);
@@ -204,16 +213,18 @@ export function Intelligence() {
   const load = async () => {
     setLoading(true);
     try {
-      const [pulseData, opsData, riskData, clusterData] = await Promise.all([
+      const [pulseData, opsData, riskData, clusterData, coverageData] = await Promise.all([
         api.intelligence.pulse().catch(() => null),
         api.intelligence.operations().catch(() => null),
         api.intelligence.revenueRisk().catch(() => null),
         api.intelligence.clusters(30).catch(() => []),
+        api.intelligence.dataCoverage().catch(() => null),
       ]);
       if (pulseData) setPulse(pulseData);
       if (opsData) setOps(opsData);
       if (riskData) setRisk(riskData);
       setClusters(clusterData);
+      if (coverageData) setCoverage(coverageData);
     } finally {
       setLoading(false);
     }
@@ -225,10 +236,16 @@ export function Intelligence() {
   const topCluster = clusters[0] ?? null;
   const recommendedActions = deriveActions(ops, clusters, risk, pulse);
 
-  const forecastChartData = Array.from({ length: 7 }, (_, i) => ({
-    day: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][i],
-    predicted: ops ? Math.round(ops.total_complaints / 7 * (0.8 + Math.random() * 0.5)) : 0,
-  }));
+  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const forecastChartData = Array.from({ length: 7 }, (_, i) => {
+    const base = ops ? Math.max(0, Math.round(ops.total_complaints / 7 * (0.8 + (i * 0.06)))) : 0;
+    return {
+      day: dayLabels[i],
+      predicted: base,
+      lower: Math.round(base * 0.70),
+      upper: Math.round(base * 1.40),
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -318,10 +335,29 @@ export function Intelligence() {
             <div className="size-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
               <IndianRupee className="size-5 text-red-600" />
             </div>
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Revenue at Risk</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {risk?.has_revenue_data ? "Revenue at Risk" : "Customer Risk Index"}
+                </p>
+                {risk && (
+                  <span className={`text-[9px] font-semibold uppercase px-1 py-0.5 rounded ${
+                    risk.confidence === "high"
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                      : risk.confidence === "medium"
+                      ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+                      : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                  }`}>
+                    {risk.confidence}
+                  </span>
+                )}
+              </div>
               <p className="text-xl font-bold dark:text-white">
-                {risk ? formatINR(risk.total_revenue_at_risk) : "—"}
+                {risk
+                  ? risk.has_revenue_data
+                    ? formatINR(risk.total_revenue_at_risk)
+                    : `${risk.high_risk_count} accounts`
+                  : "—"}
               </p>
             </div>
           </CardContent>
@@ -501,23 +537,54 @@ export function Intelligence() {
           </CardContent>
         </Card>
 
-        {/* Revenue at Risk */}
+        {/* Revenue at Risk / Customer Risk Index */}
         <Card className="dark:bg-gray-900 dark:border-gray-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold dark:text-white flex items-center gap-2">
               <IndianRupee className="size-4 text-red-500" />
-              Revenue at Risk
+              {risk?.has_revenue_data ? "Revenue at Risk" : "Customer Risk Index"}
+              {risk && (
+                <span className={`ml-auto text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
+                  risk.confidence === "high"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                    : risk.confidence === "medium"
+                    ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+                    : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                }`}>
+                  {risk.confidence} confidence
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {risk && risk.high_risk_customers.length > 0 ? (
               <div className="space-y-2">
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {formatINR(risk.total_revenue_at_risk)}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Across {risk.high_risk_customers.length} high-risk accounts</p>
-                <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
-                  Estimated as: customer LTV × churn probability. LTV uses resolved ticket count × per-plan value, or interaction history if no tickets resolved.
+                {risk.has_revenue_data ? (
+                  <>
+                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {risk.confidence === "medium" && <span className="text-sm font-normal text-gray-400 mr-1">Est.</span>}
+                      {formatINR(risk.total_revenue_at_risk)}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Across {risk.high_risk_count} high-risk accounts · avg risk {risk.avg_risk_score.toFixed(0)}/100
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                      {risk.high_risk_count} accounts
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Avg risk score {risk.avg_risk_score.toFixed(0)}/100 · no revenue data connected
+                    </p>
+                  </>
+                )}
+                <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1 leading-relaxed">
+                  {risk.confidence === "high"
+                    ? "Based on actual customer revenue data."
+                    : risk.confidence === "medium"
+                    ? "Revenue estimate based on model assumptions — connect a revenue integration for higher accuracy."
+                    : "No revenue data available. Connect Stripe, Razorpay, or enter customer values manually to see financial impact."}
                 </p>
                 <div className="space-y-2 mt-3">
                   {risk.high_risk_customers.slice(0, 5).map((c, i) => (
@@ -525,9 +592,15 @@ export function Intelligence() {
                       <div className="flex-1 min-w-0">
                         <p className="truncate text-xs dark:text-gray-300">{c.customer_email}</p>
                       </div>
-                      <span className="text-xs font-medium text-red-600 dark:text-red-400 shrink-0">
-                        {formatINR(c.revenue_at_risk)}
-                      </span>
+                      {c.revenue_at_risk > 0 ? (
+                        <span className="text-xs font-medium text-red-600 dark:text-red-400 shrink-0">
+                          {formatINR(c.revenue_at_risk)}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-orange-600 dark:text-orange-400 shrink-0">
+                          risk {c.risk_score.toFixed(0)}
+                        </span>
+                      )}
                       <Badge
                         variant="outline"
                         className="shrink-0 text-[10px] border-orange-300 text-orange-600"
@@ -545,6 +618,44 @@ export function Intelligence() {
             )}
           </CardContent>
         </Card>
+
+        {/* Revenue Data Coverage */}
+        {coverage && (
+          <Card className="dark:bg-gray-900 dark:border-gray-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold dark:text-white flex items-center gap-2">
+                <IndianRupee className="size-4 text-blue-500" />
+                Revenue Data Coverage
+                <span className="ml-auto text-xs font-normal text-gray-400">{coverage.total} customers</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
+                  <div
+                    className="h-full bg-green-500 transition-all"
+                    style={{ width: `${coverage.total > 0 ? (coverage.actual / coverage.total) * 100 : 0}%` }}
+                  />
+                  <div
+                    className="h-full bg-yellow-400 transition-all"
+                    style={{ width: `${coverage.total > 0 ? (coverage.estimated / coverage.total) * 100 : 0}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold dark:text-white shrink-0">{coverage.coverage_pct}%</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-green-500" /> Actual ({coverage.actual})</span>
+                <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-yellow-400" /> Estimated ({coverage.estimated})</span>
+                <span className="flex items-center gap-1"><span className="inline-block size-2 rounded-full bg-gray-300 dark:bg-gray-600" /> No data ({coverage.unknown})</span>
+              </div>
+              {coverage.coverage_pct < 50 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  Revenue risk calculations cover {coverage.coverage_pct}% of customers. Connect Stripe or Razorpay in Settings → Connections to improve accuracy.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Operations Signals */}
         <Card className="dark:bg-gray-900 dark:border-gray-800">
@@ -565,11 +676,17 @@ export function Intelligence() {
                           <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
                           <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                         </linearGradient>
+                        <linearGradient id="colorBand" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#93c5fd" stopOpacity={0.20} />
+                          <stop offset="95%" stopColor="#93c5fd" stopOpacity={0.05} />
+                        </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                       <XAxis dataKey="day" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip />
+                      <Tooltip formatter={(v: number, name: string) => [v, name === "upper" ? "Upper bound" : name === "lower" ? "Lower bound" : "Predicted"]} />
+                      <Area type="monotone" dataKey="upper" stroke="none" fill="url(#colorBand)" strokeWidth={0} />
+                      <Area type="monotone" dataKey="lower" stroke="none" fill="white" fillOpacity={0.4} strokeWidth={0} />
                       <Area type="monotone" dataKey="predicted" stroke="#3b82f6" fill="url(#colorPred)" strokeWidth={2} />
                     </AreaChart>
                   </ResponsiveContainer>

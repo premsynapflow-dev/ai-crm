@@ -57,6 +57,33 @@ def get_weights(db: Session, client_id: str) -> dict[str, float]:
     return w
 
 
+def get_group_cap_multipliers(db: Session, client_id: str) -> dict[str, float]:
+    """Map feedback weights to group cap multipliers for the v2 scoring engine.
+
+    The feedback loop adjusts four named weights based on observed outcomes.
+    Each weight maps to a risk signal group in _weighted_churn_score().
+    The ratio of current/default weight becomes a multiplier on that group's cap:
+
+        resolution cap  × (unresolved_complaints / 0.35)
+        escalation cap  × (escalation_count       / 0.25)
+        sentiment cap   × (sentiment_score         / 0.20)
+        behavioral cap  × (response_time           / 0.20)
+        volume cap      × 1.0  (no feedback signal maps to volume)
+
+    Multipliers are clamped to [0.5, 2.0] to prevent extreme adjustments.
+    Returns all-1.0 multipliers when no calibration data exists.
+    """
+    weights = get_weights(db, client_id)
+    raw = {
+        "resolution":  weights["unresolved_complaints"] / _DEFAULT_WEIGHTS["unresolved_complaints"],
+        "escalation":  weights["escalation_count"]      / _DEFAULT_WEIGHTS["escalation_count"],
+        "sentiment":   weights["sentiment_score"]       / _DEFAULT_WEIGHTS["sentiment_score"],
+        "behavioral":  weights["response_time"]         / _DEFAULT_WEIGHTS["response_time"],
+        "volume":      1.0,
+    }
+    return {k: round(max(0.5, min(2.0, v)), 3) for k, v in raw.items()}
+
+
 def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
     """Ensure weights sum to 1.0 and are within bounds."""
     total = sum(weights.values())

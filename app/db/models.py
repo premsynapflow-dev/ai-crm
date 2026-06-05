@@ -233,6 +233,27 @@ class Customer(Base):
     avg_satisfaction_score = Column(Float, nullable=True)
     churn_risk_score = Column(Float, nullable=False, default=0.0)
     lifetime_value = Column(Float, nullable=False, default=0.0)
+    # Revenue intelligence — three-tier system
+    customer_value_source = Column(String(20), nullable=False, default="unknown")
+    actual_customer_value = Column(Float, nullable=True)
+    estimated_customer_value = Column(Float, nullable=True)
+    predicted_churn_probability = Column(Float, nullable=True)
+    revenue_risk_confidence = Column(String(10), nullable=False, default="low")
+    # Enhanced churn signals
+    tenure_days = Column(Integer, nullable=True)
+    complaint_velocity_score = Column(Float, nullable=True)
+    competitive_mention_count = Column(Integer, nullable=False, default=0)
+    # Extended revenue intelligence (Priority 2–4: contract / MRR / historical actual)
+    annual_contract_value = Column(Float, nullable=True)
+    monthly_recurring_value = Column(Float, nullable=True)
+    remaining_contract_value = Column(Float, nullable=True)
+    customer_lifetime_revenue = Column(Float, nullable=True)
+    # Industry awareness (affects inactivity signal weighting in risk engine)
+    industry_profile = Column(String(30), nullable=True)
+    # Model versioning — lets us track when scores were last recomputed and by which version
+    risk_score_version = Column(String(20), nullable=False, default="v1")
+    risk_score_computed_at = Column(DateTime(timezone=True), nullable=True)
+    prediction_explanation = Column(JSON, nullable=True)
     enrichment_data = Column(JSON, nullable=False, default=dict)
     custom_fields = Column(JSON, nullable=False, default=dict)
     is_master = Column(Boolean, nullable=False, default=True)
@@ -984,6 +1005,51 @@ class ComplaintForecast(Base):
     actual_count = Column(Integer, nullable=True)
     alert_triggered = Column(Boolean, nullable=False, default=False)
     computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ForecastAccuracyLog(Base):
+    """Tracks forecast accuracy over time for backtesting and model quality monitoring.
+
+    After each target_date passes, a background job fills in actual_count and
+    computes absolute_error and pct_error.  Use compute_rolling_mape() to assess
+    model performance over a rolling window.
+    """
+    __tablename__ = "forecast_accuracy_log"
+    __table_args__ = (
+        Index("idx_fal_client_target", "client_id", "target_date"),
+        UniqueConstraint("client_id", "forecast_date", "target_date", name="uq_fal_client_forecast_target"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    forecast_date = Column(DateTime(timezone=True), nullable=False)  # when the forecast was made
+    target_date = Column(DateTime(timezone=True), nullable=False)    # the period being forecast
+    predicted_count = Column(Float, nullable=False)
+    actual_count = Column(Integer, nullable=True)         # filled in after target_date passes
+    absolute_error = Column(Float, nullable=True)         # |actual - predicted|
+    pct_error = Column(Float, nullable=True)              # absolute_error / actual * 100
+    forecast_params = Column(JSON, nullable=True)         # alpha, dow_factor, hod_factor used
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BenchmarkContributionLog(Base):
+    """Privacy-preserving benchmarking schema (opt-in, aggregated/bucketed only).
+
+    No raw numbers, no identifiers.  Populated only when client.benchmark_opt_in = True.
+    Cross-tenant query capability requires explicit legal review before activation.
+    """
+    __tablename__ = "benchmark_contribution_log"
+    __table_args__ = (
+        Index("idx_bcl_industry_contributed", "industry", "contributed_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    contributed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    industry = Column(String(30), nullable=False)
+    ticket_volume_bucket = Column(String(10), nullable=True)      # "0-100", "100-500", etc.
+    resolution_rate_bucket = Column(String(10), nullable=True)    # "0-50%", "50-80%", etc.
+    response_time_bucket = Column(String(10), nullable=True)      # "<2h", "2-8h", etc.
+    churn_rate_bucket = Column(String(10), nullable=True)         # "<5%", "5-15%", etc.
 
 
 class ApprovalRequest(Base):

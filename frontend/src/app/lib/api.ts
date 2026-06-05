@@ -799,6 +799,31 @@ export const api = {
     },
   },
 
+  revenueSync: {
+    trigger: async (): Promise<{
+      status: string;
+      synced_at?: string;
+      total_customers_updated: number;
+      results: Array<{ provider: string; updated: number; error?: string }>;
+    }> => {
+      return request("/api/v1/revenue-sync/trigger", { method: "POST" });
+    },
+
+    status: async (): Promise<{
+      connections: Array<{ id: string; channel_type: string; account_identifier: string | null; status: string }>;
+      coverage: { total_customers: number; customers_with_actual_value: number; coverage_pct: number };
+    }> => {
+      return request("/api/v1/revenue-sync/status");
+    },
+
+    validate: async (channel_type: string, credentials: Record<string, string>): Promise<{ valid: boolean }> => {
+      return request("/api/v1/revenue-sync/validate", {
+        method: "POST",
+        body: JSON.stringify({ channel_type, credentials }),
+      });
+    },
+  },
+
   inboxes: {
     poll: async (inboxId: string) => {
       return request<{
@@ -1045,21 +1070,52 @@ export const api = {
 
     revenueRisk: async (): Promise<{
       total_revenue_at_risk: number;
-      high_risk_customers: Array<{ customer_email: string; revenue_at_risk: number; churn_probability: number }>;
+      high_risk_customers: Array<{
+        customer_email: string;
+        revenue_at_risk: number;
+        churn_probability: number;
+        risk_score: number;
+        value_source: string;
+        confidence: "high" | "medium" | "low";
+      }>;
+      high_risk_count: number;
+      avg_risk_score: number;
+      confidence: "high" | "medium" | "low";
+      estimation_method: string;
+      has_revenue_data: boolean;
     }> => {
       const data = await request<{
         current: {
           revenue_at_risk: number;
           high_risk_customers: number;
-          breakdown: Array<{ email: string; revenue_at_risk: number; churn_probability: number }>;
+          avg_risk_score: number;
+          confidence: "high" | "medium" | "low";
+          estimation_method: string;
+          has_revenue_data: boolean;
+          breakdown: Array<{
+            email: string;
+            revenue_at_risk: number;
+            churn_probability: number;
+            risk_score: number;
+            value_source: string;
+            confidence: "high" | "medium" | "low";
+          }>;
         };
       }>("/api/v1/analytics/revenue-risk");
       return {
         total_revenue_at_risk: data.current?.revenue_at_risk ?? 0,
+        high_risk_count: data.current?.high_risk_customers ?? 0,
+        avg_risk_score: data.current?.avg_risk_score ?? 0,
+        confidence: data.current?.confidence ?? "low",
+        estimation_method: data.current?.estimation_method ?? "behavioral_model_only",
+        has_revenue_data: data.current?.has_revenue_data ?? false,
         high_risk_customers: (data.current?.breakdown ?? []).map((c) => ({
           customer_email: c.email,
           revenue_at_risk: c.revenue_at_risk,
           churn_probability: c.churn_probability,
+          risk_score: c.risk_score,
+          value_source: c.value_source,
+          confidence: c.confidence,
         })),
       };
     },
@@ -1069,6 +1125,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify({}),
       });
+    },
+
+    dataCoverage: async (): Promise<{
+      actual: number;
+      estimated: number;
+      unknown: number;
+      total: number;
+      coverage_pct: number;
+      risk_score_freshness: { computed_today: number; computed_this_week: number; stale_over_7d: number };
+    }> => {
+      return request("/api/v1/intelligence/data-coverage");
     },
   },
 

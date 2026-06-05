@@ -1,57 +1,97 @@
 from datetime import datetime, timedelta, timezone
+from statistics import mean, stdev
 
 from sqlalchemy import func
 
 from app.db.models import Client, Complaint, EventLog, MaterializedAnalytics
 from app.integrations.slack import send_slack_alert
+from app.intelligence.constants import (
+    SPIKE_ZSCORE_HIGH, SPIKE_ZSCORE_MEDIUM, SPIKE_MIN_COUNT, SPIKE_ROLLING_WINDOW_DAYS,
+    SENTIMENT_STRONG_NEG,
+)
 from app.services.event_logger import log_event
 
 
 def detect_complaint_spikes(
-    db, 
-    client_id, 
-    send_alert: bool = True
+    db,
+    client_id,
+    send_alert: bool = True,
 ) -> list[dict]:
-    """Optimized spike detection with single query"""
+    """Z-score based spike detection against a rolling 7-day hourly baseline.
+
+    Uses statistical significance rather than arbitrary multipliers.
+    A spike is flagged when the current hour's count is more than SPIKE_ZSCORE_MEDIUM
+    standard deviations above the rolling mean.  Low-volume clients are protected
+    by SPIKE_MIN_COUNT — no spike fires for trivially small counts.
+    """
     now = datetime.now(timezone.utc)
-    last_hour = now - timedelta(hours=1)
-    last_24h = now - timedelta(hours=24)
+    last_hour_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    window_start = now - timedelta(days=SPIKE_ROLLING_WINDOW_DAYS)
 
-    # Single query with aggregation
-    stats = db.query(
-        func.count(Complaint.id).filter(
-            Complaint.created_at >= last_hour
-        ).label('hour_count'),
-        func.count(Complaint.id).filter(
-            Complaint.created_at >= last_24h
-        ).label('day_count'),
-        func.avg(Complaint.sentiment).filter(
-            Complaint.created_at >= last_hour
-        ).label('avg_sentiment'),
-    ).filter(
-        Complaint.client_id == client_id
-    ).first()
+    # Current hour count
+    hour_count = (
+        db.query(func.count(Complaint.id))
+        .filter(
+            Complaint.client_id == client_id,
+            Complaint.created_at >= last_hour_start,
+        )
+        .scalar()
+        or 0
+    )
 
-    hour_count = stats.hour_count or 0
-    day_count = stats.day_count or 0
-    avg_sentiment = stats.avg_sentiment or 0.0
+    # Current hour sentiment
+    avg_sentiment = float(
+        db.query(func.avg(Complaint.sentiment))
+        .filter(
+            Complaint.client_id == client_id,
+            Complaint.created_at >= last_hour_start,
+        )
+        .scalar()
+        or 0.0
+    )
 
-    expected_hourly = (day_count / 24) * 1.5
+    # Build rolling baseline: hourly counts over last SPIKE_ROLLING_WINDOW_DAYS
+    from sqlalchemy import text
+    hourly_rows = (
+        db.query(
+            func.date_trunc("hour", Complaint.created_at).label("hr"),
+            func.count(Complaint.id).label("cnt"),
+        )
+        .filter(
+            Complaint.client_id == client_id,
+            Complaint.created_at >= window_start,
+            Complaint.created_at < last_hour_start,
+        )
+        .group_by(text("hr"))
+        .all()
+    )
+    baseline_counts = [float(row.cnt) for row in hourly_rows]
 
     spikes = []
-    if hour_count > expected_hourly and hour_count > 10:
-        spikes.append({
-            "type": "volume_spike",
-            "hour_count": hour_count,
-            "expected": expected_hourly,
-            "severity": "high" if hour_count > expected_hourly * 2 else "medium"
-        })
 
-    if avg_sentiment < -0.5 and hour_count > 5:
+    # Volume spike detection
+    if baseline_counts and hour_count >= SPIKE_MIN_COUNT:
+        rolling_mean = mean(baseline_counts)
+        rolling_std = stdev(baseline_counts) if len(baseline_counts) > 1 else 0.5
+        rolling_std = max(rolling_std, 0.5)  # floor to avoid div/zero
+        z_score = (hour_count - rolling_mean) / rolling_std
+
+        if z_score > SPIKE_ZSCORE_MEDIUM:
+            spikes.append({
+                "type": "volume_spike",
+                "hour_count": hour_count,
+                "rolling_mean": round(rolling_mean, 1),
+                "z_score": round(z_score, 2),
+                "severity": "high" if z_score > SPIKE_ZSCORE_HIGH else "medium",
+                "detection_method": "z_score",
+            })
+
+    # Sentiment drop detection (separate signal, uses canonical threshold)
+    if hour_count >= SPIKE_MIN_COUNT and avg_sentiment < SENTIMENT_STRONG_NEG:
         spikes.append({
             "type": "sentiment_drop",
-            "avg_sentiment": avg_sentiment,
-            "severity": "high" if avg_sentiment < -0.7 else "medium"
+            "avg_sentiment": round(avg_sentiment, 3),
+            "severity": "high" if avg_sentiment < -0.65 else "medium",
         })
 
     return spikes

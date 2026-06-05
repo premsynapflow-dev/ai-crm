@@ -63,6 +63,7 @@ from app.api.v1.forecasting import router as forecasting_router
 from app.api.v1.approvals import router as approvals_router
 from app.api.v1.outcomes import router as outcomes_router
 from app.api.v1.intelligence import router as intelligence_v1_router
+from app.api.v1.revenue_sync import router as revenue_sync_router
 from app.billing.router import router as billing_router
 from app.client_portal import router as client_portal_router
 from app.config import get_settings
@@ -313,6 +314,7 @@ app.include_router(forecasting_router)
 app.include_router(approvals_router)
 app.include_router(outcomes_router)
 app.include_router(intelligence_v1_router)
+app.include_router(revenue_sync_router)
 
 frontend_dir = Path("frontend/out")
 

@@ -124,24 +124,75 @@ export function CustomerProfile() {
             <CardContent className="space-y-4">
               <div>
                 <div className="flex justify-between text-sm mb-1">
-                  <span>Churn Risk Score</span>
+                  <span className="flex items-center gap-1">
+                    Risk Score
+                    {customer.risk_score_version && (
+                      <span className="text-[9px] text-gray-400 font-normal">({customer.risk_score_version})</span>
+                    )}
+                  </span>
                   <span className={churnColor + " font-medium"}>
-                    {Math.round(customer.churn_risk_score * 100)}%
+                    {Math.round(customer.churn_risk_score ?? 0)}/100
                   </span>
                 </div>
-                <Progress value={customer.churn_risk_score * 100} className="h-2" />
+                <Progress value={customer.churn_risk_score ?? 0} className="h-2" />
+                {customer.predicted_churn_probability != null && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Calibrated churn probability: {Math.round((customer.predicted_churn_probability ?? 0) * 100)}%
+                  </p>
+                )}
+                {customer.risk_score_computed_at && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Updated {new Date(customer.risk_score_computed_at).toLocaleDateString()}
+                  </p>
+                )}
               </div>
+
+              {/* Risk Breakdown */}
+              {customer.prediction_explanation && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 select-none">
+                    Risk breakdown ↓
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {(["volume_risk", "sentiment_risk", "escalation_risk", "resolution_risk", "behavioral_risk"] as const).map((key) => {
+                      const label = key.replace("_risk", "").replace("_", " ");
+                      const cap = { volume_risk: 20, sentiment_risk: 25, escalation_risk: 20, resolution_risk: 20, behavioral_risk: 25 }[key] ?? 25;
+                      const val = (customer.prediction_explanation as Record<string, number>)[key] ?? 0;
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="capitalize text-gray-500 dark:text-gray-400 w-24 shrink-0">{label}</span>
+                          <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-400 rounded-full" style={{ width: `${(val / cap) * 100}%` }} />
+                          </div>
+                          <span className="text-gray-600 dark:text-gray-400 w-8 text-right">{val}</span>
+                        </div>
+                      );
+                    })}
+                    {(customer.prediction_explanation as Record<string, number>).loyalty_discount > 0 && (
+                      <p className="text-green-600 dark:text-green-400 text-[10px]">
+                        -{(customer.prediction_explanation as Record<string, number>).loyalty_discount} loyalty discount applied
+                      </p>
+                    )}
+                  </div>
+                </details>
+              )}
+
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span>Avg CSAT</span>
-                  <span>{customer.avg_satisfaction_score.toFixed(1)} / 5.0</span>
+                  <span>{(customer.avg_satisfaction_score ?? 0).toFixed(1)} / 5.0</span>
                 </div>
-                <Progress value={customer.avg_satisfaction_score * 20} className="h-2" />
+                <Progress value={(customer.avg_satisfaction_score ?? 0) * 20} className="h-2" />
               </div>
-              {customer.lifetime_value != null && (
+              {customer.lifetime_value != null && customer.lifetime_value > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Lifetime Value</span>
-                  <span className="font-medium">₹{customer.lifetime_value.toLocaleString("en-IN")}</span>
+                  <span className="text-gray-600">
+                    {customer.customer_value_source === "actual" ? "Revenue" : customer.customer_value_source === "estimated" ? "Est. Value" : "Lifetime Value"}
+                  </span>
+                  <span className="font-medium">
+                    {customer.revenue_risk_confidence === "medium" && <span className="text-gray-400 text-xs mr-1">Est.</span>}
+                    ₹{customer.lifetime_value.toLocaleString("en-IN")}
+                  </span>
                 </div>
               )}
             </CardContent>

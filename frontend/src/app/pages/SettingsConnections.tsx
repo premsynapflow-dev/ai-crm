@@ -12,7 +12,7 @@ import {
   Mail, MessageSquare, Globe, Instagram, Star, Copy, Plus, Trash2,
   Loader2, Eye, EyeOff, Lock, ExternalLink, RefreshCw,
   Building2, ShoppingBag, Play, Facebook, Phone, FileUp,
-  Zap, ChevronRight,
+  Zap, ChevronRight, IndianRupee, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -216,6 +216,118 @@ function ConnectorPanel({
   );
 }
 
+// ── Revenue Sync Panel ────────────────────────────────────────────────────────
+function RevenueSyncPanel({
+  stripeConns, razorpayConns, onDisconnect, disconnectingId, onRefresh,
+}: {
+  stripeConns: ChannelConn[]; razorpayConns: ChannelConn[];
+  onDisconnect: (id: string, label: string) => void;
+  disconnectingId: string | null; onRefresh: () => void;
+}) {
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ updated: number; at: string } | null>(null);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await api.revenueSync.trigger();
+      setSyncResult({ updated: result.total_customers_updated, at: result.synced_at || new Date().toISOString() });
+      toast.success(`Revenue sync complete — ${result.total_customers_updated} customer(s) updated`);
+    } catch (err: any) {
+      toast.error(err?.message || "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const hasAny = stripeConns.length > 0 || razorpayConns.length > 0;
+
+  return (
+    <>
+      {/* Info banner */}
+      <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900">
+        <CardContent className="p-4 flex gap-3 items-start">
+          <IndianRupee className="size-5 text-blue-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              Connect your revenue data for accurate Risk Analysis
+            </p>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              Connecting Stripe or Razorpay lets SynapFlow calculate real Revenue at Risk using
+              actual customer lifetime spend — not ticket-count estimates. Customer data is only
+              read, never written. Credentials are stored encrypted at rest.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stripe */}
+      <ConnectorPanel
+        channelType="stripe_revenue"
+        title="Stripe"
+        icon={IndianRupee}
+        iconBg="bg-purple-100"
+        iconColor="text-purple-600"
+        description="Pull actual customer lifetime revenue from Stripe. SynapFlow queries each customer by email and sums all successful charge amounts."
+        docsUrl="https://dashboard.stripe.com/apikeys"
+        credFields={[
+          { key: "api_key", label: "Stripe Secret Key", placeholder: "sk_live_…", type: "password", hint: "Dashboard → Developers → API Keys → Secret key. Use a restricted key with Charges: Read and Customers: Read permissions." },
+        ]}
+        accountField="api_key"
+        existing={stripeConns}
+        onDisconnect={onDisconnect}
+        disconnectingId={disconnectingId}
+        onRefresh={onRefresh}
+      />
+
+      {/* Razorpay */}
+      <ConnectorPanel
+        channelType="razorpay_revenue"
+        title="Razorpay"
+        icon={IndianRupee}
+        iconBg="bg-blue-100"
+        iconColor="text-blue-600"
+        description="Pull customer payment history from your Razorpay account. SynapFlow fetches captured payments and matches them to your customers by email."
+        docsUrl="https://dashboard.razorpay.com/app/keys"
+        credFields={[
+          { key: "key_id", label: "Key ID", placeholder: "rzp_live_…", hint: "Dashboard → Settings → API Keys → Key ID" },
+          { key: "key_secret", label: "Key Secret", placeholder: "…", type: "password", hint: "Dashboard → Settings → API Keys → Key Secret" },
+        ]}
+        accountField="key_id"
+        existing={razorpayConns}
+        onDisconnect={onDisconnect}
+        disconnectingId={disconnectingId}
+        onRefresh={onRefresh}
+      />
+
+      {/* Sync trigger */}
+      {hasAny && (
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium dark:text-white">Sync Customer Revenue</p>
+              <p className="text-xs text-gray-500">
+                Fetches the latest payment totals and updates actual customer values.
+                {syncResult && (
+                  <span className="ml-2 text-green-600">
+                    Last sync: {syncResult.updated} updated · {new Date(syncResult.at).toLocaleTimeString()}
+                  </span>
+                )}
+              </p>
+            </div>
+            <Button onClick={handleSync} disabled={syncing}>
+              {syncing
+                ? <><Loader2 className="size-4 mr-2 animate-spin" />Syncing…</>
+                : <><RefreshCw className="size-4 mr-2" />Sync Now</>}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
 // ── main component ────────────────────────────────────────────────────────────
 export function SettingsConnections() {
   const { user } = useAuth();
@@ -338,6 +450,7 @@ export function SettingsConnections() {
   };
 
   const tabs: TabDef[] = [
+    { value: "revenue",    label: "Revenue Data",   icon: IndianRupee, count: (connsOf("stripe_revenue").length + connsOf("razorpay_revenue").length) || undefined },
     { value: "gmail",      label: "Gmail",          icon: Mail,        count: gmailInboxes.length },
     { value: "imap",       label: "Email (IMAP)",    icon: Mail,        count: imapInboxes.length },
     { value: "whatsapp",   label: "WhatsApp",        icon: MessageSquare, count: waConns.length },
@@ -384,6 +497,17 @@ export function SettingsConnections() {
             );
           })}
         </TabsList>
+
+        {/* ── Revenue Data ── */}
+        <TabsContent value="revenue" className="mt-6 space-y-4">
+          <RevenueSyncPanel
+            stripeConns={connsOf("stripe_revenue")}
+            razorpayConns={connsOf("razorpay_revenue")}
+            onDisconnect={handleDisconnectChannel}
+            disconnectingId={disconnectingId}
+            onRefresh={loadAll}
+          />
+        </TabsContent>
 
         {/* ── Gmail ── */}
         <TabsContent value="gmail" className="mt-6">

@@ -5,17 +5,18 @@ from typing import Any, Optional
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.db.models import Client, Complaint, Customer, CustomerEvent, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
+from app.db.models import Complaint, Customer, CustomerEvent, CustomerInteraction, CustomerNote, CustomerRelationship, EventLog, UnifiedMessage
+from app.intelligence.calibration import calibrate_churn_probability
+from app.intelligence.constants import (
+    RISK_LEVEL_HIGH,
+    RISK_LEVEL_MEDIUM,
+    RISK_MODEL_VERSION,
+    SENTIMENT_NEGATIVE,
+    SENTIMENT_STRONG_NEG,
+    SENTIMENT_STREAK_NEG,
+    SATISFACTION_LOW,
+)
 from app.services.customer_deduplication import CustomerDeduplicator
-
-_CLV_PER_TICKET: dict[str, int] = {
-    "free": 500,
-    "starter": 2000,
-    "pro": 8000,
-    "max": 20000,
-    "scale": 50000,
-    "enterprise": 100000,
-}
 
 
 def _utcnow() -> datetime:
@@ -312,9 +313,43 @@ class CustomerProfileService:
         churn = self.compute_churn_risk(customer)
         customer.churn_risk = churn["level"]
         customer.churn_risk_score = churn["score"]
+        customer.predicted_churn_probability = calibrate_churn_probability(churn["score"])
+        customer.prediction_explanation = churn.get("breakdown")
+        customer.risk_score_version = RISK_MODEL_VERSION
+        customer.risk_score_computed_at = _utcnow()
+
+        # Persist enhanced signal columns
+        signals = churn.get("signals", {})
+        customer.tenure_days = signals.get("tenure_days")
+        customer.complaint_velocity_score = signals.get("complaint_velocity_ratio")
+        customer.competitive_mention_count = int(signals.get("competitive_mention_count", 0))
 
         resolved_count = sum(1 for row in complaint_rows if row.resolution_status == "resolved")
         customer.lifetime_value = self._compute_lifetime_value(customer, resolved_count)
+
+        # Set value source and revenue risk confidence (follows 5-tier priority)
+        from app.intelligence.constants import (
+            VALUE_SOURCE_ACTUAL, VALUE_SOURCE_CONTRACT,
+            VALUE_SOURCE_MRR, VALUE_SOURCE_ESTIMATED, VALUE_SOURCE_UNKNOWN,
+        )
+        if customer.actual_customer_value and customer.actual_customer_value > 0:
+            customer.customer_value_source = VALUE_SOURCE_ACTUAL
+            customer.revenue_risk_confidence = "high"
+        elif (customer.customer_lifetime_revenue and customer.customer_lifetime_revenue > 0):
+            customer.customer_value_source = VALUE_SOURCE_ACTUAL
+            customer.revenue_risk_confidence = "high"
+        elif customer.annual_contract_value and customer.annual_contract_value > 0:
+            customer.customer_value_source = VALUE_SOURCE_CONTRACT
+            customer.revenue_risk_confidence = "medium"
+        elif customer.monthly_recurring_value and customer.monthly_recurring_value > 0:
+            customer.customer_value_source = VALUE_SOURCE_MRR
+            customer.revenue_risk_confidence = "medium"
+        elif customer.estimated_customer_value and customer.estimated_customer_value > 0:
+            customer.customer_value_source = VALUE_SOURCE_ESTIMATED
+            customer.revenue_risk_confidence = "medium"
+        else:
+            customer.customer_value_source = VALUE_SOURCE_UNKNOWN
+            customer.revenue_risk_confidence = "low"
 
         if commit:
             self.db.commit()
@@ -690,20 +725,29 @@ class CustomerProfileService:
     def compute_churn_risk(self, customer: Customer | str | uuid.UUID) -> dict[str, Any]:
         resolved_customer = customer if isinstance(customer, Customer) else self._get_customer_or_master(customer)
         indicators = self._calculate_churn_indicators(resolved_customer)
+        industry = getattr(resolved_customer, "industry_profile", None)
 
-        score = self._weighted_churn_score(indicators)
-        if score >= 75:
+        # Load feedback-calibrated group cap multipliers (falls back to all-1.0 gracefully)
+        try:
+            from app.services.feedback_loop import get_group_cap_multipliers
+            multipliers = get_group_cap_multipliers(self.db, str(resolved_customer.client_id))
+        except Exception:
+            multipliers = None
+
+        score, breakdown = self._weighted_churn_score(indicators, industry=industry, group_multipliers=multipliers)
+        if score >= RISK_LEVEL_HIGH:
             level = "high"
-        elif score >= 40:
+        elif score >= RISK_LEVEL_MEDIUM:
             level = "medium"
         else:
             level = "low"
 
         return {
             "level": level,
-            "score": float(round(score, 2)),
+            "score": float(score),
             "signals": indicators,
             "explanation": self._churn_explanation(indicators),
+            "breakdown": breakdown,
         }
 
     def _get_customer_or_master(self, customer_id) -> Customer:
@@ -824,7 +868,7 @@ class CustomerProfileService:
             .filter(
                 Complaint.customer_id == customer.id,
                 Complaint.created_at >= thirty_days_ago,
-                Complaint.sentiment < -0.3,
+                Complaint.sentiment < SENTIMENT_NEGATIVE,
             )
             .scalar()
             or 0
@@ -850,14 +894,37 @@ class CustomerProfileService:
         if last_seen:
             days_since_last = (_utcnow() - last_seen).days
 
+        # Complaint velocity: compare recent 30d vs prior 30d
+        sixty_days_ago = _utcnow() - timedelta(days=60)
+        prior_tickets = int(
+            self.db.query(func.count(Complaint.id))
+            .filter(
+                Complaint.customer_id == customer.id,
+                Complaint.created_at >= sixty_days_ago,
+                Complaint.created_at < thirty_days_ago,
+            )
+            .scalar()
+            or 0
+        )
+        velocity_ratio = round(float(recent_tickets) / max(prior_tickets, 1), 2) if recent_tickets else None
+
+        # Tenure: days since first interaction
+        tenure_days = None
+        first_seen = _safe_timestamp(customer.first_interaction_at)
+        if first_seen:
+            tenure_days = max(0, (_utcnow() - first_seen).days)
+
+        # Competitive mentions: explicit switching/cancellation language in recent messages
+        competitive_mentions = self._count_competitive_mentions(customer.id)
+
         return {
             "recent_ticket_volume": int(recent_tickets),
             "recent_negative_tickets": int(recent_negative_tickets),
-            "negative_sentiment_streak": bool(recent_message_scores[:3]) and all(score <= -0.25 for score in recent_message_scores[:3]),
+            "negative_sentiment_streak": bool(recent_message_scores[:3]) and all(score <= SENTIMENT_STREAK_NEG for score in recent_message_scores[:3]),
             "unresolved_tickets": int(unresolved_tickets),
             "total_escalations": int(total_escalations),
             "days_since_last_interaction": days_since_last,
-            "low_satisfaction": bool(customer.avg_satisfaction_score is not None and customer.avg_satisfaction_score < 3.0),
+            "low_satisfaction": bool(customer.avg_satisfaction_score is not None and customer.avg_satisfaction_score < SATISFACTION_LOW),
             "avg_recent_sentiment": round(sum(recent_message_scores) / len(recent_message_scores), 3) if recent_message_scores else None,
             "sentiment_drop_detected": self._sentiment_trend(customer.id).get("direction") == "declining",
             "refund_or_payment_events": self._count_recent_events(
@@ -865,38 +932,137 @@ class CustomerProfileService:
                 ["refund_requested", "refund_processed", "payment_failed", "plan_downgraded"],
                 days=90,
             ),
+            "complaint_velocity_ratio": velocity_ratio,
+            "tenure_days": tenure_days,
+            "competitive_mention_count": competitive_mentions,
         }
 
-    def _weighted_churn_score(self, indicators: dict[str, Any]) -> float:
-        score = 0.0
-        score += min(float(indicators["recent_ticket_volume"]) * 8.0, 24.0)
-        score += min(float(indicators["unresolved_tickets"]) * 12.0, 30.0)
-        score += min(float(indicators["recent_negative_tickets"]) * 9.0, 27.0)
-        score += min(float(indicators["total_escalations"]) * 6.0, 18.0)
-        score += min(float(indicators["refund_or_payment_events"]) * 15.0, 30.0)
+    def _weighted_churn_score(
+        self,
+        indicators: dict[str, Any],
+        industry: str | None = None,
+        group_multipliers: dict[str, float] | None = None,
+    ) -> tuple[float, dict[str, Any]]:
+        """Grouped signal architecture — prevents double-counting within each category.
+
+        Each of the 5 groups has a hard cap.  Signals within a group are additive
+        up to that cap only.  This ensures that, e.g., having 10 escalations doesn't
+        push Escalation Risk above 20 points while also inflating other groups.
+
+        group_multipliers: from feedback_loop.get_group_cap_multipliers().  Adjusts
+        the effective cap per group based on observed outcome accuracy.  Defaults to
+        all-1.0 (no adjustment) when None.
+
+        Returns (score, breakdown_dict) where breakdown_dict is suitable for storage
+        in customer.prediction_explanation.
+        """
+        from app.intelligence.constants import (
+            RISK_GROUP_CAPS, RISK_LOYALTY_MAX_DISCOUNT,
+            INACTIVITY_EXEMPT_INDUSTRIES, RISK_MODEL_VERSION,
+        )
+
+        m = group_multipliers or {k: 1.0 for k in RISK_GROUP_CAPS}
+
+        # ── Volume Risk (max 20 × multiplier) ───────────────────────────────
+        vol = 0.0
+        velocity_ratio = indicators.get("complaint_velocity_ratio")
+        if velocity_ratio is not None:
+            if velocity_ratio > 2.0:
+                vol += 12.0
+            elif velocity_ratio > 1.5:
+                vol += 7.0
+        vol += min(float(indicators["recent_ticket_volume"]) * 3.0, 8.0)
+        volume_risk = min(vol, RISK_GROUP_CAPS["volume"] * m.get("volume", 1.0))
+
+        # ── Sentiment Risk (max 25) ──────────────────────────────────────────
+        sent = 0.0
         if indicators["negative_sentiment_streak"]:
-            score += 16.0
+            sent += 12.0
         if indicators["sentiment_drop_detected"]:
-            score += 10.0
-        if indicators["low_satisfaction"]:
-            score += 12.0
-        days_since_last = indicators.get("days_since_last_interaction")
-        if days_since_last is not None:
-            if days_since_last > 30:
-                score += 16.0
-            elif days_since_last > 14:
-                score += 8.0
+            sent += 9.0
         avg_sentiment = indicators.get("avg_recent_sentiment")
-        if avg_sentiment is not None and avg_sentiment < -0.45:
-            score += 10.0
-        return min(100.0, score)
+        if avg_sentiment is not None and avg_sentiment < SENTIMENT_STRONG_NEG:
+            sent += 8.0
+        if indicators["low_satisfaction"]:
+            sent += 6.0
+        sentiment_risk = min(sent, RISK_GROUP_CAPS["sentiment"] * m.get("sentiment", 1.0))
+
+        # ── Escalation Risk (max 20) ─────────────────────────────────────────
+        esc = 0.0
+        # active escalation signal (check via indicators proxy: total > 0 recently)
+        # We use total_escalations as a stand-in since active status isn't in indicators
+        if indicators["total_escalations"] > 0:
+            esc += 10.0
+        esc += min(float(indicators["total_escalations"]) * 4.0, 15.0)
+        escalation_risk = min(esc, RISK_GROUP_CAPS["escalation"] * m.get("escalation", 1.0))
+
+        # ── Resolution Risk (max 20) ─────────────────────────────────────────
+        res = 0.0
+        res += min(float(indicators["unresolved_tickets"]) * 5.0, 15.0)
+        res += min(float(indicators["recent_negative_tickets"]) * 3.0, 9.0)
+        resolution_risk = min(res, RISK_GROUP_CAPS["resolution"] * m.get("resolution", 1.0))
+
+        # ── Behavioral Risk (max 25) ─────────────────────────────────────────
+        beh = 0.0
+        beh += min(float(indicators["refund_or_payment_events"]) * 6.0, 15.0)
+        beh += min(float(indicators.get("competitive_mention_count", 0)) * 8.0, 16.0)
+        days_since_last = indicators.get("days_since_last_interaction")
+        inactivity_exempt = (industry or "").strip() in INACTIVITY_EXEMPT_INDUSTRIES
+        if days_since_last is not None and not inactivity_exempt:
+            if days_since_last > 30:
+                beh += 8.0
+            elif days_since_last > 14:
+                beh += 4.0
+        behavioral_risk = min(beh, RISK_GROUP_CAPS["behavioral"] * m.get("behavioral", 1.0))
+
+        # ── Loyalty Discount (subtract, capped) ──────────────────────────────
+        loyalty_discount = 0.0
+        tenure_days = indicators.get("tenure_days")
+        if tenure_days is not None:
+            if tenure_days > 365:
+                loyalty_discount = 10.0
+            elif tenure_days > 90:
+                loyalty_discount = 5.0
+        loyalty_discount = min(loyalty_discount, RISK_LOYALTY_MAX_DISCOUNT)
+
+        raw = volume_risk + sentiment_risk + escalation_risk + resolution_risk + behavioral_risk
+        score = min(100.0, max(0.0, raw - loyalty_discount))
+
+        # Human-readable top factors (ordered by contribution)
+        factor_scores = {
+            "Negative sentiment": sentiment_risk,
+            "Unresolved tickets": resolution_risk,
+            "Complaint volume spike": volume_risk,
+            "Escalation history": escalation_risk,
+            "Behavioral signals": behavioral_risk,
+        }
+        top_factors = [k for k, v in sorted(factor_scores.items(), key=lambda x: x[1], reverse=True) if v > 0]
+
+        breakdown = {
+            "volume_risk": round(volume_risk, 1),
+            "sentiment_risk": round(sentiment_risk, 1),
+            "escalation_risk": round(escalation_risk, 1),
+            "resolution_risk": round(resolution_risk, 1),
+            "behavioral_risk": round(behavioral_risk, 1),
+            "loyalty_discount": round(loyalty_discount, 1),
+            "total_score": round(score, 1),
+            "top_factors": top_factors[:3],
+            "risk_score_version": RISK_MODEL_VERSION,
+        }
+
+        return round(score, 2), breakdown
 
     def _churn_explanation(self, indicators: dict[str, Any]) -> list[str]:
         explanation: list[str] = []
+        if indicators.get("competitive_mention_count", 0) > 0:
+            explanation.append("Customer mentioned switching or cancelling")
         if indicators["unresolved_tickets"]:
             explanation.append(f"{indicators['unresolved_tickets']} unresolved ticket(s)")
         if indicators["recent_negative_tickets"]:
             explanation.append(f"{indicators['recent_negative_tickets']} recent negative ticket(s)")
+        velocity_ratio = indicators.get("complaint_velocity_ratio")
+        if velocity_ratio is not None and velocity_ratio > 1.5:
+            explanation.append(f"Complaint volume spiked {round(velocity_ratio, 1)}× vs prior period")
         if indicators["negative_sentiment_streak"]:
             explanation.append("Negative sentiment streak")
         if indicators["sentiment_drop_detected"]:
@@ -982,14 +1148,57 @@ class CustomerProfileService:
             or 0
         )
 
+    _COMPETITIVE_KEYWORDS = [
+        "switching to", "moving to", "switch to", "move to",
+        "cancel", "cancellation", "cancel my", "closing account", "close account",
+        "better option", "competitor", "going with", "choosing another",
+        "leaving you", "leaving your", "unsubscribe", "stop using",
+    ]
+
+    def _count_competitive_mentions(self, customer_id) -> int:
+        since = _utcnow() - timedelta(days=90)
+        messages = (
+            self.db.query(UnifiedMessage)
+            .filter(
+                UnifiedMessage.customer_id == customer_id,
+                UnifiedMessage.direction == "inbound",
+                UnifiedMessage.created_at >= since,
+            )
+            .order_by(UnifiedMessage.created_at.desc())
+            .limit(30)
+            .all()
+        )
+        count = 0
+        for msg in messages:
+            content = (msg.content or "").lower()
+            if any(kw in content for kw in self._COMPETITIVE_KEYWORDS):
+                count += 1
+        return count
+
     def _compute_lifetime_value(self, customer: Customer, resolved_count: int) -> float:
-        try:
-            client = self.db.query(Client).filter(Client.id == customer.client_id).first()
-            plan = (client.plan or "free") if client else "free"
-        except Exception:
-            plan = "free"
-        per_ticket = _CLV_PER_TICKET.get(plan, 2000)
-        return float(max(resolved_count, 1) * per_ticket)
+        """Return the best available customer value in INR.
+
+        Priority order (highest trust first):
+          1. actual_customer_value  — from Stripe / Razorpay integration
+          2. customer_lifetime_revenue — historical actual revenue (manually imported)
+          3. annual_contract_value  — contract value from CRM / manual entry
+          4. monthly_recurring_value × 12 — annualised MRR
+          5. estimated_customer_value — manual estimate
+          6. 0.0 — no data; caller must show Risk Index, not a ₹ number
+
+        NEVER computes value from ticket counts or SynapFlow plan pricing.
+        """
+        if customer.actual_customer_value and customer.actual_customer_value > 0:
+            return float(customer.actual_customer_value)
+        if customer.customer_lifetime_revenue and customer.customer_lifetime_revenue > 0:
+            return float(customer.customer_lifetime_revenue)
+        if customer.annual_contract_value and customer.annual_contract_value > 0:
+            return float(customer.annual_contract_value)
+        if customer.monthly_recurring_value and customer.monthly_recurring_value > 0:
+            return float(customer.monthly_recurring_value) * 12
+        if customer.estimated_customer_value and customer.estimated_customer_value > 0:
+            return float(customer.estimated_customer_value)
+        return 0.0
 
     def get_save_recommendations(self, customer: Customer) -> list[str]:
         churn = self.compute_churn_risk(customer)
@@ -1048,7 +1257,27 @@ def serialize_customer(customer: Customer) -> dict[str, Any]:
         "churn_risk": customer.churn_risk,
         "avg_satisfaction_score": customer.avg_satisfaction_score,
         "churn_risk_score": customer.churn_risk_score,
+        "predicted_churn_probability": customer.predicted_churn_probability,
         "lifetime_value": customer.lifetime_value,
+        # Revenue intelligence
+        "actual_customer_value": customer.actual_customer_value,
+        "estimated_customer_value": customer.estimated_customer_value,
+        "annual_contract_value": customer.annual_contract_value,
+        "monthly_recurring_value": customer.monthly_recurring_value,
+        "remaining_contract_value": customer.remaining_contract_value,
+        "customer_lifetime_revenue": customer.customer_lifetime_revenue,
+        "customer_value_source": customer.customer_value_source,
+        "revenue_risk_confidence": customer.revenue_risk_confidence,
+        # Industry
+        "industry_profile": customer.industry_profile,
+        # Model versioning
+        "risk_score_version": customer.risk_score_version,
+        "risk_score_computed_at": _safe_iso(customer.risk_score_computed_at),
+        "prediction_explanation": customer.prediction_explanation,
+        # Churn signals
+        "tenure_days": customer.tenure_days,
+        "complaint_velocity_score": customer.complaint_velocity_score,
+        "competitive_mention_count": customer.competitive_mention_count,
         "enrichment_data": customer.enrichment_data or {},
         "custom_fields": customer.custom_fields or {},
         "is_master": customer.is_master,
