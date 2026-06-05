@@ -83,20 +83,21 @@ export function DashboardLayout() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    api.replyQueue.list("pending")
-      .then((data) => setReplyQueueCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => null);
     api.billing.getUsage()
       .then((data) => setTicketsUsedLive(data.current_usage ?? null))
       .catch(() => null);
   }, [isAuthenticated]);
 
-  // Poll for recent new complaints and surface as notifications
+  // Poll for recent new complaints and surface as notifications; also refresh reply queue count
   const pollNotifications = useRef(async () => {
     try {
-      const items = await api.complaints.list({ status: "new" });
-      const recent = items.slice(0, NOTIF_MAX_SHOW);
-      setNotifications(recent);
+      const [items, queueData] = await Promise.allSettled([
+        api.complaints.list({ status: "new" }),
+        api.replyQueue.list("pending"),
+      ]);
+      if (items.status === "fulfilled") setNotifications(items.value.slice(0, NOTIF_MAX_SHOW));
+      if (queueData.status === "fulfilled")
+        setReplyQueueCount(Array.isArray(queueData.value) ? queueData.value.length : 0);
     } catch {
       // silently ignore
     }

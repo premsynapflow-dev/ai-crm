@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Label,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -91,18 +91,84 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-// ── pie label ─────────────────────────────────────────────────────────────────
-function PieLabel({ cx, cy, midAngle, outerRadius, percent, name }: any) {
-  if (percent < 0.06) return null;
-  const RADIAN = Math.PI / 180;
-  const radius = outerRadius + 24;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+// ── donut chart ───────────────────────────────────────────────────────────────
+function DonutChart({
+  data, colors, height = 220, animationBegin = 100, labelFormatter,
+}: {
+  data: { name: string; value: number }[];
+  colors: Record<string, string>;
+  height?: number;
+  animationBegin?: number;
+  labelFormatter?: (v: string) => string;
+}) {
+  const total = data.reduce((s, d) => s + d.value, 0);
   return (
-    <text x={x} y={y} fill="currentColor" textAnchor={x > cx ? "start" : "end"} fontSize={11}
-      className="fill-gray-600 dark:fill-gray-400">
-      {name} ({(percent * 100).toFixed(0)}%)
-    </text>
+    <ResponsiveContainer width="100%" height={height}>
+      <PieChart>
+        <Pie
+          data={data} cx="50%" cy="46%"
+          innerRadius={58} outerRadius={84}
+          dataKey="value" nameKey="name"
+          paddingAngle={data.length > 1 ? 3 : 0}
+          isAnimationActive
+          animationBegin={animationBegin}
+          animationDuration={1100}
+          animationEasing="ease-out"
+          stroke="none"
+        >
+          {data.map((e, i) => <Cell key={i} fill={colors[e.name] || GRAY} stroke="none" />)}
+          <Label
+            content={({ viewBox }) => {
+              if (!viewBox || !("cx" in viewBox)) return null;
+              const { cx, cy } = viewBox as { cx: number; cy: number };
+              return (
+                <g>
+                  <text x={cx} y={cy - 5} textAnchor="middle"
+                    className="fill-gray-800 dark:fill-gray-100"
+                    style={{ fontSize: 26, fontWeight: 700, fontFamily: "inherit" }}>
+                    {total}
+                  </text>
+                  <text x={cx} y={cy + 14} textAnchor="middle"
+                    className="fill-gray-400 dark:fill-gray-500"
+                    style={{ fontSize: 10, letterSpacing: "0.08em" }}>
+                    TOTAL
+                  </text>
+                </g>
+              );
+            }}
+            position="center"
+          />
+        </Pie>
+        <Tooltip content={<ChartTooltip />} />
+        <Legend
+          iconType="circle" iconSize={8}
+          verticalAlign="bottom"
+          wrapperStyle={{ paddingTop: 12 }}
+          formatter={(v: string) => (
+            <span style={{ fontSize: 12 }} className="text-gray-600 dark:text-gray-400 capitalize">
+              {labelFormatter ? labelFormatter(v) : v.replace(/_/g, " ")}
+            </span>
+          )}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ── animated progress bar ─────────────────────────────────────────────────────
+function AnimatedBar({ pct, color }: { pct: number; color: string }) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setWidth(pct), 80);
+    return () => clearTimeout(t);
+  }, [pct]);
+  return (
+    <div className="h-2.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+      <div
+        className="h-full rounded-full"
+        style={{ width: `${width}%`, background: color, transition: "width 750ms cubic-bezier(0.4, 0, 0.2, 1)" }}
+      />
+    </div>
   );
 }
 
@@ -582,7 +648,8 @@ export function Analytics() {
                   <YAxis type="category" dataKey="name" width={90}
                     tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="count" name="Tickets" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="count" name="Tickets" radius={[0, 6, 6, 0]}
+                    isAnimationActive animationBegin={150} animationDuration={900} animationEasing="ease-out">
                     {categoryData.map((_, i) => (
                       <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                     ))}
@@ -604,22 +671,7 @@ export function Analytics() {
             {priorityData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-gray-400">No data</div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={priorityData} cx="50%" cy="50%"
-                    innerRadius={50} outerRadius={75}
-                    dataKey="value" nameKey="name"
-                    labelLine={false}
-                    label={PieLabel}>
-                    {priorityData.map((e, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[e.name] || GRAY} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend iconType="circle" iconSize={8}
-                    formatter={(v) => <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{v}</span>} />
-                </PieChart>
-              </ResponsiveContainer>
+              <DonutChart data={priorityData} colors={PRIORITY_COLORS} animationBegin={100} />
             )}
           </CardContent>
         </Card>
@@ -632,26 +684,8 @@ export function Analytics() {
             {slaData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-gray-400">No data</div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={slaData} cx="50%" cy="50%"
-                    innerRadius={50} outerRadius={75}
-                    dataKey="value" nameKey="name"
-                    labelLine={false}
-                    label={PieLabel}>
-                    {slaData.map((e, i) => (
-                      <Cell key={i} fill={SLA_COLORS[e.name] || GRAY} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend iconType="circle" iconSize={8}
-                    formatter={(v) => (
-                      <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">
-                        {v.replace("_", " ")}
-                      </span>
-                    )} />
-                </PieChart>
-              </ResponsiveContainer>
+              <DonutChart data={slaData} colors={SLA_COLORS} animationBegin={200}
+                labelFormatter={(v) => v.replace(/_/g, " ")} />
             )}
           </CardContent>
         </Card>
@@ -664,22 +698,7 @@ export function Analytics() {
             {sentimentData.length === 0 ? (
               <div className="h-48 flex items-center justify-center text-gray-400">No data</div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={sentimentData} cx="50%" cy="50%"
-                    innerRadius={50} outerRadius={75}
-                    dataKey="value" nameKey="name"
-                    labelLine={false}
-                    label={PieLabel}>
-                    {sentimentData.map((e, i) => (
-                      <Cell key={i} fill={SENTIMENT_COLORS[e.name] || GRAY} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend iconType="circle" iconSize={8}
-                    formatter={(v) => <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{v}</span>} />
-                </PieChart>
-              </ResponsiveContainer>
+              <DonutChart data={sentimentData} colors={SENTIMENT_COLORS} animationBegin={300} />
             )}
           </CardContent>
         </Card>
@@ -694,19 +713,17 @@ export function Analytics() {
           {statusData.length === 0 ? (
             <div className="h-32 flex items-center justify-center text-gray-400">No data</div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {statusData.map((s) => {
                 const pct = totalFiltered ? Math.round((s.value / totalFiltered) * 100) : 0;
                 const color = s.name === "resolved" ? GREEN : s.name === "escalated" ? RED : s.name === "in-progress" ? AMBER : BLUE;
                 return (
                   <div key={s.name}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="capitalize text-gray-700 dark:text-gray-300">{s.name.replace("-", " ")}</span>
-                      <span className="text-gray-500 dark:text-gray-400">{s.value} ({pct}%)</span>
+                    <div className="flex justify-between text-sm mb-1.5">
+                      <span className="capitalize font-medium text-gray-700 dark:text-gray-300">{s.name.replace(/-/g, " ")}</span>
+                      <span className="text-gray-500 dark:text-gray-400">{s.value} · <strong className="dark:text-gray-300">{pct}%</strong></span>
                     </div>
-                    <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-                    </div>
+                    <AnimatedBar pct={pct} color={color} />
                   </div>
                 );
               })}
@@ -750,25 +767,9 @@ export function Analytics() {
                   </div>
                 ) : (
                   <>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie data={churnData} cx="50%" cy="50%"
-                          innerRadius={50} outerRadius={75}
-                          dataKey="value" nameKey="name"
-                          labelLine={false}
-                          label={PieLabel}>
-                          {churnData.map((e, i) => (
-                            <Cell key={i} fill={CHURN_COLORS[e.name] || GRAY} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<ChartTooltip />} />
-                        <Legend iconType="circle" iconSize={8}
-                          formatter={(v) => (
-                            <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{v} risk</span>
-                          )} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-center text-sm">
+                    <DonutChart data={churnData} colors={CHURN_COLORS} animationBegin={150}
+                      labelFormatter={(v) => `${v} risk`} />
+                    <div className="mt-1 grid grid-cols-3 gap-2 text-center text-sm">
                       {churnData.map((d) => (
                         <div key={d.name}>
                           <div className="text-xl font-bold dark:text-white" style={{ color: CHURN_COLORS[d.name] }}>
