@@ -213,7 +213,7 @@ export function CustomerProfile() {
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                     <XAxis dataKey="week" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                    <Tooltip formatter={(v) => [v, "Complaints"]} />
+                    <Tooltip formatter={(v) => [v, "Tickets"]} />
                     <Bar dataKey="complaints" fill="#3b82f6" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

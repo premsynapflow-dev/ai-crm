@@ -340,8 +340,8 @@ export function ComplaintsInbox() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Complaints Inbox</h1>
-          <p className="text-gray-600">Review and manage customer complaints</p>
+          <h1 className="text-3xl font-bold">Inbox</h1>
+          <p className="text-gray-600">Review and manage incoming tickets</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => loadComplaints()} disabled={loading}>
@@ -470,11 +470,11 @@ export function ComplaintsInbox() {
           ) : complaints.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-500">
               <Clock className="size-8" />
-              <p>No complaints found</p>
+              <p>No items found</p>
               <p className="text-xs text-gray-400">
                 {statusFilter !== "all" || priorityFilter !== "all" || searchQuery
                   ? "Try clearing your filters"
-                  : "Complaints will appear here once customers contact you"}
+                  : "Items will appear here once customers contact you"}
               </p>
             </div>
           ) : (

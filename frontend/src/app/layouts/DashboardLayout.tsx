@@ -156,7 +156,7 @@ export function DashboardLayout() {
     {
       label: "Operations",
       items: [
-        { name: "Complaints", href: "/app/complaints", icon: MessageSquare },
+        { name: "Inbox", href: "/app/complaints", icon: MessageSquare },
         { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: replyQueueCount || undefined },
         { name: "Assignments", href: "/app/assignments", icon: UserCog },
       ],
@@ -401,7 +401,7 @@ export function DashboardLayout() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-80">
                 <DropdownMenuLabel className="flex items-center justify-between">
-                  <span>New Complaints</span>
+                  <span>New Items</span>
                   {notifications.length > 0 && (
                     <Badge variant="secondary" className="text-xs">
                       {notifications.length}

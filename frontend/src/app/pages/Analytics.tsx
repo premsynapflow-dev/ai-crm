@@ -526,7 +526,7 @@ export function Analytics() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Complaints" value={totalFiltered} />
+        <StatCard label="Total Tickets" value={totalFiltered} />
         <StatCard label="Resolved" value={`${resolutionRate}%`}
           sub={`${resolved} of ${totalFiltered}`} trend="down" />
         <StatCard label="SLA Breached" value={breached}
@@ -560,7 +560,7 @@ export function Analytics() {
                   interval={Math.floor(days / 6)} />
                 <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="count" name="Complaints"
+                <Area type="monotone" dataKey="count" name="Tickets"
                   stroke={BLUE} fill="url(#vol-grad)" strokeWidth={2} dot={false} />
               </AreaChart>
             </ResponsiveContainer>
@@ -582,7 +582,7 @@ export function Analytics() {
                   <YAxis type="category" dataKey="name" width={90}
                     tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="count" name="Complaints" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="count" name="Tickets" radius={[0, 4, 4, 0]}>
                     {categoryData.map((_, i) => (
                       <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                     ))}

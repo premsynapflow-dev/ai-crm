@@ -440,7 +440,7 @@ export function Dashboard() {
             <Link to="/app/complaints">
               <Button variant="outline" className="w-full dark:border-gray-700">
                 <MessageSquare className="size-4 mr-2" />
-                View All Complaints
+                View Inbox
               </Button>
             </Link>
             <Link to="/app/reply-queue">

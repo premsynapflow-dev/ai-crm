@@ -434,7 +434,7 @@ export function Teams() {
             <DialogTitle>Routing Categories — {routingTeam?.name}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-gray-500 -mt-2">
-            Complaints in these categories will be routed to this team.
+            Tickets in these categories will be routed to this team.
           </p>
 
           {routingLoading ? (
