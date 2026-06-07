@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Zap,
   ArrowRight,
+  Activity,
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Link } from "react-router";
@@ -57,8 +58,8 @@ function deriveActions(
       priority: "urgent",
       title: "Investigate complaint surge immediately",
       description: "A high-severity spike was detected. Assign your senior support lead to diagnose the root cause before volume compounds.",
-      href: "/app/executive",
-      linkLabel: "Executive summary →",
+      href: "/app/health",
+      linkLabel: "Operational Health →",
     });
   }
 
@@ -87,8 +88,8 @@ function deriveActions(
       priority: "high",
       title: `Address cluster: "${clusters[0].cluster_label}"`,
       description: `${clusters[0].size} complaints share this pattern. A single bulk reply + product fix here closes more tickets than handling them individually.`,
-      href: `/app/complaints?category=${clusters[0].top_category}`,
-      linkLabel: "View affected complaints →",
+      href: `/app/investigations`,
+      linkLabel: "Investigate issue →",
     });
   }
 
@@ -236,6 +237,27 @@ export function Intelligence() {
   const topCluster = clusters[0] ?? null;
   const recommendedActions = deriveActions(ops, clusters, risk, pulse);
 
+  // Operational Health Score (0-100) computed from available signals
+  const healthScore = (() => {
+    if (!pulse && !ops && !risk) return null;
+    const sentimentAvg = pulse?.sentiment_trend?.current_avg ?? 0;
+    const sentimentComponent = Math.round(((sentimentAvg + 1) / 2) * 40); // 0–40
+    const clusterPenalty = Math.min(30, clusters.reduce((acc, c) => acc + (c.size > 20 ? 15 : c.size > 10 ? 8 : 3), 0));
+    const issueComponent = Math.max(0, 30 - clusterPenalty);
+    const riskCount = risk?.high_risk_count ?? 0;
+    const riskComponent = Math.max(0, 30 - Math.min(30, riskCount * 3));
+    const raw = sentimentComponent + issueComponent + riskComponent;
+    return Math.max(10, Math.min(100, raw));
+  })();
+
+  const healthGrade = (s: number | null) => {
+    if (s === null) return { label: "—", color: "text-gray-400" };
+    if (s >= 80) return { label: "Good", color: "text-green-600 dark:text-green-400" };
+    if (s >= 60) return { label: "Fair", color: "text-yellow-600 dark:text-yellow-400" };
+    if (s >= 40) return { label: "At Risk", color: "text-orange-600 dark:text-orange-400" };
+    return { label: "Critical", color: "text-red-600 dark:text-red-400" };
+  };
+
   const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const forecastChartData = Array.from({ length: 7 }, (_, i) => {
     const base = ops ? Math.max(0, Math.round(ops.total_complaints / 7 * (0.8 + (i * 0.06)))) : 0;
@@ -329,7 +351,23 @@ export function Intelligence() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Operational Health Score */}
+        <Card className="dark:bg-gray-900 dark:border-gray-800">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="size-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+              <Activity className="size-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Operational Health</p>
+              <p className={`text-xl font-bold ${healthGrade(healthScore).color}`}>
+                {healthScore !== null ? healthScore : "—"}
+                {healthScore !== null && <span className="text-xs font-normal ml-1">{healthGrade(healthScore).label}</span>}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="dark:bg-gray-900 dark:border-gray-800">
           <CardContent className="p-4 flex items-center gap-4">
             <div className="size-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
@@ -369,7 +407,7 @@ export function Intelligence() {
               <Layers className="size-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Top Complaint Cluster</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Top Issue Cluster</p>
               <p className="text-sm font-semibold dark:text-white line-clamp-1">
                 {topCluster ? `${topCluster.cluster_label} (${topCluster.size})` : "No clusters yet"}
               </p>
@@ -393,12 +431,12 @@ export function Intelligence() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Complaint Clusters */}
+        {/* Emerging Issues */}
         <Card className="dark:bg-gray-900 dark:border-gray-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold dark:text-white flex items-center gap-2">
               <Layers className="size-4 text-blue-500" />
-              Complaint Clusters
+              Emerging Issues
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -457,10 +495,10 @@ export function Intelligence() {
                     </p>
                     <div className="flex items-center gap-3 mt-2">
                       <Link
-                        to={`/app/complaints?category=${cluster.top_category}`}
+                        to={`/app/investigations?cluster_id=${cluster.id}`}
                         className="text-xs text-blue-600 hover:underline"
                       >
-                        View complaints
+                        Investigate →
                       </Link>
                       {!acknowledgedIds.has(cluster.id) && (
                         <button
@@ -657,12 +695,12 @@ export function Intelligence() {
           </Card>
         )}
 
-        {/* Operations Signals */}
+        {/* Operational Signals */}
         <Card className="dark:bg-gray-900 dark:border-gray-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold dark:text-white flex items-center gap-2">
               <TrendingUp className="size-4 text-green-500" />
-              Operations Signals (7d)
+              Operational Signals (7d)
             </CardTitle>
           </CardHeader>
           <CardContent>

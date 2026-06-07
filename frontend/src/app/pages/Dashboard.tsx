@@ -114,7 +114,7 @@ export function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold dark:text-white">Operations Center</h1>
+          <h1 className="text-3xl font-bold dark:text-white">Operational Intelligence</h1>
           <p className="text-gray-600 dark:text-gray-400">AI-powered intelligence across your customer operations</p>
         </div>
         <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Ticket Volume (Last 14 Days)</CardTitle>
+            <CardTitle>Signal Volume (Last 14 Days)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>

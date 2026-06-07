@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { AlertTriangle, HelpCircle, DollarSign, Zap, RefreshCw, GitBranch } from "lucide-react";
+import { AlertTriangle, HelpCircle, DollarSign, Zap, RefreshCw, GitBranch, Activity } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -117,7 +117,7 @@ export function Executive() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold dark:text-white">Executive Intelligence</h1>
+          <h1 className="text-3xl font-bold dark:text-white">Operational Health</h1>
           <p className="text-gray-500 dark:text-gray-400">Loading summary…</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -136,7 +136,7 @@ export function Executive() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold dark:text-white">Executive Intelligence</h1>
+          <h1 className="text-3xl font-bold dark:text-white">Operational Health</h1>
           <p className="text-gray-500 dark:text-gray-400">
             AI-generated operational summary · Last {days} days
             {summary?.cached && (
@@ -172,6 +172,41 @@ export function Executive() {
 
       {summary && (
         <>
+          {/* Operational Health Score */}
+          {(() => {
+            const changeVal = summary.what_broke?.change_pct ?? 0;
+            const issueCount = summary.full_analytics?.total_complaints ?? 0;
+            const prevCount = summary.full_analytics?.previous_period_total ?? issueCount;
+            const trendPenalty = changeVal > 20 ? 20 : changeVal > 10 ? 10 : 0;
+            const volumePenalty = Math.min(30, Math.round(issueCount / Math.max(prevCount, 1) * 10));
+            const costPenalty = summary.cost?.revenue_at_risk > 0 ? 15 : 0;
+            const score = Math.max(20, Math.min(100, 100 - trendPenalty - volumePenalty - costPenalty));
+            const grade = score >= 80 ? { label: "Good", color: "text-green-600 dark:text-green-400" }
+              : score >= 60 ? { label: "Fair", color: "text-yellow-600 dark:text-yellow-400" }
+              : score >= 40 ? { label: "At Risk", color: "text-orange-600 dark:text-orange-400" }
+              : { label: "Critical", color: "text-red-600 dark:text-red-400" };
+            return (
+              <Card className="dark:bg-gray-900 dark:border-gray-800">
+                <CardContent className="p-4 flex items-center gap-6">
+                  <div className="size-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                    <Activity className="size-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Operational Health Score</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className={`text-3xl font-bold ${grade.color}`}>{score}</span>
+                      <span className={`text-sm font-medium ${grade.color}`}>{grade.label}</span>
+                      <span className="text-xs text-gray-400">/ 100</span>
+                    </div>
+                  </div>
+                  <div className="ml-auto text-xs text-gray-500 dark:text-gray-400 hidden md:block">
+                    Based on signal volume, trend, and revenue risk
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
           {/* 4-card executive view */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* What Broke */}
@@ -293,13 +328,13 @@ export function Executive() {
             </Card>
           </div>
 
-          {/* Causal Chain Analysis */}
+          {/* Issue Chain Analysis */}
           {(summary.causal_analysis?.length ?? 0) > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 dark:text-white">
                   <GitBranch className="size-5 text-purple-600" />
-                  Root Cause Analysis
+                  Probable Root Causes
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">

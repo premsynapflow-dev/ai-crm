@@ -559,7 +559,7 @@ export function Analytics() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold dark:text-white">Analytics</h1>
+        <h1 className="text-3xl font-bold dark:text-white">Operational Analytics</h1>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => <Card key={i} className="animate-pulse"><CardContent className="h-24" /></Card>)}
         </div>
@@ -575,8 +575,8 @@ export function Analytics() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold dark:text-white">Analytics</h1>
-          <p className="text-gray-500 dark:text-gray-400">Complaint intelligence · Last {days} days</p>
+          <h1 className="text-3xl font-bold dark:text-white">Operational Analytics</h1>
+          <p className="text-gray-500 dark:text-gray-400">Operational intelligence · Last {days} days</p>
         </div>
         <div className="flex items-center gap-2">
           {[7, 14, 30].map((d) => (
@@ -608,7 +608,7 @@ export function Analytics() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="dark:text-white">Ticket Volume Trend</CardTitle>
+            <CardTitle className="dark:text-white">Signal Volume Trend</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>

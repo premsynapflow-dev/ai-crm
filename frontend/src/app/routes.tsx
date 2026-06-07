@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { LandingPage } from "./pages/LandingPage";
 import { SignupPage } from "./pages/SignupPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -25,6 +25,8 @@ import { ComplaintDetail } from "./pages/ComplaintDetail";
 import { Executive } from "./pages/Executive";
 import { Copilot } from "./pages/Copilot";
 import { Intelligence } from "./pages/Intelligence";
+import { IssueRadar } from "./pages/IssueRadar";
+import { Investigations } from "./pages/Investigations";
 
 export const router = createBrowserRouter([
   {
@@ -48,8 +50,36 @@ export const router = createBrowserRouter([
     Component: DashboardLayout,
     children: [
       {
+        index: true,
+        element: <Navigate to="intelligence" replace />,
+      },
+      {
         path: "dashboard",
-        Component: Dashboard,
+        element: <Navigate to="/app/intelligence" replace />,
+      },
+      {
+        path: "intelligence",
+        Component: Intelligence,
+      },
+      {
+        path: "radar",
+        Component: IssueRadar,
+      },
+      {
+        path: "investigations",
+        Component: Investigations,
+      },
+      {
+        path: "health",
+        Component: Executive,
+      },
+      {
+        path: "executive",
+        element: <Navigate to="/app/health" replace />,
+      },
+      {
+        path: "copilot",
+        Component: Copilot,
       },
       {
         path: "complaints",
@@ -78,18 +108,6 @@ export const router = createBrowserRouter([
       {
         path: "analytics",
         Component: Analytics,
-      },
-      {
-        path: "executive",
-        Component: Executive,
-      },
-      {
-        path: "copilot",
-        Component: Copilot,
-      },
-      {
-        path: "intelligence",
-        Component: Intelligence,
       },
       {
         path: "compliance",

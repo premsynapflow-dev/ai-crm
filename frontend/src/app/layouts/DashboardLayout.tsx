@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import {
-  LayoutDashboard,
   MessageSquare,
   Bot,
   Users,
@@ -36,9 +35,12 @@ import {
   Phone,
   Moon,
   Sun,
-  BrainCircuit,
+  Activity,
   Sparkles,
   Brain,
+  Radar,
+  Search,
+  Inbox,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { api, Complaint } from "../lib/api";
@@ -143,23 +145,11 @@ export function DashboardLayout() {
     {
       label: "",
       items: [
-        { name: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard },
-      ],
-    },
-    {
-      label: "Intelligence",
-      items: [
-        { name: "Copilot", href: "/app/copilot", icon: Sparkles },
         { name: "Intelligence Hub", href: "/app/intelligence", icon: Brain },
-        { name: "Executive", href: "/app/executive", icon: BrainCircuit },
-      ],
-    },
-    {
-      label: "Operations",
-      items: [
-        { name: "Inbox", href: "/app/complaints", icon: MessageSquare },
-        { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: replyQueueCount || undefined },
-        { name: "Assignments", href: "/app/assignments", icon: UserCog },
+        { name: "Issue Radar", href: "/app/radar", icon: Radar },
+        { name: "Investigations", href: "/app/investigations", icon: Search },
+        { name: "Operational Health", href: "/app/health", icon: Activity },
+        { name: "Copilot", href: "/app/copilot", icon: Sparkles },
       ],
     },
     {
@@ -170,15 +160,11 @@ export function DashboardLayout() {
       ],
     },
     {
-      label: "More",
+      label: "Signal Sources",
       items: [
-        {
-          name: "Compliance",
-          href: "/app/compliance",
-          icon: Shield,
-          locked: !["scale", "enterprise"].includes(user.plan),
-        },
-        { name: "Knowledge Base", href: "/app/knowledge", icon: BookOpen },
+        { name: "Inbox", href: "/app/complaints", icon: Inbox },
+        { name: "Reply Queue", href: "/app/reply-queue", icon: Bot, badge: replyQueueCount || undefined },
+        { name: "Assignments", href: "/app/assignments", icon: UserCog },
       ],
     },
   ];
@@ -190,6 +176,13 @@ export function DashboardLayout() {
     { name: "Webhooks", href: "/app/settings/webhooks", icon: Webhook },
     { name: "Teams", href: "/app/settings/teams", icon: Users },
     { name: "Automations", href: "/app/settings/automations", icon: Zap },
+    {
+      name: "Compliance",
+      href: "/app/compliance",
+      icon: Shield,
+      locked: !["scale", "enterprise"].includes(user.plan),
+    } as { name: string; href: string; icon: React.ElementType; locked?: boolean },
+    { name: "Knowledge Base", href: "/app/knowledge", icon: BookOpen },
   ];
 
   const handleLogout = () => {
@@ -212,7 +205,7 @@ export function DashboardLayout() {
       {/* Sidebar */}
       <aside className="w-64 bg-white dark:bg-gray-900 border-r dark:border-gray-800 flex flex-col">
         <div className="p-4 border-b dark:border-gray-800">
-          <Link to="/app/dashboard" className="flex items-center gap-2">
+          <Link to="/app/intelligence" className="flex items-center gap-2">
             <img src="/logo.png" alt="SynapFlow" className="size-8 object-contain" />
             <div>
               <div className="font-semibold dark:text-white">SynapFlow</div>
@@ -284,6 +277,7 @@ export function DashboardLayout() {
                 {settingsNav.map((item) => {
                   const Icon = item.icon;
                   const active = location.pathname === item.href;
+                  const locked = (item as { locked?: boolean }).locked;
                   return (
                     <Link
                       key={item.name}
@@ -292,10 +286,15 @@ export function DashboardLayout() {
                         active
                           ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
                           : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      }`}
+                      } ${locked ? "opacity-50" : ""}`}
                     >
                       <Icon className="size-4 shrink-0" />
-                      <span>{item.name}</span>
+                      <span className="flex-1">{item.name}</span>
+                      {locked && (
+                        <Badge variant="outline" className="ml-auto text-xs">
+                          Locked
+                        </Badge>
+                      )}
                     </Link>
                   );
                 })}
@@ -308,7 +307,7 @@ export function DashboardLayout() {
         <div className="p-4 border-t dark:border-gray-800 space-y-3">
           <div className="text-xs text-gray-600 dark:text-gray-400">
             <div className="flex items-center justify-between mb-1">
-              <span>Tickets this month</span>
+              <span>Signals this month</span>
               <span className="font-semibold">
                 {ticketsUsed} / {ticketsQuota}
               </span>
@@ -412,7 +411,7 @@ export function DashboardLayout() {
                 <DropdownMenuSeparator />
                 {notifications.length === 0 ? (
                   <div className="px-4 py-6 text-center text-sm text-gray-500">
-                    No new complaints
+                    No new signals
                   </div>
                 ) : (
                   notifications.map((n) => (

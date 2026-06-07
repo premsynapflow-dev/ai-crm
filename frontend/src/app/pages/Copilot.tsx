@@ -399,9 +399,9 @@ export function Copilot() {
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center gap-2 mb-4">
           <Sparkles className="size-5 text-blue-600" />
-          <h1 className="text-lg font-semibold dark:text-white">Executive Copilot</h1>
+          <h1 className="text-lg font-semibold dark:text-white">Operational Copilot</h1>
           <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-            Ask anything about your complaint data
+            Ask anything about your operational data
           </span>
         </div>
 
@@ -414,7 +414,7 @@ export function Copilot() {
                   <div className="flex flex-col items-center gap-2 text-center">
                     <Sparkles className="size-10 text-blue-500 opacity-60" />
                     <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-                      Ask the AI about complaint trends, customer churn, product issues, and more.
+                      Ask the AI about operational issues, customer churn, product defects, and more.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-2 w-full max-w-md">

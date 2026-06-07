@@ -1057,6 +1057,23 @@ export const api = {
       return (data.clusters || []) as Array<{ id: string; cluster_label: string; size: number; summary: string; top_category: string; period_start: string; period_end: string }>;
     },
 
+    clusterComplaints: async (clusterId: string, limit = 50): Promise<{
+      cluster: { id: string; summary: string; size: number };
+      complaints: Array<{
+        id: string;
+        summary: string;
+        sentiment: number | null;
+        category: string;
+        priority: string;
+        status: string;
+        customer_email: string | null;
+        created_at: string;
+      }>;
+      total: number;
+    }> => {
+      return request(`/api/v1/clusters/${clusterId}/complaints?limit=${limit}`);
+    },
+
     acknowledgeCluster: async (clusterId: string, action: string, note: string): Promise<void> => {
       await request(`/api/v1/intelligence/clusters/${clusterId}/acknowledge`, {
         method: "POST",
