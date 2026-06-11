@@ -41,6 +41,7 @@ import {
   Radar,
   Search,
   Inbox,
+  FileText,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { api, Complaint } from "../lib/api";
@@ -145,6 +146,7 @@ export function DashboardLayout() {
     {
       label: "",
       items: [
+        { name: "Artifacts", href: "/app/artifacts", icon: FileText },
         { name: "Intelligence Hub", href: "/app/intelligence", icon: Brain },
         { name: "Issue Radar", href: "/app/radar", icon: Radar },
         { name: "Investigations", href: "/app/investigations", icon: Search },

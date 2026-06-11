@@ -709,6 +709,46 @@ class RBIMISReport(Base):
     report_data = Column(JSON, nullable=False, default=dict)
 
 
+class Artifact(Base):
+    __tablename__ = "artifacts"
+    __table_args__ = (
+        UniqueConstraint("client_id", "artifact_type", "period_start",
+                         name="uq_artifact_client_type_period"),
+        Index("idx_artifacts_status", "client_id", "status", "created_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False, index=True)
+    artifact_type = Column(String(50), nullable=False, default="weekly_operational_digest")
+
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+
+    title = Column(String(255), nullable=False)
+    summary = Column(Text, nullable=True)
+    sections_json = Column(JSON, nullable=False, default=dict)
+    edited_body = Column(Text, nullable=True)
+
+    status = Column(String(30), nullable=False, default="draft")
+    reviewed_by = Column(String(255), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_channel = Column(String(30), nullable=True)
+    recipient = Column(String(255), nullable=True)
+    opened_at = Column(DateTime(timezone=True), nullable=True)
+    acted_at = Column(DateTime(timezone=True), nullable=True)
+
+    model_used = Column(String(50), nullable=True)
+    generation_metadata = Column(JSON, nullable=False, default=dict)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    client = relationship("Client")
+
+
 class RBITATRule(Base):
     __tablename__ = "rbi_tat_rules"
     __table_args__ = (

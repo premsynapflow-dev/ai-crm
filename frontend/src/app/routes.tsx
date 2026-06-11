@@ -27,6 +27,7 @@ import { Copilot } from "./pages/Copilot";
 import { Intelligence } from "./pages/Intelligence";
 import { IssueRadar } from "./pages/IssueRadar";
 import { Investigations } from "./pages/Investigations";
+import { Artifacts } from "./pages/Artifacts";
 
 export const router = createBrowserRouter([
   {
@@ -56,6 +57,10 @@ export const router = createBrowserRouter([
       {
         path: "dashboard",
         element: <Navigate to="/app/intelligence" replace />,
+      },
+      {
+        path: "artifacts",
+        Component: Artifacts,
       },
       {
         path: "intelligence",

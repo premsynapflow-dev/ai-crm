@@ -114,6 +114,29 @@ export interface AIReplyDraft {
   created_at: string;
 }
 
+export interface ArtifactItem {
+  id: string;
+  client_id: string;
+  artifact_type: string;
+  period_start: string;
+  period_end: string;
+  title: string;
+  summary: string | null;
+  sections_json: Record<string, unknown>;
+  edited_body: string | null;
+  status: "draft" | "in_review" | "approved" | "delivered" | "rejected";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  delivered_at: string | null;
+  delivery_channel: string | null;
+  recipient: string | null;
+  opened_at: string | null;
+  acted_at: string | null;
+  model_used: string | null;
+  created_at: string | null;
+}
+
 export interface KnowledgeSnippet {
   id: string;
   title: string;
@@ -1261,6 +1284,46 @@ export const api = {
       return request(`/api/v1/notifications/${id}/read`, {
         method: "POST",
         body: "{}",
+      });
+    },
+  },
+
+  artifacts: {
+    list: async (status?: string): Promise<{ items: ArtifactItem[] }> => {
+      const qs = status ? `?status=${status}` : "";
+      const data = await request<{ items: ArtifactItem[] }>(`/api/v1/artifacts${qs}`);
+      return data;
+    },
+
+    get: async (id: string): Promise<ArtifactItem> => {
+      return request<ArtifactItem>(`/api/v1/artifacts/${id}`);
+    },
+
+    generate: async (options: { days?: number; recipient?: string } = {}): Promise<ArtifactItem> => {
+      return request<ArtifactItem>("/api/v1/artifacts/generate", {
+        method: "POST",
+        body: JSON.stringify({ days: options.days ?? 7, recipient: options.recipient }),
+      });
+    },
+
+    approve: async (id: string, editedBody?: string, reviewerEmail?: string): Promise<ArtifactItem> => {
+      return request<ArtifactItem>(`/api/v1/artifacts/${id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ edited_body: editedBody, reviewer_email: reviewerEmail }),
+      });
+    },
+
+    reject: async (id: string, reason: string, reviewerEmail?: string): Promise<ArtifactItem> => {
+      return request<ArtifactItem>(`/api/v1/artifacts/${id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason, reviewer_email: reviewerEmail }),
+      });
+    },
+
+    deliver: async (id: string, recipient?: string): Promise<ArtifactItem> => {
+      return request<ArtifactItem>(`/api/v1/artifacts/${id}/deliver`, {
+        method: "POST",
+        body: JSON.stringify({ recipient }),
       });
     },
   },

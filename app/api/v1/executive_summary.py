@@ -127,19 +127,12 @@ def _fallback_narrative(metrics: dict) -> str:
     )
 
 
-@router.get("/summary")
-async def executive_summary(
-    days: int = Query(7, ge=1, le=90, description="Analysis window in days"),
-    force_refresh: bool = Query(False),
-    client: Client = Depends(require_api_key),
-    db: Session = Depends(get_db),
-):
-    cache_key = f"{client.id}:{days}"
-    if not force_refresh:
-        cached = _get_cached(cache_key)
-        if cached:
-            return {**cached, "cached": True}
+def build_digest_payload(db: Session, client: Client, days: int = 7) -> dict:
+    """Compose root-cause + revenue + Gemini narrative into a digest dict.
 
+    Reused by both the executive_summary endpoint and ArtifactService.
+    Returns a plain dict (no cache, no HTTP concerns).
+    """
     from app.services.revenue_risk import compute_data_coverage
     root_cause = generate_root_cause_report(db, str(client.id), period_days=days)
     revenue = _compute_revenue_at_risk(db, client.id, days)
@@ -153,7 +146,7 @@ async def executive_summary(
     trending = root_cause.get("trending_up", [])
     top_issue = trending[0] if trending else (root_cause.get("top_issues") or [{}])[0]
 
-    payload = {
+    return {
         "period_days": days,
         "what_broke": {
             "issue": top_issue.get("category", "No significant issues detected"),
@@ -182,10 +175,26 @@ async def executive_summary(
             "top_issues": root_cause.get("top_issues", [])[:5],
             "resolution_rates": root_cause.get("resolution_rates", {}),
         },
-        "correlational_signals": root_cause.get("correlational_signals", root_cause.get("causal_analysis", [])),
+        "correlational_signals": root_cause.get(
+            "correlational_signals", root_cause.get("causal_analysis", [])
+        ),
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "cached": False,
     }
 
+
+@router.get("/summary")
+async def executive_summary(
+    days: int = Query(7, ge=1, le=90, description="Analysis window in days"),
+    force_refresh: bool = Query(False),
+    client: Client = Depends(require_api_key),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"{client.id}:{days}"
+    if not force_refresh:
+        cached = _get_cached(cache_key)
+        if cached:
+            return {**cached, "cached": True}
+
+    payload = build_digest_payload(db, client, days=days)
     _set_cache(cache_key, payload)
-    return payload
+    return {**payload, "cached": False}

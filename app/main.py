@@ -55,6 +55,7 @@ from app.api.admin_prompts import router as admin_prompts_router
 from app.api.v1.bulk_import import router as bulk_import_v1_router
 from app.api.v1.entities import router as entities_v1_router
 from app.api.v1.widget import router as widget_router
+from app.api.v1.artifacts import router as artifacts_router
 from app.api.v1.executive_summary import router as executive_summary_router
 from app.api.v1.revenue_risk import router as revenue_risk_router
 from app.api.v1.clusters import router as clusters_router
@@ -306,6 +307,7 @@ app.include_router(metrics_router)
 app.include_router(bulk_import_v1_router)
 app.include_router(entities_v1_router)
 app.include_router(widget_router)
+app.include_router(artifacts_router)
 app.include_router(executive_summary_router)
 app.include_router(revenue_risk_router)
 app.include_router(clusters_router)
