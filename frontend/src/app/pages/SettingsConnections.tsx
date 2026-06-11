@@ -18,7 +18,11 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
 
-interface Inbox { id: string; email: string; provider: string; status: string; }
+interface Inbox {
+  id: string; email: string; provider: string; status: string;
+  needs_reauth: boolean; last_poll_error: string | null;
+  last_poll_error_at: string | null; last_synced_at: string | null;
+}
 interface ChannelConn {
   id: string; channel_type: string; account_identifier: string | null;
   status: string; metadata: Record<string, unknown>;
@@ -26,11 +30,13 @@ interface ChannelConn {
 
 // ── shared: existing connection row ──────────────────────────────────────────
 function ConnRow({
-  conn, iconBg, icon: Icon, label, sublabel, onDisconnect, disconnecting, onSync, syncing,
+  conn, iconBg, icon: Icon, label, sublabel, onDisconnect, disconnecting, onSync, syncing, onReconnect, reconnecting,
 }: {
   conn: ChannelConn; iconBg: string; icon: any; label: string; sublabel?: string;
   onDisconnect: () => void; disconnecting: boolean; onSync?: () => void; syncing?: boolean;
+  onReconnect?: () => void; reconnecting?: boolean;
 }) {
+  const isActive = conn.status === "active";
   return (
     <div className="flex items-center justify-between p-3 border dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800">
       <div className="flex items-center gap-3">
@@ -40,11 +46,19 @@ function ConnRow({
         <div>
           <div className="text-sm font-medium dark:text-white">{label}</div>
           {sublabel && <div className="text-xs text-gray-500">{sublabel}</div>}
-          <div className="text-xs text-green-600 font-medium">● Active</div>
+          {isActive
+            ? <div className="text-xs text-green-600 font-medium">● Active</div>
+            : <div className="text-xs text-amber-600 font-medium">● Needs re-authorization</div>
+          }
         </div>
       </div>
       <div className="flex gap-2 shrink-0">
-        {onSync && (
+        {!isActive && onReconnect && (
+          <Button size="sm" variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50" onClick={onReconnect} disabled={reconnecting}>
+            {reconnecting ? <Loader2 className="size-4 animate-spin" /> : <><RefreshCw className="size-4 mr-1.5" />Reconnect</>}
+          </Button>
+        )}
+        {isActive && onSync && (
           <Button size="sm" variant="outline" onClick={onSync} disabled={syncing}>
             {syncing ? <Loader2 className="size-4 animate-spin" /> : <><RefreshCw className="size-4 mr-1.5" />Sync</>}
           </Button>
@@ -537,7 +551,8 @@ export function SettingsConnections() {
                         label={inbox.email} sublabel="Gmail OAuth"
                         onDisconnect={() => handleDisconnectInbox(inbox.id, inbox.email)}
                         disconnecting={disconnectingId === inbox.id}
-                        onSync={() => handleSyncInbox(inbox.id)} syncing={syncingId === inbox.id} />
+                        onSync={() => handleSyncInbox(inbox.id)} syncing={syncingId === inbox.id}
+                        onReconnect={handleConnectGmail} reconnecting={connectingGmail} />
                     ))}
                     <Button variant="outline" size="sm" className="mt-2" onClick={handleConnectGmail} disabled={connectingGmail}><Plus className="size-4 mr-2" />Add account</Button>
                   </div>

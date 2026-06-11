@@ -856,7 +856,11 @@ export const api = {
       }>(`/inboxes/${inboxId}/poll`, { method: "POST" });
     },
     list: async () => {
-      const raw = await request<Array<{ id: string; email: string; provider: string; status: string }>>("/inboxes");
+      const raw = await request<Array<{
+        id: string; email: string; provider: string; status: string;
+        needs_reauth: boolean; last_poll_error: string | null;
+        last_poll_error_at: string | null; last_synced_at: string | null;
+      }>>("/inboxes");
       return Array.isArray(raw) ? raw : [];
     },
 
