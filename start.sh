@@ -23,9 +23,9 @@ else
     fi
 
     echo "Running migrations..."
-    alembic upgrade head || echo "Migration failed, continuing..."
+    timeout 60 alembic upgrade head || echo "Migration failed or timed out, continuing..."
 
-    "$PYTHON_BIN" -m app.db.schema_guard || echo "Schema guard failed, continuing..."
+    timeout 30 "$PYTHON_BIN" -m app.db.schema_guard || echo "Schema guard failed or timed out, continuing..."
 
     WEB_CONCURRENCY="${WEB_CONCURRENCY:-1}"
     echo "Starting Uvicorn with ${WEB_CONCURRENCY} worker(s)..."
