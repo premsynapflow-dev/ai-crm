@@ -137,6 +137,23 @@ export interface ArtifactItem {
   created_at: string | null;
 }
 
+export interface UploadJob {
+  id: string;
+  filename: string | null;
+  file_format: string;
+  data_type: string;
+  status: "processing" | "queued" | "analyzing" | "done" | "failed";
+  total_rows: number | null;
+  mapped_rows: number;
+  failed_rows: number;
+  errors: Array<{ row: number; reason: string }>;
+  analysis_status: "none" | "running" | "done" | "failed";
+  analysis_results: Record<string, unknown> | null;
+  artifact_id: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
 export interface KnowledgeSnippet {
   id: string;
   title: string;
@@ -1328,6 +1345,51 @@ export const api = {
       return request<ArtifactItem>(`/api/v1/artifacts/${id}/deliver`, {
         method: "POST",
         body: JSON.stringify({ recipient }),
+      });
+    },
+  },
+
+  uploadIntelligence: {
+    upload: async (file: File, dataType: string): Promise<{ job_id: string; status: string }> => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("data_type", dataType);
+      const token = localStorage.getItem("synapflow_token");
+      const resp = await fetch("/api/v1/upload-intelligence/upload", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || "Upload failed");
+      }
+      return resp.json();
+    },
+
+    listJobs: async (): Promise<UploadJob[]> => {
+      return request<UploadJob[]>("/api/v1/upload-intelligence/jobs");
+    },
+
+    getJob: async (jobId: string): Promise<UploadJob> => {
+      return request<UploadJob>(`/api/v1/upload-intelligence/jobs/${jobId}`);
+    },
+
+    analyze: async (jobId: string): Promise<UploadJob> => {
+      return request<UploadJob>(`/api/v1/upload-intelligence/jobs/${jobId}/analyze`, {
+        method: "POST",
+      });
+    },
+
+    generateArtifact: async (jobId: string, recipient?: string): Promise<{
+      artifact_id: string;
+      artifact_status: string;
+      artifact_title: string;
+      job_id: string;
+    }> => {
+      const qs = recipient ? `?recipient=${encodeURIComponent(recipient)}` : "";
+      return request(`/api/v1/upload-intelligence/jobs/${jobId}/generate-artifact${qs}`, {
+        method: "POST",
       });
     },
   },

@@ -1490,6 +1490,36 @@ class BulkImportJob(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class UploadIntelligenceJob(Base):
+    """Tracks an upload-intelligence pipeline run: file → complaints → analysis → artifact."""
+    __tablename__ = "upload_intelligence_jobs"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id = Column(Uuid(as_uuid=True), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # File info
+    filename = Column(Text, nullable=True)
+    file_format = Column(String(10), nullable=False, default="csv")  # csv | xlsx | json
+    data_type = Column(String(30), nullable=False, default="complaints")  # reviews | support_tickets | complaints | refunds
+
+    # Ingestion progress
+    status = Column(String(20), nullable=False, default="processing")  # processing | queued | analyzing | done | failed
+    total_rows = Column(Integer, nullable=True)
+    mapped_rows = Column(Integer, nullable=False, default=0)
+    failed_rows = Column(Integer, nullable=False, default=0)
+    error_log = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=False, default=list)
+
+    # Analysis results (root cause + pulse, stored after /analyze call)
+    analysis_status = Column(String(20), nullable=False, default="none")  # none | running | done | failed
+    analysis_results = Column(JSON().with_variant(JSONB(astext_type=Text()), "postgresql"), nullable=True)
+
+    # Linked artifact (set after /generate-artifact call)
+    artifact_id = Column(Uuid(as_uuid=True), ForeignKey("artifacts.id"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class ComplaintEntity(Base):
     __tablename__ = "complaint_entities"
     __table_args__ = (

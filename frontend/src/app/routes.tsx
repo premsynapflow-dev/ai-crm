@@ -63,6 +63,10 @@ export const router = createBrowserRouter([
         Component: Artifacts,
       },
       {
+        path: "uploads",
+        Component: Uploads,
+      },
+      {
         path: "intelligence",
         Component: Intelligence,
       },
